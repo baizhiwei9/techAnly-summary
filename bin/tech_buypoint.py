@@ -57,7 +57,6 @@ import chan_smc_index as C                    # noqa: E402
 import chan_ma_trend_v2 as M                  # noqa: E402
 import datahub as DH                          # noqa: E402
 import tech_summary as TS                     # noqa: E402
-import smc_core as S                       # noqa: E402  # VWAP 预过滤用
 from tech_summary import (                    # noqa: E402
     ma20_state, rank_buys, best_buy, PRI_MARK, BUY_PRIORITY, MA20_UP_BARS,
 )  # noqa: F401
@@ -665,6 +664,10 @@ def find_third_buys(d, cl, max_age=None, near=None):
       ① 买点年龄 ≤ TB_MAX_AGE 根
       ② 回踩低点之后**收盘从未跌破**该低点（结构未破）
       ③ 现价在回踩低点上方 0~TB_NEAR% 内（已跑远的就不算可买）
+
+    ⚠️ 2026-11-10 修：k 必须**从后往前**扫（先找最近的离开+回踩）。
+    原来是 i+3 → n-1 正序 + 命中就 break，等于只认「最早那个同中枢的次级别回踩」，
+    把后面更新的、真正还有效的三买全部跳过了 —— 实测 100 个行业板块 daily 三买 accept 全部 0 个。
     """
     mb = C.merge_bars(C.bars_of(d))
     if len(mb) < 20:
@@ -685,7 +688,7 @@ def find_third_buys(d, cl, max_age=None, near=None):
         zd = max(x["lo"] for x in w)
         if not zg > zd:
             continue
-        for k in range(i + 3, n - 1):
+        for k in range(n - 2, i + 2, -1):        # ← 反向：先找最近一次离开+回踩
             if not (segs[k]["up"] and segs[k]["hi"] > zg):
                 continue
             r = segs[k + 1]
@@ -879,7 +882,7 @@ def find_third_sells(d, cl, max_age=None, near=None):
         zd = max(x["lo"] for x in w)
         if not zg > zd:
             continue
-        for k in range(i + 3, n - 1):
+        for k in range(n - 2, i + 2, -1):        # ← 反向：先找最近一次离开+反抽（同三买修复）
             if segs[k]["up"] or not (segs[k]["lo"] < zd):      # 必须向下离开中枢
                 continue
             r = segs[k + 1]
@@ -1322,33 +1325,13 @@ def _sector_block(kind, name, code, scan_codes_, names):
     close = float(d["close"].iloc[-1])
     prev = float(d["close"].iloc[-2]) if len(d) > 1 else close
     tb = find_third_buys(d, d["close"].astype(float).values)
-    # 2026-11-10 定稿：行业闸门 = 日线只认三买 + 周线一二三买都认
-    # 一买/二买从「周线」提取（不再用日线），日线只保留三买 tb
-    yb, eb, wb3 = [], [], []
-    try:
-        ww = C.resample_w(d)
-        if len(ww) >= 24:
-            fx_w = C.chan_read(C.bars_of(ww), "week")
-            for b in (fx_w.get("buy_list") or []):
-                tag = b.get("tag")
-                if tag == "一买":
-                    yb.append(_gate_y1(b, close, ma20))
-                elif tag == "二买":
-                    eb.append(_gate_y2(b, close, ma20))
-                elif tag == "三买":
-                    lvl = float(b.get("level") or 0)
-                    gap = (close / lvl - 1) * 100 if lvl > 0 else 0.0
-                    accept = (gap <= TB_NEAR) and (gap >= -BUY_NEAR_DN)
-                    wb3.append({"tag": "三买", "pri": 1, "level": round(lvl, 2),
-                                "age": int(b.get("age") or 0), "gap": gap,
-                                "accept": accept,
-                                "why": ("周线三买（离开中枢后回踩不破ZG）%+.1f%%" % gap) if accept
-                                       else ("已跑远（现价比三买高 %.1f%%）" % gap if gap > TB_NEAR
-                                             else "已跌破三买 %.1f%%" % abs(gap)),
-                                "sustained": bool(b.get("sustained"))})
-    except Exception as _e:
-        log("[周线买点] %s 提取失败 %s" % (code, str(_e)[:60]))
-    cands = sorted(tb + wb3 + yb + eb, key=lambda x: (not x["accept"], x["pri"], x.get("age", 0)))
+    yb, eb = [], []
+    for b in (fx.get("buy_list") or []):
+        if b.get("tag") == "一买":
+            yb.append(_gate_y1(b, close, ma20))
+        elif b.get("tag") == "二买":
+            eb.append(_gate_y2(b, close, ma20))
+    cands = sorted(tb + yb + eb, key=lambda x: (not x["accept"], x["pri"], x.get("age", 0)))
     best = next((x for x in cands if x["accept"]), None)
     sells = find_sells(d, fx, close, ma20)
     best_sell = next((x for x in sells if x["accept"]), None)
@@ -1375,7 +1358,7 @@ def render_sector(sec, rows, title, gate_override=False):
     A = L.append
     A(title)
     A("口径：① 三买 > ② 一买（须 MA20 向上）> ③ 二买（胜率最低）｜ 卖点：三卖 > 一卖（须 MA20 向下）> 二卖 ｜ 行业无买点则不下钻个股")
-    A("级别：**行业闸门 = 日线只认三买 + 周线一二三买都认**；个股层面日线为主、小时线次级确认")
+    A("级别：**日线买点优先（主判定）**，小时线（60m）为次级确认，仅叠加不替代")
     A("")
     A("═══ 一、行业（板块）自身有没有买点 ═══")
     gate_ok = bool(gate_override)
@@ -1640,11 +1623,10 @@ def chart_sector(kind, name, code, n_day=120, n_ma=300):
 
 
 def scan_codes(codes, names=None):
-    """批量扫成分股买点（先 MA40 预过滤，再下钻，省时）"""
+    """批量扫成分股买点"""
     names = names or {}
     hist = _today_hist()
     rows = []
-    skipped = 0
     for i, c in enumerate(codes, 1):
         nm = names.get(c) or name_map().get(c, "")
         d = load_daily(c, hist)
@@ -1652,41 +1634,11 @@ def scan_codes(codes, names=None):
             rows.append({"code": c, "name": nm, "ok": False, "err": "日线不足/停牌"})
             continue
         try:
-            # ── 预过滤（2026-11-10 大佬要求：先过滤再下钻，大幅省时）──
-            #   ① 站上 MA40 且 MA40 向上（近 6 根斜率 > 0）
-            #   ② 站上 VWAP 中线（现价 > VWAP，即 sigma > 0）
-            cl = d["close"].astype(float)
-            if len(cl) < 45:
-                rows.append({"code": c, "name": nm, "ok": False, "err": "数据不足"})
-                continue
-            ma40 = cl.rolling(40).mean()
-            close = float(cl.iloc[-1])
-            ma40_now = float(ma40.iloc[-1])
-            ma40_prev = float(ma40.iloc[-6]) if len(ma40) >= 6 else ma40_now
-            above_ma40 = close > ma40_now
-            up_ma40 = ma40_now > ma40_prev
-            if not (above_ma40 and up_ma40):
-                skipped += 1
-                rows.append({"code": c, "name": nm, "ok": False,
-                             "err": "MA40过滤未过（站上%s/向上%s）" % (above_ma40, up_ma40)})
-                continue
-            # VWAP 中线过滤
-            try:
-                vw = S.vwap_tracks(d)
-                vwap_now = float(vw["vwap"][-1])
-                above_vwap = close > vwap_now
-            except Exception:
-                above_vwap = True   # VWAP 算不出来不拦截
-            if not above_vwap:
-                skipped += 1
-                rows.append({"code": c, "name": nm, "ok": False,
-                             "err": "VWAP中线过滤未过（现价%.2f ≤ VWAP%.2f）" % (close, vwap_now)})
-                continue
             rows.append(analyse_one(c, nm, d))
         except Exception as e:
             rows.append({"code": c, "name": nm, "ok": False, "err": str(e)[:60]})
         if i % 25 == 0:
-            log("[进度] %d/%d（MA40 过滤掉 %d）" % (i, len(codes), skipped))
+            log("[进度] %d/%d" % (i, len(codes)))
     return rows
 
 

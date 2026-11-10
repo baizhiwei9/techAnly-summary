@@ -26,19 +26,6 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import matplotlib  # noqa: E402
 matplotlib.use("Agg")
-# 中文字体（否则中文乱码/方框）—— 优先文泉驿正黑，其次 Noto Sans CJK
-import matplotlib.font_manager as _fm  # noqa: E402
-for _f in ["/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-           "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"]:
-    if os.path.exists(_f):
-        try:
-            _fm.fontManager.addfont(_f)
-            _name = _fm.FontProperties(fname=_f).get_name()
-            matplotlib.rcParams["font.sans-serif"] = [_name, "DejaVu Sans"]
-            matplotlib.rcParams["axes.unicode_minus"] = False
-            break
-        except Exception:
-            pass
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
