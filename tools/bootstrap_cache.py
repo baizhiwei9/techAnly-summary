@@ -6,6 +6,7 @@
 
   .cache/sw_member_all.json   个股 → 申万 L1/L2/L3（tushare index_member_all）
   .cache/sw_index_map.json    行业名 → 行业指数代码（tushare index_classify L1/L2/L3）
+  .cache/tech_stock_names.json  个股代码 → 股票名称（报告里显示中文名，否则只剩 6 位代码）
 
 用法：
   export TUSHARE_PROXY_TOKEN=你的token
@@ -26,6 +27,7 @@ sys.path.insert(0, os.path.join(WS, "bin"))
 CACHE = os.path.join(WS, ".cache")
 SW_MEMBER = os.path.join(CACHE, "sw_member_all.json")
 SW_INDEX_MAP = os.path.join(CACHE, "sw_index_map.json")
+STOCK_NAMES = os.path.join(CACHE, "tech_stock_names.json")
 
 
 def build_member():
@@ -76,7 +78,37 @@ def build_index_map():
     return bool(out)
 
 
+def build_names():
+    """个股代码 → 中文名（tech_buypoint.name_map 用；缺了报告只剩 6 位代码很难读）"""
+    out = {}
+    # 优先用 sw_member_all 里已带的 name（不用额外接口）
+    if os.path.exists(SW_MEMBER):
+        try:
+            for code, v in json.load(open(SW_MEMBER, encoding="utf-8")).items():
+                nm = (v or {}).get("name")
+                if code and nm:
+                    out[code] = nm
+        except Exception:
+            pass
+    if len(out) < 1000:
+        from tushare_init import ts_call
+        df = ts_call("stock_basic", exchange="", list_status="L")
+        if df is not None and len(df):
+            for r in df.to_dict("records"):
+                code, nm = r.get("ts_code"), r.get("name")
+                if code and nm:
+                    out[code] = nm
+    if not out:
+        print("[WARN] 股票名称缓存为空（tushare 无权限？报告将只显示代码）")
+        return False
+    os.makedirs(CACHE, exist_ok=True)
+    json.dump(out, open(STOCK_NAMES, "w", encoding="utf-8"), ensure_ascii=False)
+    print("[OK] %s  %d 个股票名称" % (STOCK_NAMES, len(out)))
+    return True
+
+
 if __name__ == "__main__":
     ok1 = build_member()
     ok2 = build_index_map()
+    ok3 = build_names()
     print("\n完成" if (ok1 and ok2) else "\n部分失败，见上方日志")

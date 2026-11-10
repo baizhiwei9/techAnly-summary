@@ -2,6 +2,16 @@
 
 > 每次改动必须在此登记：改了什么、为什么改、影响哪个文件。
 
+## 2026-11-10 13:39
+
+**fix: 新机器上报告只显示代码——补股票名缓存兜底**
+
+问题：全新克隆跑 --codes 600519,000001,300750 时报告里只有 6 位代码、没有中文名（本机有 .cache/stock_names.csv，新机器没有）。
+修复：
+1) tech_buypoint.name_map() 增加兜底：从 .cache/sw_member_all.json 的 name 字段取（bootstrap_cache 必然生成，零额外接口）
+2) tools/bootstrap_cache.py 新增 build_names()，生成 .cache/tech_stock_names.json（优先用 sw_member_all，缺失才调 stock_basic）
+验证：全新克隆 + bootstrap_cache + --codes 实测输出「平安银行 / 贵州茅台 / 宁德时代」
+
 ## 2026-11-10 13:33
 
 **feat: 卖点(三卖/一卖/二卖) + 二买恢复（胜率最低）**

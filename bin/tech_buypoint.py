@@ -373,6 +373,15 @@ def name_map():
             m.update(json.load(open(p, encoding="utf-8")))
         except Exception:
             pass
+    # 兜底：sw_member_all.json 里已带每只股的 name（bootstrap_cache 一定会生成）
+    if len(m) < 1000:
+        try:
+            for code, v in json.load(open(SW_MEMBER, encoding="utf-8")).items():
+                nm = (v or {}).get("name")
+                if code and nm and code not in m:
+                    m[code] = nm
+        except Exception:
+            pass
     return m
 
 
@@ -1230,13 +1239,18 @@ def render(txt_head, rows, meta_lines):
             for x in r["sells_ranked"]:
                 if x.get("accept"):
                     continue
-                w = (x.get("why") or "").split("（")[0]
-                sgrp.setdefault((x.get("tag"), w), []).append((r, x))
+                w = re.sub(r"[+-]?\d+(\.\d+)?%?", "", (x.get("why") or "").split("（")[0]).strip()
+                sgrp.setdefault((x.get("tag"), w or "其他"), []).append((r, x))
         for (tg, w), items in sorted(sgrp.items(), key=lambda kv: -len(kv[1]))[:4]:
+            # 按股票去重计数（同一只票可能有多个同因卖点，别算成多只）
+            uniq_r, samples, seen_n = [], [], set()
+            for r, x in items:
+                if r["code"] in seen_n:
+                    continue
+                seen_n.add(r["code"])
+                samples.append("%s %.2f" % ((r["name"] or r["code"])[:6], x["level"]))
             A("      %s %s —— %d只：%s" % (
-                tg, w, len(items),
-                "、".join("%s %.2f" % ((r["name"] or r["code"])[:6], x["level"])
-                         for r, x in items[:4])))
+                tg, w, len(seen_n), "、".join(samples[:4])))
     A("")
 
     A("═══ 六、见过一买但被否（按原因归类）═══")
@@ -1501,6 +1515,27 @@ def render_sector(sec, rows, title, gate_override=False):
             A("      %s" % (s.get("why") or "-"))
     else:
         A("  无")
+    # 卖点被否：按原因归类（重点看「MA20 未向下」——一卖硬门槛不过的）
+    sdeny = [r for r in ok if not r.get("best_sell") and (r.get("sells_ranked") or [])]
+    if sdeny:
+        A("  ▸ 卖点被否（%d 只，按原因）" % len(sdeny))
+        sgrp = {}
+        for r in sdeny:
+            for x in r["sells_ranked"]:
+                if x.get("accept"):
+                    continue
+                w = re.sub(r"[+-]?\d+(\.\d+)?%?", "", (x.get("why") or "").split("（")[0]).strip()
+                sgrp.setdefault((x.get("tag"), w or "其他"), []).append((r, x))
+        for (tg, w), items in sorted(sgrp.items(), key=lambda kv: -len(kv[1]))[:4]:
+            # 按股票去重计数（同一只票可能有多个同因卖点，别算成多只）
+            uniq_r, samples, seen_n = [], [], set()
+            for r, x in items:
+                if r["code"] in seen_n:
+                    continue
+                seen_n.add(r["code"])
+                samples.append("%s %.2f" % ((r["name"] or r["code"])[:6], x["level"]))
+            A("      %s %s —— %d只：%s" % (
+                tg, w, len(seen_n), "、".join(samples[:4])))
     A("")
 
     # 被否
