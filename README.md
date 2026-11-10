@@ -107,8 +107,9 @@ mkdir -p ~/.config/tushare && echo 你的token > ~/.config/tushare/proxy_token
 
 ```bash
 python3 tools/bootstrap_cache.py
-# → .cache/sw_member_all.json   5900+ 只个股的 L1/L2/L3 归属
-# → .cache/sw_index_map.json    129 个申万行业指数代码
+# → .cache/sw_member_all.json      5900+ 只个股的 L1/L2/L3 归属
+# → .cache/sw_index_map.json       129 个申万行业指数代码
+# → .cache/tech_stock_names.json   5900+ 个股票中文名（不生成报告里只剩 6 位代码）
 ```
 
 飞书推送（可选，不用就不配）：

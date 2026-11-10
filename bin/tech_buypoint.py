@@ -1239,7 +1239,8 @@ def render(txt_head, rows, meta_lines):
             for x in r["sells_ranked"]:
                 if x.get("accept"):
                     continue
-                w = re.sub(r"[+-]?\d+(\.\d+)?%?", "", (x.get("why") or "").split("（")[0]).strip()
+                # 只抹掉「带 % 的数字」用于归组，避免把 MA20 里的 20 也吃掉
+                w = re.sub(r"\s*[+-]?\d+(?:\.\d+)?%", "", (x.get("why") or "").split("（")[0]).strip()
                 sgrp.setdefault((x.get("tag"), w or "其他"), []).append((r, x))
         for (tg, w), items in sorted(sgrp.items(), key=lambda kv: -len(kv[1]))[:4]:
             # 按股票去重计数（同一只票可能有多个同因卖点，别算成多只）
@@ -1524,7 +1525,8 @@ def render_sector(sec, rows, title, gate_override=False):
             for x in r["sells_ranked"]:
                 if x.get("accept"):
                     continue
-                w = re.sub(r"[+-]?\d+(\.\d+)?%?", "", (x.get("why") or "").split("（")[0]).strip()
+                # 只抹掉「带 % 的数字」用于归组，避免把 MA20 里的 20 也吃掉
+                w = re.sub(r"\s*[+-]?\d+(?:\.\d+)?%", "", (x.get("why") or "").split("（")[0]).strip()
                 sgrp.setdefault((x.get("tag"), w or "其他"), []).append((r, x))
         for (tg, w), items in sorted(sgrp.items(), key=lambda kv: -len(kv[1]))[:4]:
             # 按股票去重计数（同一只票可能有多个同因卖点，别算成多只）

@@ -538,12 +538,21 @@ def render_text(disp, day, h1, fx_d, fx_h, smc_d, smc_h, vw_d, vw_h, ma_d, today
             import tech_buypoint as _TBS
             _sr = _TBS.find_sells(day, fx_d, float(day["close"].iloc[-1]), ma20_d)
             if _sr:
+                # 展示顺序：先能用的（accept），再每个 tag 补一条被否样本（保证「一卖 MA20 未向下」这类关键
+                # 拒绝原因不会被前面的三卖挤掉；实测 300291 前 3 条都是三卖 → 一卖被截看不见）
+                _show = [x for x in _sr if x["accept"]][:3]
+                _seen_tag = {x["tag"] for x in _show}
+                for x in _sr:
+                    if not x["accept"] and x["tag"] not in _seen_tag:
+                        _show.append(x)
+                        _seen_tag.add(x["tag"])
+                _show = _show[:4]
                 A("  ⛔ 卖点优先级：" + " ｜ ".join(
                     "%s%s %.2f（%d根前，现价距卖点 %+.1f%%）%s" % (
                         {"三卖": "①三卖", "一卖": "②一卖", "二卖": "③二卖"}.get(x["tag"], x["tag"]),
                         "✓" if x["accept"] else "✗", x["level"], x.get("age", 0), x.get("gap", 0),
                         ("（%s）" % x["why"]) if (not x["accept"] and x.get("why")) else "")
-                    for x in _sr[:3]))
+                    for x in _show))
                 _bs = next((x for x in _sr if x["accept"]), None)
                 A("  → 当前卖点：%s" % (("%s @%.2f（%d根前）" % ({"三卖": "①三卖", "一卖": "②一卖",
                                                           "二卖": "③二卖"}.get(_bs["tag"], _bs["tag"]),
