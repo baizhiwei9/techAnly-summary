@@ -45,17 +45,19 @@
 
 | 分支 | HEAD | 内容 |
 |---|---|---|
-| `wavelet_day`（当前工作分支） | `9fa28f1` | 五套口径统一级别入口 + 小波策略归档 + 各级别闸门标注 |
-| `origin/main` | `b5810de` | 出图清晰度提升、单图最多 20 子图、买卖点标注 |
+| `wavelet_day`（当前工作分支） | `0a13c09`（merge） | 多尺度工程 + v2 新版规则 + main 出图改进（已回合） |
+| `main` | `357b0ca` | 出图清晰度、单图最多 20 子图、买卖点标注、布局重叠自检 |
 
-两支从 `5d72f91` 分叉，尚未回合：
-- `main` 领先 2 个出图提交（`e226aba`、`b5810de`）
-- `wavelet_day` 领先 2 个多尺度/小波提交（`51f3bea`、`9fa28f1`）
+**已回合**（2026-11-11）：
+- `origin/main` 的 4 个出图提交（`e226aba`、`b5810de`、`3c215c9`、`357b0ca`）合入 `wavelet_day`
+- 两支出图/规则文件无重叠；`CHANGELOG` 按时间合并，两边条目一条不丢
+- 合并后校验：规则文件与工作区 md5 全同；五条差异信号数复算全部一致（B2 4→1、S2 4→0、B3 0→1、B1 0→2、S1 0→2）；全库 `py_compile` 通过；敏感信息扫描无命中
+- 冲突处理原则：**一律以新版 v2 规则为准**，不覆盖
 
-**待办**：把 `main` 的出图改动合回 `wavelet_day`（或反之），再统一推 `main`。
+**待办**：`wavelet_day` 稳定后再把整支（含多尺度 + v2）快进/合并到 `main`。
 
 ## 下一步
 
 1. 人工复核第二批 v2 三买（尤其科创50ETF 日线）后，决定是否将 `structure_signals_v2` 接实盘
-2. 合并远程 `main` 与 `wavelet_day` 两支
-3. 实盘监控继续用 `Strategy/chanlun_fractal_Strategy.py`（v1 信号 + 四级闸门）
+2. 实盘监控继续用 `Strategy/chanlun_fractal_Strategy.py`（v1 信号 + 四级闸门）；切 v2 前先跑灰度对比
+3. `wavelet_day` 验证稳定后合入 `main`

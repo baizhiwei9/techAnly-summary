@@ -6,6 +6,33 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-11 23:54
+
+**merge: main 出图改进合入 wavelet_day（e226aba..357b0ca）**
+
+### 改了什么
+1. `bin/buypoint_chart.py`、`bin/tech_buypoint.py`、`bin/tech_summary.py`、`bin/push_image.py`：取 `main` 最新版（一张图最多 20 子图不分页、布局重叠自检、出图清晰度提升）
+2. `skills/tech-summary/SKILL.md`：取 `main` 最新版（§三·5 布局硬规则）
+3. `CHANGELOG`：两边条目按时间合并，44 条一条不丢
+4. `chanlun_multiscale/MERGE_STATUS.md`：分支状态改为已回合
+
+### 为什么
+- 大佬 2026-11-11：「肯定用新版的。如果新版是我这边的，你要合并，把这个更改合并了。合并之后你检查一下。」
+
+### 校验
+- 规则文件（v1/v2/闸门/指标）md5 与工作区全同，合并未改动规则逻辑
+- 五条差异信号数复算全部一致：B2 4→1、S2 4→0、B3 0→1、B1 0→2、S1 0→2
+- 全库 `py_compile` 通过；出图模块 import 通过；敏感信息（chat_id / 本机绝对路径）扫描无命中
+
+### 影响文件
+- `bin/buypoint_chart.py`
+- `bin/tech_buypoint.py`
+- `bin/tech_summary.py`
+- `bin/push_image.py`
+- `skills/tech-summary/SKILL.md`
+- `CHANGELOG.md`
+- `chanlun_multiscale/MERGE_STATUS.md`
+
 ## 2026-11-11 23:52
 
 **chore(skill): 发布布局硬规则 + 出图重叠自检（SKILL.md §三·5）**
