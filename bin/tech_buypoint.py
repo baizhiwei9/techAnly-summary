@@ -89,6 +89,39 @@ H1_YB_MAX_AGE = int(os.environ.get("SCAN_H1_YB_MAX_AGE", "60"))
 
 RED, GRN = "#d62728", "#2ca02c"
 
+# ── 买点来源标签（大佬 2026-11-11：一定要写清是「分型版」还是「均线版」）──
+#   ① 缠论·分型版：三买 / 一买 / 二买（结构判定，图上画笔+中枢+月牙）
+#   ② 缠论·均线版：MA5/10 穿 MA20 的「买点」（趋势判定，不出月牙，只在文字层）
+#   ③ SMC / ④ VWAP 只作提示，不参与入场判定
+LAYER_FX = "分型版"
+LAYER_MA = "均线版"
+
+
+def buy_label(b, level="日线"):
+    """买点统一标签：`①三买·分型版`，均线版 `均线版买点`
+
+    level: 日线 / 周线 / 小时线 —— 必须写清级别，否则「三买」到底哪个级别容易误读
+    """
+    if not b:
+        return "-"
+    if b.get("layer") == LAYER_MA or b.get("tag") in ("均线买点", "买点"):
+        return "均线版买点"
+    tag = b.get("tag") or "买点"
+    mk = PRI_MARK.get(b.get("pri"), tag)
+    lv = b.get("level_name") or level
+    return "%s·%s（%s）" % (mk, LAYER_FX, lv) if lv else "%s·%s" % (mk, LAYER_FX)
+
+
+def sell_label(b, level="日线"):
+    if not b:
+        return "-"
+    tag = b.get("tag") or "卖点"
+    mk = SELL_MARK.get(b.get("pri"), tag)
+    lv = b.get("level_name") or level
+    return "%s·%s（%s）" % (mk, LAYER_FX, lv) if lv else "%s·%s" % (mk, LAYER_FX)
+
+
+
 
 def log(*a):
     print(*a, file=sys.stderr)
@@ -619,6 +652,9 @@ def analyse_one(code, nm, d, with_h1=True):
             eb_all.append(_gate_y2(b, close, ma20))
 
     cands = tb_all + yb_all + eb_all
+    for x in cands:                      # 大佬 2026-11-11：全部标「分型版 + 日线」
+        x["layer"] = LAYER_FX
+        x["level_name"] = "日线"
     acc = [x for x in cands if x["accept"]]
     acc.sort(key=lambda x: (x["pri"], x.get("age", 0)))
     best = acc[0] if acc else None
@@ -626,6 +662,9 @@ def analyse_one(code, nm, d, with_h1=True):
 
     # ── 卖点：三卖（全中枢扫描）+ 一卖/二卖（chan_read 的 sell_list 过闸）──
     sells_ranked = find_sells(d, fx, close, ma20)
+    for x in sells_ranked:
+        x["layer"] = LAYER_FX
+        x["level_name"] = "日线"
     best_sell = next((x for x in sells_ranked if x["accept"]), None)
 
     dd = M.add_ind(d)
@@ -698,6 +737,24 @@ def find_third_buys(d, cl, max_age=None, near=None):
             if key in seen:
                 continue
             seen.add(key)
+            # ── ⚠️ 2026-11-11 修（大佬：巨人网络明显不是三买）──
+            #   中枢递进检查：离开(i..k)之间**不得再形成新的有效中枢**。
+            #   否则说明原中枢早已被突破走完，价格是从后面更高的位置跌回来的，
+            #   那不是「回踩不破 ZG」，是「暴跌到旧中枢上方」—— 典型假三买。
+            #   实测巨人网络 002558：中枢 [11.63~17.58]，离开后中间又出现
+            #   [34.55~47.66] / [30.76~34.29] / [30.76~31.31] / [23.15~26.99] 四个中枢，
+            #   价格从 47.66 一路跌到 18.74 却被判成周线三买，现价其实在最新中枢下方。
+            mid_zs = []
+            for j in range(i + 3, k - 1):
+                w2 = segs[j:j + 3]
+                if len(w2) < 3:
+                    continue
+                z2 = min(x["hi"] for x in w2)
+                d2 = max(x["lo"] for x in w2)
+                if z2 > d2:
+                    mid_zs.append((round(float(d2), 2), round(float(z2), 2)))
+            if mid_zs:
+                continue                      # 中间已有新中枢 → 该中枢失效，换更近的离开点
             lvl = round(float(r["lo"]), 2)
             age = nmb - 1 - r["i1"]
             # ② 结构未破：回踩低点之后**再未跌破**（用合并K线的低点，索引与 segs 同空间）
@@ -1154,6 +1211,9 @@ def render(txt_head, rows, meta_lines):
             A("  🟢🌙 买点 %s %s ｜ 收 %.2f（%+.2f%%）｜ 三买 %.2f（%d根前，现价+%.1f%%）%s"
               % (r["name"] or r["code"], r["code"], r["close"], r["pct"], b["level"],
                  b.get("age", 0), b.get("gap", 0), qual_tags(r)))
+            if b.get("zg"):
+                A("      该买点中枢 ZG %.2f / ZD %.2f ｜ 现价%s ZG"
+                  % (b["zg"], b.get("zd", 0), "站上" if r["close"] > b["zg"] else "⚠️ 未站上"))
             A("      该三买中枢 %.2f~%.2f ｜ 现价%s ZG ｜ %s ｜ MA20 %s ｜ MA160 %s"
               % (b.get("zd", 0), b.get("zg", 0),
                  "站上" if r["close"] > b.get("zg", 0) else "跌破",
@@ -1172,6 +1232,9 @@ def render(txt_head, rows, meta_lines):
             A("  🟢🌙 买点 %s %s ｜ 收 %.2f（%+.2f%%）｜ 一买 %.2f（%d根前，现价+%.1f%%）%s"
               % (r["name"] or r["code"], r["code"], r["close"], r["pct"], b["level"],
                  b.get("age", 0), b.get("gap", 0), qual_tags(r)))
+            if b.get("zg"):
+                A("      该买点中枢 ZG %.2f / ZD %.2f ｜ 现价%s ZG"
+                  % (b["zg"], b.get("zd", 0), "站上" if r["close"] > b["zg"] else "⚠️ 未站上"))
             A("      %s ｜ MA20 斜率 %+.2f%% ✓ ｜ %s"
               % (r["stage"], (r["ma20"].get("slope") or 0.0), r["align"].get("state", "-")))
     else:
@@ -1204,6 +1267,9 @@ def render(txt_head, rows, meta_lines):
             A("  🟢🌙 买点 %s %s ｜ 收 %.2f（%+.2f%%）｜ 二买 %.2f（%d根前，现价+%.1f%%）%s"
               % (r["name"] or r["code"], r["code"], r["close"], r["pct"], b["level"],
                  b.get("age", 0), b.get("gap", 0), qual_tags(r)))
+            if b.get("zg"):
+                A("      该买点中枢 ZG %.2f / ZD %.2f ｜ 现价%s ZG"
+                  % (b["zg"], b.get("zd", 0), "站上" if r["close"] > b["zg"] else "⚠️ 未站上"))
             A("      MA20 %s ｜ %s ｜ 注：二买不要求 MA20 向上（仅加分）"
               % (("%.2f（%s，斜率 %+.2f%%）" % (r["ma20v"], "向上" if r["ma20"].get("up") else "未向上",
                                               r["ma20"].get("slope") or 0.0)) if r["ma20v"] else "-",
@@ -1377,7 +1443,10 @@ def render_sector(sec, rows, title, gate_override=False):
         if b:
             gate_ok = True
             A("  🌙 行业买点：%s %.2f（%d根前，现价%+.1f%%）→ ✅ 过闸，下钻个股"
-              % (PRI_MARK.get(b["pri"], b["tag"]), b["level"], b.get("age", 0), b.get("gap", 0)))
+              % (buy_label(b), b["level"], b.get("age", 0), b.get("gap", 0)))
+            if b.get("zg"):
+                A("      该三买中枢 ZG %.2f / ZD %.2f（现价须站上 ZG 才算成立）"
+                  % (b["zg"], b.get("zd", 0)))
         else:
             A("  🌙 行业买点：无")
             A("  ⛔ 闸门未过 → 不分析个股（行业自身都没有买点，个股买点不具板块效应）")
@@ -1394,7 +1463,7 @@ def render_sector(sec, rows, title, gate_override=False):
                 denied.append(x)
             if denied:
                 A("  （行业层面见到但被否：%s）"
-                  % "；".join("%s %.2f → %s" % (PRI_MARK.get(x["pri"], x["tag"]), x["level"],
+                  % "；".join("%s %.2f → %s" % (buy_label(x), x["level"],
                                                (x.get("why") or "").split("（")[0])
                               for x in denied[:3]))
         # ── 板块自身卖点结论（2026-11-10 新增）──
@@ -1433,7 +1502,7 @@ def render_sector(sec, rows, title, gate_override=False):
     if buy:
         buy_q = sorted(buy, key=lambda r: (r["best"].get("pri", 9), -score_quality(r)))
         A("  🌙 可买个股（三买优先）：" + "、".join(
-            "%s(%s)" % (r["name"] or r["code"], PRI_MARK.get(r["best"]["pri"], ""))
+            "%s(%s)" % (r["name"] or r["code"], buy_label(r["best"]))
             for r in buy_q))
         dual = [r for r in buy_q if (r.get("h1") or {}).get("best")]
         if dual:
@@ -1460,6 +1529,9 @@ def render_sector(sec, rows, title, gate_override=False):
             A("  🟢🌙 买点 %s %s ｜ 收 %.2f（%+.2f%%）｜ 三买 %.2f（%d根前，现价+%.1f%%）%s"
               % (r["name"] or r["code"], r["code"], r["close"], r["pct"], b["level"],
                  b.get("age", 0), b.get("gap", 0), qual_tags(r)))
+            if b.get("zg"):
+                A("      该买点中枢 ZG %.2f / ZD %.2f ｜ 现价%s ZG"
+                  % (b["zg"], b.get("zd", 0), "站上" if r["close"] > b["zg"] else "⚠️ 未站上"))
             A("      该三买中枢 %.2f~%.2f ｜ 现价%s ZG ｜ %s ｜ MA20 %s ｜ MA160 %s"
               % (b.get("zd", 0), b.get("zg", 0),
                  "站上" if r["close"] > b.get("zg", 0) else "跌破",
@@ -1478,6 +1550,9 @@ def render_sector(sec, rows, title, gate_override=False):
             A("  🟢🌙 买点 %s %s ｜ 收 %.2f（%+.2f%%）｜ 一买 %.2f（%d根前，现价+%.1f%%）%s"
               % (r["name"] or r["code"], r["code"], r["close"], r["pct"], b["level"],
                  b.get("age", 0), b.get("gap", 0), qual_tags(r)))
+            if b.get("zg"):
+                A("      该买点中枢 ZG %.2f / ZD %.2f ｜ 现价%s ZG"
+                  % (b["zg"], b.get("zd", 0), "站上" if r["close"] > b["zg"] else "⚠️ 未站上"))
             A("      %s ｜ MA20 斜率 %+.2f%% ✓ ｜ %s"
               % (r["stage"], (r["ma20"].get("slope") or 0.0), r["align"].get("state", "-")))
     else:
@@ -1492,6 +1567,9 @@ def render_sector(sec, rows, title, gate_override=False):
             A("  🟢🌙 买点 %s %s ｜ 收 %.2f（%+.2f%%）｜ 二买 %.2f（%d根前，现价+%.1f%%）%s"
               % (r["name"] or r["code"], r["code"], r["close"], r["pct"], b["level"],
                  b.get("age", 0), b.get("gap", 0), qual_tags(r)))
+            if b.get("zg"):
+                A("      该买点中枢 ZG %.2f / ZD %.2f ｜ 现价%s ZG"
+                  % (b["zg"], b.get("zd", 0), "站上" if r["close"] > b["zg"] else "⚠️ 未站上"))
             A("      MA20 %s ｜ %s ｜ 注：二买不要求 MA20 向上（仅加分）"
               % (("%.2f（%s，斜率 %+.2f%%）" % (r["ma20v"], "向上" if r["ma20"].get("up") else "未向上",
                                               r["ma20"].get("slope") or 0.0)) if r["ma20v"] else "-",
@@ -1675,11 +1753,14 @@ def board_metrics(df):
     """个股附加信息（仅用于展示/排序加分）：VWAP 偏离 σ、MA20/MA160、多头排列"""
     import smc_core as S
     # ⚠️ 键名不能碰 analyse_one 的字段：align 是 dict（含 state），这里另起 align_state
-    out = {"vw_z": None}
+    out = {"vw_z": None, "ma_buy": None, "ma_sell": None}
     try:
         dd = M.add_ind(df)
         al = M.ma_alignment(dd)
         out["align_state"] = al.get("state")
+        sigs = M.signals(dd)
+        out["ma_buy"] = next((x for x in sigs if x["type"] == "买点"), None)
+        out["ma_sell"] = next((x for x in sigs if x["type"] == "卖点"), None)
         ma20 = float(dd["ma20"].iloc[-1]) if pd.notna(dd["ma20"].iloc[-1]) else None
         ma160 = float(dd["ma160"].iloc[-1]) if pd.notna(dd["ma160"].iloc[-1]) else None
         cl = float(df["close"].iloc[-1])
@@ -1964,7 +2045,9 @@ def run_multi(a):
                 items = []
                 for r in page:
                     b = r.get("best") or {}
-                    fx_txt = "%s %.2f" % (b.get("tag", "-"), b.get("level", 0))
+                    fx_txt = "%s %.2f" % (buy_label(b), b.get("level", 0))
+                    if b.get("zg"):
+                        fx_txt += " ZG%.2f" % b["zg"]
                     wk = r.get("wk")
                     items.append({"name": r.get("name") or r["code"], "code": r["code"],
                                   "df": r.get("_d"), "pct": r.get("pct"),
@@ -2043,6 +2126,7 @@ def render_multi(sec_list, rows, picks, a):
       % (len(rows), len(ok), n_buy, len(picks)))
     A("")
     A("═══ 三、有买点个股 Top%d ═══" % len(picks))
+    A("  ⚠️ 每条都标明【来源·级别】：①分型版=缠论三买/一买/二买（结构，图上有月牙）；②均线版=MA5/10穿MA20（趋势，图上无月牙）")
     for i, r in enumerate(picks, 1):
         b = r["best"]
         z = r.get("vw_z")
@@ -2063,11 +2147,18 @@ def render_multi(sec_list, rows, picks, a):
             q.append("多头排列")
         h1b = (r.get("h1") or {}).get("best")
         if h1b:
-            q.append("h1 %s" % PRI_MARK.get(h1b["pri"], h1b.get("tag")))
-        A("  %2d) %s(%s) %+.2f%% ｜%s｜ %s %.2f（%d根前，现价%+.1f%%）"
+            q.append("小时线 %s" % buy_label(h1b, "小时线"))
+        mb = r.get("ma_buy")
+        A("  %2d) %s(%s) %+.2f%% ｜%s｜ 【%s】%.2f（%d根前，现价%+.1f%%）"
           % (i, r["name"] or r["code"], r["code"], r.get("pct") or 0,
-             r.get("ind") or "-", PRI_MARK.get(b["pri"], b.get("tag")),
-             b["level"], b.get("age", 0), b.get("gap", 0)))
+             r.get("ind") or "-", buy_label(b), b["level"], b.get("age", 0), b.get("gap", 0)))
+        if b.get("zg"):
+            A("      └ 该三买中枢 ZG %.2f / ZD %.2f ｜现价%s ZG%s"
+              % (b["zg"], b.get("zd", 0),
+                 "站上" if (b["level"] or 0) and (r.get("close") or 0) > b["zg"] else "仍在",
+                 "（结构成立）" if (r.get("close") or 0) > b["zg"] else "（⚠️ 现价未站上 ZG，三买不成立）"))
+        if mb:
+            A("      └ 另有【均线版买点】：%s" % (mb.get("kind") or "-"))
         A("      %s%s" % (zt, ("（%s）" % "、".join(q)) if q else ""))
     if not picks:
         A("  无")

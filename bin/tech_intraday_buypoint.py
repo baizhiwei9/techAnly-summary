@@ -131,6 +131,9 @@ def weekly_buys(d, close):
     # 周线三买：闸门按周放宽
     for x in TB.find_third_buys(w, clw, max_age=WEEK_TB_MAX_AGE, near=WEEK_TB_NEAR):
         out.append(x)
+    for x in out:                        # 大佬 2026-11-11：标清层级，别让人猜是分型还是均线
+        x["layer"] = "分型版"
+        x["level_name"] = "周线"
     acc = [x for x in out if x.get("accept")]
     acc.sort(key=lambda x: (x["pri"], x.get("age", 999)))
     return acc, fxw.get("zs") if fxw.get("ok") else None, out
@@ -158,7 +161,8 @@ def _gate_week(b, close, ma20w, tag):
     elif gap < -WEEK_BUY_NEAR_DN:
         accept, why = False, "已跌破买点 %.1f%%" % abs(gap)
     return {"tag": tag, "pri": pri, "level": round(lvl, 2), "age": age,
-            "gap": gap, "accept": accept, "why": why, "weekly": True}
+            "gap": gap, "accept": accept, "why": why, "weekly": True,
+            "layer": "分型版", "level_name": "周线"}
 
 
 def analyse(name, code, kind, ks):
@@ -333,7 +337,11 @@ def analyse_stock(code, name, ks):
     # 周线：一二三买都认；日线：只认三买
     wk_acc, _wk_zs, _wk_all = weekly_buys(d, close)
     best_wk = wk_acc[0] if wk_acc else None
-    dtb = [x for x in TB.find_third_buys(d, cl) if x.get("accept")]
+    _all_dtb = TB.find_third_buys(d, cl)
+    for x in _all_dtb:
+        x["layer"] = "分型版"
+        x["level_name"] = "日线"
+    dtb = [x for x in _all_dtb if x.get("accept")]
     dtb.sort(key=lambda x: (x["pri"], x.get("age", 999)))
     best_d = dtb[0] if dtb else None
     best_fx = best_wk or best_d

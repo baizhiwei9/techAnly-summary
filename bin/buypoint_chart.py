@@ -495,7 +495,9 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2):
                     continue
                 ax.scatter([xi], [pt["price"]], s=200, marker=MOON, color="#0b6e0b",
                            edgecolor="#0b6e0b", lw=1.5, zorder=10)
-                ax.annotate("%s %.2f" % (b["tag"], b["level"]), xy=(xi, pt["price"]),
+                # 标签必须写清「分型版」+ 级别（大佬 2026-11-11：不能只写「三买」让人猜）
+                ax.annotate("%s·分型版 %.2f" % (b["tag"], b["level"]),
+                            xy=(xi, pt["price"]),
                             xytext=(0, -20), textcoords="offset points", ha="center",
                             fontsize=7, color="#0b6e0b", fontweight="bold", zorder=11,
                             bbox=dict(boxstyle="round,pad=0.18", fc="white",
@@ -526,6 +528,11 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2):
     fig.suptitle(title or ("买点个股结构图（缠论分型版 + VWAP 六轨）· %s"
                            % pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")),
                  fontsize=13, y=0.998)
+    fig.text(0.5, 0.0015,
+             "月牙🌙 = 缠论·分型版买点（三买/一买/二买，已过年龄·距离·结构·ZG 四道闸门）"
+             "　｜　黄框 = 中枢（虚线 ZG/ZD）　｜　黑/红/绿线 = VWAP ±1σ/±2σ/±3σ　"
+             "　｜　均线版买点（MA5/10穿MA20）只在文字报告里，图上不画月牙",
+             ha="center", fontsize=7.6, color="#555555")
     fig.tight_layout(rect=(0, 0, 1, 0.985))
     fig.savefig(out_path, dpi=115, facecolor="white", bbox_inches="tight")
     plt.close(fig)
