@@ -6,6 +6,23 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 01:12
+
+**feat(modules): 并入 AC1-VMD 与 MAD 均线两个独立模块（不挂主报告）**
+
+### 改了什么
+1. 新增 `bin/acvmd_layer.py`：AC1(20) 自相关 + VMD(K=4, alpha=2000，低序 2 模态合成) 趋势斜率 + MA40 位置，输出 多/空/震荡；口径与历史 AC_VMD 日报一致，含 `layer()` 与 `--target/--json` 命令行。
+2. 新增 `bin/mad_layer.py`：MAD = MA20/MA200 − 1，通过条件 = 收盘>MA40 且 MA40 五日斜率>0；支持单标的明细与 `--pool` 批量按 MAD 降序排名。
+3. `requirements.txt` 增 `vmdpy>=0.2`；README 增「五点五、独立模块」用法与口径注意；目录结构补两个脚本。
+
+### 为什么
+- 用户要求把本方的 AC1-VMD、MAD 均线两个技术分析口径合并进本库；STMOM 张量明确不合。
+- 两个口径按「独立模块」并入，不改 `tech_summary.py` 的六节报告与综合打分，避免动到已定稿的四层主口径。
+
+### 影响文件
+- `bin/acvmd_layer.py`、`bin/mad_layer.py`（新增）
+- `requirements.txt`、`README.md`、`CHANGELOG.md`
+
 ## 2026-11-11 23:52
 
 **chore(skill): 发布布局硬规则 + 出图重叠自检（SKILL.md §三·5）**

@@ -326,6 +326,34 @@ python3 bin/chan_ma_chart.py --target 沪深300 --push       # 出图 + 推 QQ/�
 
 ---
 
+## 五点五、独立模块：AC1-VMD / MAD 均线（不挂主报告）
+
+这两个口径以**独立模块**形式并入：各自一个脚本、一个 `layer()` 函数，可直接 `import`，
+**不改动 `tech_summary.py` 的六节报告与综合打分**（四层口径仍是主报告口径）。
+
+| 模块 | 干什么 | 口径 |
+|---|---|---|
+| `bin/acvmd_layer.py` | AC1 自相关 + VMD 低频趋势 + MA40 位置，输出 多/空/震荡 | regime=good 需 AC1(20)>0.05 且 20 日波动率<全样本 70 分位；VMD(K=4, alpha=2000，低序 2 模态合成) 斜率>0 且 收盘>MA40 且 MA40 五日斜率>0 → 多；regime=bad 或斜率<0 → 空；其余震荡 |
+| `bin/mad_layer.py` | 均线比价强弱排序 + 通过判定 | MAD = MA20/MA200 − 1；通过条件 = 收盘>MA40 且 MA40 五日斜率>0；MAD 只做排序，不参与是否通过 |
+
+```bash
+# AC1-VMD（需 vmdpy）
+python3 bin/acvmd_layer.py --target 中证500
+python3 bin/acvmd_layer.py --target 科创50 --json
+
+# MAD 均线（单标的 / 批量）
+python3 bin/mad_layer.py --target 600519
+python3 bin/mad_layer.py --pool 沪深300,中证500,科创50,创业板
+```
+
+**口径注意**
+
+- 两个模块都走 `datahub` 三级灾备取数；本机没装 akshare/tushare 时自动退到 web 源，不需要额外配置。
+- AC1-VMD 的波动率分位用的是**全样本分位**（实时口径，与历史日报一致）；要拿去做回测，须改成「截至当日」的 expansion 分位，否则是前视。
+- MAD 的均线用传入的收盘序列，`datahub` 返回的是不复权价，跨除权日会有跳空；做选股排名请换成复权价一致的日线。
+
+---
+
 ## 六、输出
 
 - **文字报告**（stdout / `--out`）：六节结构
@@ -373,6 +401,8 @@ bin/
   datahub.py             日线三级灾备（akshare → tushare → 网页）
   minute_hub.py          60m 分钟线（index / stock 两种 kind）
   weekly_zs.py           申万行业指数日线
+  acvmd_layer.py         **AC1-VMD 趋势层**（独立模块，不挂主报告）
+  mad_layer.py           **MAD 均线层**（独立模块，不挂主报告）
   chan_ma_chart.py       **缠论均线版单标的出图**（只画均线版一层，图大看得清）
   push_image.py          统一图片推送（QQ + 飞书，程序生图用）
   feishu_card.py         飞书图文合成卡片
