@@ -44,6 +44,16 @@ def run_fractal(df, level, tg):
     if fx.get("div"):
         L.append("  背驰：%s" % fx["div"])
 
+    # 这里输出的是「结构侦测」的原始买卖点；各级别的交易闸门不同（见下）
+    rule = {
+        "m15": "15分钟：结构参考，未套日线闸门（不做交易确认）",
+        "h1": "小时线交易口径：只认三买；一买须 MA10>MA20，二买不认",
+        "day": "日线交易口径：一/二/三买按 年龄 + 距买点 + 结构未破 闸门过滤",
+        "week": "周线交易口径：只认一买/二买（周线闸门）",
+    }.get(level)
+    if rule:
+        L.append("  ⚠ %s" % rule)
+
     def _tag(x):
         st = "新鲜" if x.get("fresh") else ("延续·结构未破" if x.get("sustained") else "已失效")
         if x.get("active"):
