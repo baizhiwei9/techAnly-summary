@@ -4,6 +4,34 @@
 
 > 2026-11-11：`tech-summary`（私有）已合并进本库（`techAnly-summary`，公开），**历史条目全部保留**，共 27 条。
 
+## 2026-11-11 13:41
+
+**fix: 补齐 3 个隐式依赖模块（clone 后跑不通的真缺口）**
+
+### 改了什么
+补齐 3 个代码里 import 了、但仓库里一直没有的模块：
+
+| 模块 | 被谁依赖 | 缺失后果 |
+|---|---|---|
+| `bin/wyckoff_today_fetch.py` | `tech_intraday_buypoint.py` 顶部**硬 import** | **直接 ImportError，盘中买点脚本整个跑不起来** |
+| `bin/y1_watch.py` | `chan_smc_index.py` 的「一买预备」 | try/except 静默降级 → 一买预备信号永远为空 |
+| `bin/xq_ind_monitor.py` | `weekly_zs.py` 发邮件 | try/except 静默降级 → 周线中枢预警邮件发不出 |
+
+同时给发布脚本补两条脱敏规则（两个文件的 WS 用单引号 + wyckoff CACHE 路径写法），
+确保新文件上传前也剥掉本机绝对路径。
+
+### 为什么
+大佬 2026-11-11：『把那个 Push Images 那个合并过来。主要是把那个技术分析的那个处理成一个，
+保留主，那个 techAnly 这个。』同时要求检查是否还残缺。
+用 AST 逐个扫 bin/*.py 的本地 import 是否都能在库内找到，发现这 3 个缺口 —— 
+私有库删了以后没得兜底，clone 下来跑盘中买点会直接崩。
+
+### 影响文件
+- bin/push_image.py（上一轮已入库，本轮确认在库）
+- bin/wyckoff_today_fetch.py（新增）
+- bin/y1_watch.py（新增）
+- bin/xq_ind_monitor.py（新增）
+
 ## 2026-11-11 13:33
 
 **merge: 合并 tech-summary 全部内容到 techAnly-summary（唯一主库）**

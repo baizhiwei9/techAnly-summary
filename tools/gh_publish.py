@@ -6,7 +6,7 @@
 `git ls-remote` / `git push` 必败；但 `api.github.com` 通。所以用 REST contents 接口逐文件 PUT。
 
 用法：
-  python3 bin/gh_publish.py --repo baizhiwei9/tech-summary \
+  python3 bin/gh_publish.py --repo baizhiwei9/techAnly-summary \
       --map "bin/tech_summary.py:bin/tech_summary.py" ... \
       --msg "fix: ..." [--dry-run]
 
