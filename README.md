@@ -18,6 +18,28 @@
 | `bin/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
 | `bin/chan_ma_chart.py` | **缠论·均线版单标的出图**（只画均线版一层，图大结构清楚） |
 
+### 按级别跑 + 策略索引（2026-11-11 新增）
+
+`strategies/` 目录把五套口径按策略归档，并提供统一的级别入口：
+
+```bash
+python3 strategies/run_level.py --target 中证500 --level m15   # 15分钟
+python3 strategies/run_level.py --target 600519 --level h1     # 小时线
+python3 strategies/run_level.py --target 600519 --level day    # 日线
+python3 strategies/run_level.py --target 600519 --level week   # 周线（日线合成）
+```
+
+| 策略 | 15分钟 | 小时线 | 日线 | 周线 | 入口 |
+|---|:---:|:---:|:---:|:---:|---|
+| 缠论·分型版 | ✅ | ✅ | ✅ | ✅ | `bin/chan_smc_index.py` / `strategies/run_level.py` |
+| 缠论·均线版 | ✅ | ✅ | ✅ | ✅ | `bin/chan_ma_trend_v2.py` / `strategies/run_level.py` |
+| SMC | ✅ | ✅ | ✅ | ✅ | `smc/smc_core.py` / `strategies/run_level.py` |
+| VWAP 六轨 | ✅ | ✅ | ✅ | ✅ | `smc/smc_core.py` / `strategies/run_level.py` |
+| 小波·多尺度 | ❌ | ⚠️停用 | ✅ | ✅（过滤） | `strategies/wavelet/` |
+| 威科夫吸筹 | 盘中（过滤层周/日） | — | ✅ | ✅（过滤） | `bin/wyckoff_buypoint_v2.py` |
+
+> 完整说明与「为什么小波不套 15 分钟」见 **[strategies/README.md](strategies/README.md)**。
+
 ---
 
 ## 目录

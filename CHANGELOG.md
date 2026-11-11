@@ -6,6 +6,40 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-11 23:30
+
+**feat(strategies): 新增 `wavelet_day` 分支 —— 小波策略归档 + 五套口径统一级别入口**
+
+### 改了什么
+1. **新增 `strategies/` 策略索引层**
+   - `strategies/levels.py`：`m15 / h1 / day / week` 统一取数；周线由日线
+     `resample("W-FRI")` 合成（保留 volume）；15m/60m 走 `minute_hub`，日线走 `datahub`
+   - `strategies/run_level.py`：一条命令按级别跑 ①分型版 ②均线版 ③SMC ④VWAP
+   - `strategies/README.md`：五套策略 + 级别支持矩阵（实测口径）
+2. **归档小波策略 `strategies/wavelet/`**（公式未改，仅去敏）
+   - `signal_monitor.py`、9 个 `strategies/wavelet_*.py`、`run_monitor.sh`
+   - 飞书 chat_id 改为 `WAVELET_FEISHU_CHAT_ID` 环境变量；本机绝对路径改为相对路径
+   - `trading_day_check` 改为可选依赖（公开库 clone 后不会 import 崩）
+3. **README 增补「按级别跑 + 策略索引」表**
+
+### 为什么
+- 大佬 2026-11-11：把分钟级交易监控（小波）提到 techAnly-summary 主库，单开
+  `wavelet_day` 分支；并把缠论/分型版/均线版/小波/SMC 统一整理，确认各口径能按
+  参数切 日线/周线/小时线/15分钟。
+
+### 级别支持实测（2026-11-11）
+- 分型版 / 均线版 / SMC / VWAP：**15m、h1、day、week 全部跑通**（同一份公式，换 K 线）
+- 小波：**日线/周线**；1h 模块存在但监控里已停用；**不支持 15 分钟**（参数按日线尺度定）
+- 威科夫：盘中策略，过滤层为周线/日线，不是任意级别重采样
+
+### 影响文件
+- `strategies/levels.py`（新增）
+- `strategies/run_level.py`（新增）
+- `strategies/README.md`（新增）
+- `strategies/wavelet/**`（新增，含去敏）
+- `README.md`
+- `CHANGELOG.md`
+
 ## 2026-11-11 22:00
 
 **fix(tech_buypoint): 修假三买（中枢递进校验）+ 买点标签必须写清分型版/均线版与级别**
