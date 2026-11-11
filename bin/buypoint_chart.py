@@ -420,36 +420,44 @@ def draw_buypoint_chart(disp, day, h1=None, out=None, n_day=120, n_h1=110, n_ma=
 #  多标的网格图：每只一个子图（日线 K 线 + 缠论分型版 + VWAP 六轨 + 量）
 #  用于「多个行业合并后，选出有买点的前 N 只」一次性出图
 # ══════════════════════════════════════════════════════════════════════
-def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2, dpi=None):
-    """picks: [{'name','code','df',...}]；df 为 [dt,open,high,low,close,volume] 日线
+def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=None, dpi=None,
+                    max_items=20):
+    """一张图最多 20 个子图（不拆页），每只股票一个子图：
 
-    图里画：K线（涨跌上色）+ 缠论分型版（笔/中枢/买卖点）+ VWAP 六轨 + 量。
-    与 tech_summary / tech_buypoint 同口径，0 token。
+        K线（涨跌上色）+ 缠论分型版（笔/中枢）+ VWAP 六轨 + 买点(月牙)/卖点(五角星)
+        **每个子图下方固定一块标注**：买点什么价、卖点什么价、VWAP 位置
+
+    大佬 2026-11-11 定稿：
+      「一个图最多有 20 个子图就可以了。每个子图后边标识买卖点」
+      → 不再分页（原来 4 只/页拆 5 张），一屏到底；子图下必须写清买卖点。
+
+    picks: [{'name','code','df','pct','vw_z','ind','buys':[...],'sells':[...]}]
     """
     if not picks:
         return None
+    picks = picks[:max_items]
     import smc_core as S
     from chan_chart import chan_geometry
 
     n = len(picks)
-    ncol = 2 if (n > 1 and ncol >= 2) else 1
+    # 布局：≤2 只 1 列；其余 2 列（20 只 = 2 列 × 10 行）
+    ncol = ncol or (1 if n == 1 else 2)
     nrow = (n + ncol - 1) // ncol
-    # ── 清晰度的关键是「字号(pt) / 画布宽度(in)」之比，不是像素总数 ──
-    #   旧：14.8in 宽配 17pt = 1.15pt/in → QQ 缩到 1000px 宽时标题只有 11px，糊成一团
-    #   新：13.2in 宽配 19pt = 1.44pt/in → 同缩放下 ≈20px，手机上能直接读；点开更清
-    #   （单页 4 只 = 2 列 × 2 行；每列 6.6in × 每行 3.8in）
-    fig, axes = plt.subplots(nrow, ncol, figsize=(6.6 * ncol, 3.8 * nrow), squeeze=False)
+    # 清晰度 = 字号(pt) / 画布宽度(in)。单子图 6.6×3.6in + 19pt = 2.9pt/in，
+    #   缩到手机 1000px 宽时标题 ≈20px，能直接读
+    fig, axes = plt.subplots(nrow, ncol,
+                             figsize=(6.6 * ncol, 3.6 * nrow), squeeze=False)
     axes = axes.ravel()
-    FS_TITLE, FS_SUB, FS_TICK, FS_LEG, FS_NOTE = 19.0, 15.0, 14.0, 12.5, 12.0
-    FS_BUY = 18.0
-    FS_ZG = 14.0
+    FS_TITLE, FS_SUB, FS_TICK, FS_NOTE = 19.0, 16.0, 14.0, 13.0
+    FS_BUY, FS_SELL, FS_ZG = 17.0, 17.0, 15.0
     LW_K, LW_BI = 1.5, 3.0
 
     for k, s in enumerate(picks):
         ax = axes[k]
         d = s.get("df")
         if d is None or len(d) < 60:
-            ax.text(.5, .5, "取数失败", ha="center", transform=ax.transAxes)
+            ax.text(.5, .5, "%s 取数失败" % s.get("name", ""), ha="center",
+                    fontsize=FS_SUB, transform=ax.transAxes)
             ax.axis("off")
             continue
         total = len(d)
@@ -473,7 +481,7 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2, dpi=None):
                 b1 = b0 + max((h[i] - lo[i]) * 1e-3, 1e-6)
             ax.add_patch(Rectangle((x[i] - bw / 2, b0), bw, b1 - b0,
                                    facecolor=cols[i], edgecolor=cols[i], lw=0.6, zorder=4))
-        # VWAP 六轨（窗口 60）
+        # ── VWAP 六轨（窗口 60）──
         try:
             vw = S.vwap_tracks(d)
             for key, col, lw_, ls, lab in (("up3", "#8e0000", 1.5, "-", "+3σ"),
@@ -488,7 +496,8 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2, dpi=None):
                             label=lab if k == 0 else None)
         except Exception:
             pass
-        # 缠论分型版：笔 / 中枢 / 买卖点
+        # ── 缠论分型版：笔 / 中枢 ──
+        geo = None
         try:
             geo = chan_geometry(d)
             bx, by = [], []
@@ -498,7 +507,8 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2, dpi=None):
                     bx.append(xi)
                     by.append(p["price"])
             if len(bx) >= 2:
-                ax.plot(bx, by, color=BLUE, lw=LW_BI, zorder=6, label="缠论笔" if k == 0 else None)
+                ax.plot(bx, by, color=BLUE, lw=LW_BI, zorder=6,
+                        label="缠论笔" if k == 0 else None)
             if geo["zs"] and geo["zs_x"]:
                 zs0, zs1 = geo["zs"]
                 x0 = max(geo["zs_x"][0] - start, -0.5)
@@ -517,37 +527,63 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2, dpi=None):
                                 color="#8b6508", fontweight="bold", va="top", zorder=9)
         except Exception:
             geo = None
-        # 买点：只画**过闸门**的（与报告同口径，别把几百根前的老买点画出来）
+
+        # ── 买点：月牙（只画过闸门的）──
+        buy_txt = []
         try:
             _cl = float(d["close"].iloc[-1])
-            for b in TS.rank_buys(TS.chan_fx(d, "day").get("buy_list") or [],
-                                  TS.ma20_state(d), close=_cl):
+            for b in (s.get("buys") or TS.rank_buys(
+                    TS.chan_fx(d, "day").get("buy_list") or [],
+                    TS.ma20_state(d), close=_cl)):
                 if not b.get("accept"):
                     continue
+                buy_txt.append("%s %.2f" % (b.get("tag", "买点"), b.get("level", 0)))
                 cand = [p for p in (geo or {"bi": []})["bi"] if p["type"] == -1]
                 if not cand:
                     continue
-                pt = min(cand, key=lambda p: abs(p["price"] - b["level"]))
+                pt = min(cand, key=lambda q: abs(q["price"] - b["level"]))
                 xi = pt["orig"] - start
                 if not (-1 <= xi <= nv):
                     continue
                 ax.scatter([xi], [pt["price"]], s=430, marker=MOON, color="#0b6e0b",
                            edgecolor="#0b6e0b", lw=2.0, zorder=10)
-                # 标签必须写清「分型版」+ 级别（大佬 2026-11-11：不能只写「三买」让人猜）
-                ax.annotate("%s·分型版 %.2f" % (b["tag"], b["level"]),
-                            xy=(xi, pt["price"]),
-                            xytext=(0, -32), textcoords="offset points", ha="center",
+                ax.annotate("买 %.2f" % b["level"], xy=(xi, pt["price"]),
+                            xytext=(0, -30), textcoords="offset points", ha="center",
                             fontsize=FS_BUY, color="#0b6e0b", fontweight="bold", zorder=11,
-                            bbox=dict(boxstyle="round,pad=0.3", fc="white",
+                            bbox=dict(boxstyle="round,pad=0.28", fc="white",
                                       ec="#0b6e0b", alpha=0.95, lw=1.2))
         except Exception:
             pass
-        # 标题：名称 代码 涨幅 ｜ 买点摘要 ｜ VWAP 偏离
+
+        # ── 卖点：五角星（只画过闸门的）──
+        sell_txt = []
+        try:
+            _cl = float(d["close"].iloc[-1])
+            for b in (s.get("sells") or find_sells_for_chart(d)):
+                if not b.get("accept"):
+                    continue
+                sell_txt.append("%s %.2f" % (b.get("tag", "卖点"), b.get("level", 0)))
+                cand = [p for p in (geo or {"bi": []})["bi"] if p["type"] == 1]
+                if not cand:
+                    continue
+                pt = min(cand, key=lambda q: abs(q["price"] - b["level"]))
+                xi = pt["orig"] - start
+                if not (-1 <= xi <= nv):
+                    continue
+                ax.scatter([xi], [pt["price"]], s=380, marker=STAR, color="#8b0000",
+                           edgecolor="white", lw=1.6, zorder=10)
+                ax.annotate("卖 %.2f" % b["level"], xy=(xi, pt["price"]),
+                            xytext=(0, 26), textcoords="offset points", ha="center",
+                            fontsize=FS_SELL, color="#8b0000", fontweight="bold", zorder=11,
+                            bbox=dict(boxstyle="round,pad=0.28", fc="white",
+                                      ec="#8b0000", alpha=0.95, lw=1.2))
+        except Exception:
+            pass
+
+        # ── 标题两行：① 名称(代码) 涨幅  ② 买点信号摘要 ──
         pct = s.get("pct")
         if pct is None:
             pct = (c[-1] / prev_c[-1] - 1) * 100 if np.isfinite(prev_c[-1]) else 0.0
-        # ⚠️ 标题必须折两行：单行太长会把 bbox_inches="tight" 的画布撑宽，
-        #    等于把字号相对缩小 → 这正是之前「分辨率高但看着糊」的真因
         ax.set_title("%s(%s)  %+.2f%%" % (s.get("name", ""), s.get("code", ""), pct),
                      fontsize=FS_TITLE, loc="left", pad=8, fontweight="bold")
         ax.text(0.0, 1.012,
@@ -555,6 +591,36 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2, dpi=None):
                 % (s.get("fx_txt") or "-", s.get("vw_z", 0) or 0, s.get("ind", "")),
                 transform=ax.transAxes, fontsize=FS_SUB, color="#333333",
                 ha="left", va="bottom")
+
+        # ── 子图下方标注块：买点 / 卖点 / VWAP 位置（大佬要求「每个子图后边标识买卖点」）──
+        bt = "、".join(buy_txt) if buy_txt else "无"
+        st = "、".join(sell_txt) if sell_txt else "无"
+        zz = s.get("vw_z")
+        if zz is None:
+            ztag, zcol = "VWAP -", "#555555"
+        elif zz >= 3:
+            ztag, zcol = "VWAP %+.2fσ 全平区(+3σ)" % zz, "#8e0000"
+        elif zz >= 2:
+            ztag, zcol = "VWAP %+.2fσ 追高慎(+2σ减半区)" % zz, "#c0392b"
+        elif zz >= 1:
+            ztag, zcol = "VWAP %+.2fσ +1σ警戒" % zz, "#b8860b"
+        elif zz <= -1:
+            ztag, zcol = "VWAP %+.2fσ 已破−1σ止损" % zz, "#8e0000"
+        elif zz <= -0.8:
+            ztag, zcol = "VWAP %+.2fσ 贴近止损线" % zz, "#c0392b"
+        elif zz < 0:
+            ztag, zcol = "VWAP %+.2fσ 中线下方" % zz, "#1e8449"
+        else:
+            ztag, zcol = "VWAP %+.2fσ 中线上方" % zz, "#0b6e0b"
+        ax.text(0.0, -0.085,
+                "买点：%s" % bt, transform=ax.transAxes, fontsize=FS_NOTE,
+                color="#0b6e0b" if buy_txt else "#888888",
+                fontweight="bold" if buy_txt else "normal", ha="left", va="top")
+        ax.text(1.0, -0.085,
+                "卖点：%s ｜ %s" % (st, ztag), transform=ax.transAxes, fontsize=FS_NOTE,
+                color=("#8b0000" if sell_txt else "#888888") if not sell_txt else "#8b0000",
+                fontweight="bold", ha="right", va="top")
+
         ax.grid(True, ls=":", color="#dddddd", alpha=0.75)
         ax.tick_params(labelsize=FS_TICK)
         if nv > 12:
@@ -564,19 +630,32 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2, dpi=None):
             ax.set_xticklabels([pd.Timestamp(view["dt"].iloc[i]).strftime("%m-%d") for i in tks],
                                fontsize=FS_TICK, rotation=0)
         if k == 0:
-            ax.legend(loc="upper left", fontsize=FS_LEG, ncol=4, framealpha=0.9)
+            ax.legend(loc="upper left", fontsize=FS_NOTE - 1, ncol=4, framealpha=0.9)
 
     for j in range(n, len(axes)):
         axes[j].axis("off")
     fig.suptitle(title or ("买点个股结构图（缠论分型版 + VWAP 六轨）· %s"
                            % pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")),
-                 fontsize=18, y=0.999)
-    fig.text(0.5, 0.0015,
-             "月牙=缠论·分型版买点（三买/一买/二买，已过年龄·距离·结构·ZG 闸门）  ｜  "
-             "黄框=中枢(ZG/ZD)  ｜  黑/红/绿=VWAP 中线/±1σ/±2σ  ｜  均线版买点只在文字报告，图上不画月牙",
+                 fontsize=20, y=0.999)
+    fig.text(0.5, 0.001,
+             "绿色月牙=买点 / 红色五角星=卖点（缠论·分型版，均已过闸门）  ｜  黄框=中枢(ZG/ZD)  ｜   "
+             "黑/红/绿线=VWAP 中线/±1σ/±2σ  ｜  每个子图下方标注本票买卖点与 VWAP 位置",
              ha="center", fontsize=FS_NOTE, color="#444444")
-    fig.tight_layout(rect=(0, 0, 1, 0.985))
+    # 子图下方要留标注空间 → 行间距加大
+    fig.tight_layout(rect=(0, 0.012, 1, 0.985), h_pad=2.6, w_pad=1.6)
     fig.savefig(out_path, dpi=(dpi or GRID_DPI), facecolor="white", bbox_inches="tight")
     plt.close(fig)
     _finalize_png(out_path)
     return out_path
+
+
+def find_sells_for_chart(d):
+    """图上用的卖点（复用 tech_buypoint 的全中枢扫描，失败就返回空）"""
+    try:
+        import tech_buypoint as TB
+        fx = TS.chan_fx(d, "day")
+        cl = float(d["close"].iloc[-1])
+        return TB.find_sells(d, {"sell_list": fx.get("sell_list") or []},
+                             cl, TS.ma20_state(d)) or []
+    except Exception:
+        return []
