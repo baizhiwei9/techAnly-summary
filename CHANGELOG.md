@@ -2,6 +2,21 @@
 
 > 每次改动必须在此登记：改了什么、为什么改、影响哪个文件。
 
+## 2026-11-11 13:06
+
+**chore: gh_publish_techsummary.py 改为转发到 techanly（tech-summary 已归档）**
+
+### 改了什么
+- bin/gh_publish_techsummary.py 原实现备份为 .bak.20261111，新实现只做转发
+  → 任何老文档/老习惯里写 gh_publish_techsummary.py，都会自动改推 techAnly-summary，不会再推错库
+
+### 为什么
+大佬 2026-11-11：技术分析只保留 techAnly-summary 一个库，多余的归档。
+ 已 archived（只读），但本机已有 8 处文档/习惯引用旧脚本名，转发是最稳的防错法。
+
+### 影响文件
+- bin/gh_publish_techsummary.py
+
 ## 2026-11-11 12:56
 
 **feat: 统一到 techAnly-summary 单库 + 新增缠论均线版单图**
