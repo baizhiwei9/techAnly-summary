@@ -67,6 +67,46 @@
 - 远程原文仍保留在 `chanlun_multiscale/chanlun_backtest/vendor/`，仅用于历史对比，不参与任何线上判定
 - `merge_bars` 仍接受 `(high, low)` 二元组；无 close 的旧调用自动退回合成分K线中值
 
+## 2026-11-12 01:35
+
+**fix(mad): MAD 均线改后复权口径**
+
+### 改了什么
+1. `bin/mad_layer.py`：新增三条后复权取数路径 —— `_ak_hfq`（新浪优先、东财兜底，个股）、`_tencent_fq`（腾讯复权 K 线）、`_etf_hfq`（新浪分红序列自建复权因子，ETF）；`load()` 默认 `adjust="hfq"`，指数仍走不复权。
+2. 输出（单标的与批量）新增复权口径标注，JSON 带 `adjust` 字段，取不到后复权时回退不复权并明示。
+3. README 复权说明同步更新。
+
+### 为什么
+- 不复权价在除权除息日跳空，会直接污染 MA20/MA40/MA200 与「收盘站上 MA40」的判定。
+- ETF 拿不到价格后复权行情：腾讯 `hfq` 对 ETF 实际是复权净值（hfq/qfq 比值 0.435–0.481 不恒定）、东财接口连续两次 RemoteDisconnected。故用新浪分红序列按「分红再投资」自建因子：
+  `hfq_t = raw_t × ∏_{分红日 ≤ t}(1 + 每份分红 / 除息前收盘)`。
+
+### 验证
+- 沪深300（510300）：收盘 4.1500 → 4.3568，MAD −10.87% → −10.82%，结论不变（未通过）。
+- 600519：后复权 MAD 3.97%，通过；同一序列前复权复算 3.80%，判定一致（差价来自复权基准，不影响结论）。
+- 指数 000905.SH：标 `raw`（指数无复权），收盘 6713.18、未通过。
+- 批量池 4 只 ETF 全部取到 `hfq`，无回退。
+
+### 影响文件
+- `bin/mad_layer.py`、`README.md`、`CHANGELOG.md`
+
+## 2026-11-12 01:12
+
+**feat(modules): 并入 AC1-VMD 与 MAD 均线两个独立模块（不挂主报告）**
+
+### 改了什么
+1. 新增 `bin/acvmd_layer.py`：AC1(20) 自相关 + VMD(K=4, alpha=2000，低序 2 模态合成) 趋势斜率 + MA40 位置，输出 多/空/震荡；口径与历史 AC_VMD 日报一致，含 `layer()` 与 `--target/--json` 命令行。
+2. 新增 `bin/mad_layer.py`：MAD = MA20/MA200 − 1，通过条件 = 收盘>MA40 且 MA40 五日斜率>0；支持单标的明细与 `--pool` 批量按 MAD 降序排名。
+3. `requirements.txt` 增 `vmdpy>=0.2`；README 增「五点五、独立模块」用法与口径注意；目录结构补两个脚本。
+
+### 为什么
+- 用户要求把本方的 AC1-VMD、MAD 均线两个技术分析口径合并进本库；STMOM 张量明确不合。
+- 两个口径按「独立模块」并入，不改 `tech_summary.py` 的六节报告与综合打分，避免动到已定稿的四层主口径。
+
+### 影响文件
+- `bin/acvmd_layer.py`、`bin/mad_layer.py`（新增）
+- `requirements.txt`、`README.md`、`CHANGELOG.md`
+
 ## 2026-11-12 01:00
 
 **docs(smc): 远程/本地 SMC 买点口径对比 + 小波归档验收**
@@ -450,7 +490,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-11 13:48
 
-
 **fix: 补 xq_portfolio.py（xq_ind_monitor 硬依赖，漏了会崩）**
 
 ### 改了什么
@@ -467,7 +506,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 - bin/xq_portfolio.py（新增）
 
 ## 2026-11-11 13:41
-
 
 **fix: 补齐 3 个隐式依赖模块（clone 后跑不通的真缺口）**
 
@@ -497,7 +535,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-11 13:33
 
-
 **merge: 合并 tech-summary 全部内容到 techAnly-summary（唯一主库）**
 
 ### 改了什么
@@ -524,7 +561,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-11 13:06
 
-
 **chore: gh_publish_techsummary.py 改为转发到 techanly（tech-summary 已归档）**
 
 ### 改了什么
@@ -539,7 +575,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 - bin/gh_publish_techsummary.py
 
 ## 2026-11-11 12:56
-
 
 **feat: 统一到 techAnly-summary 单库 + 新增缠论均线版单图**
 
@@ -566,7 +601,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-10 16:23
 
-
 **fix: v2 补 QQ 图片推送（必须带 --account bot2，否则被静默拦截）**
 
 ### 改了什么
@@ -584,7 +618,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 - bin/push_image.py
 
 ## 2026-11-10 16:16
-
 
 **feat: 行业/个股过滤规则落地（周线一二三买+日线只认三买 / 个股VWAP −1σ）+ 盘中吸筹买点v2**
 
@@ -624,7 +657,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-10 15:55
 
-
 **docs(skill): 补充盘中吸筹买点分析 v2 章节**
 
 ### 改了什么
@@ -641,7 +673,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 - skills/tech-summary/SKILL.md
 
 ## 2026-11-10 15:54
-
 
 **feat: 盘中吸筹买点分析 v2（威科夫吸筹 → 四层过滤 → Top10行业 → Top20个股 → 多子图）**
 
@@ -670,7 +701,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-10 15:06
 
-
 **docs(skill): 技能描述与个股口径措辞对齐最终版**
 
 ### 改了什么
@@ -686,7 +716,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 - skills/tech-summary/SKILL.md
 
 ## 2026-11-10 15:04
-
 
 **feat(个股门槛): VWAP 中线 -> −1σ 以上（允许破中线，不许破止损线）**
 
@@ -711,7 +740,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 - bin/publish_assets/README.md
 
 ## 2026-11-10 14:59
-
 
 **feat(级别): 行业周线一二三买都算 + 日线只认三买；fix 三买/三卖扫描方向**
 
@@ -746,7 +774,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-10 14:58
 
-
 **feat(级别): 行业周线一二三买都算 + 日线只认三买；fix 三买/三卖扫描方向**
 
 ### 改了什么
@@ -778,7 +805,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-10 14:42
 
-
 **fix: intraday_buypoint_daily.sh 去掉本机绝对路径（改用 TECH_WS）**
 
 ### 改了什么
@@ -793,7 +819,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-10 14:41
 
-
 **chore: 发布清单加入 intraday_buypoint_daily.sh**
 
 ### 改了什么
@@ -807,7 +832,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 - bin/intraday_buypoint_daily.sh（首次入库）
 
 ## 2026-11-10 14:40
-
 
 **feat: 盘中买点改为「行业→个股」，个股须站上VWAP中线**
 
@@ -834,7 +858,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-10 14:28
 
-
 **docs: 买卖点优先级规则正式写入技能（权威口径第2节）**
 
 ### 改了什么
@@ -859,7 +882,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-10 14:24
 
-
 **fix: 盘中Top10 的 QQ target 改走环境变量/本地配置（不再写死 openid）**
 
 ### 改了什么
@@ -874,7 +896,6 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 - bin/tech_intraday_buypoint.py
 
 ## 2026-11-10 14:21
-
 
 **feat: 盘中行业买点Top10（东财实时板块，多买点共振排序）+ SKILL/README 精简**
 
@@ -900,13 +921,11 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 
 ## 2026-11-10 13:47
 
-
 **docs: README 补 tech_stock_names.json 缓存说明**
 
 bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上第三个（股票名）。
 
 ## 2026-11-10 13:39
-
 
 **fix: 新机器上报告只显示代码——补股票名缓存兜底**
 
@@ -918,7 +937,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 
 ## 2026-11-10 13:33
 
-
 **feat: 卖点(三卖/一卖/二卖) + 二买恢复（胜率最低）**
 
 买点：三买 > 一买(须MA20向上) > 二买(恢复，胜率最低仅参考)。
@@ -928,7 +946,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 全流程纯 Python，不依赖任何大模型。
 
 ## 2026-11-10 00:53
-
 
 **docs: 澄清「不画 MA5」≠「不用 MA5」（大佬 2026-11-10 原话）**
 
@@ -961,7 +978,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 - 全流程 `--target 中证500` 重跑正常，双图生成
 
 ## 2026-11-10 00:49
-
 
 **docs(chan-ma-trend): 补齐 bi_walk 口径 + 笔端点取极值 + 三处绘图坑；修复 chan_ma_trend_v2 重复定义**
 
@@ -1007,7 +1023,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 
 ## 2026-11-10 00:28
 
-
 **docs(skill): 两个技能都写入发布约定（每次改完必须发 + 说清改了什么）**
 
 - `skills/tech-summary/SKILL.md` 新增「📤 发布约定」：
@@ -1017,7 +1032,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 
 ## 2026-11-10 00:27
 
-
 **docs: 发布工具措辞修正（不在仓库里出现本机路径字面量）**
 
 - `tools/gh_publish.py`：本机工作区前缀不再写成代码里的字面量，
@@ -1025,7 +1039,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 - CHANGELOG 相应措辞修正。
 
 ## 2026-11-10 00:26
-
 
 **docs+tools: README 补发布流程与新增踩坑；发布工具随仓库提供**
 
@@ -1051,7 +1064,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 
 ## 2026-11-10 00:24
 
-
 **docs+tools: README 补发布流程/新增踩坑，发布工具随仓库提供**
 
 ### 文档
@@ -1068,7 +1080,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
   别人 fork 后改一行 `--repo` 就能用同样的发布流程
 
 ## 2026-11-10 00:24
-
 
 **docs+tools: README 补发布流程/新增踩坑，发布工具随仓库提供**
 
@@ -1087,7 +1098,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
   fork 后改一行 `--repo` 就能用同样的发布流程
 
 ## 2026-11-10 00:21
-
 
 **chore(release): 发布脚本改用 Git Data API，全部文件合成单个 commit**
 
@@ -1112,7 +1122,6 @@ OpenAI 风格 key、QQ openid、本机工作区绝对路径（前缀在名单文
 
 ## 2026-11-10 00:21
 
-
 **chore(release): 发布脚本改用 Git Data API，全部文件合成单个 commit**
 
 ### 发布链路改造（避免历史被同名 commit 刷屏）
@@ -1135,7 +1144,6 @@ OpenAI 风格 key、QQ openid、本机工作区绝对路径。
 - `bin/gh_publish_techsummary.py`
 
 ## 2026-11-10 00:19
-
 
 **fix(chart): 均线版笔/线段端点改取区间极值 + 末段补活端点 + 走势类型改按摆动高低点分段**
 
