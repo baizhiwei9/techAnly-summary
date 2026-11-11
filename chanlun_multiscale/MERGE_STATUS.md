@@ -40,6 +40,14 @@
 
 汇总：`reports/batch2_rules/diff_summary.csv`
 
+
+### 分群同引擎与库自包含（2026-11-11 晚）
+
+- **两个飞书群统一用分型版引擎**：多尺度交易群 = 15m（参考）+1h+日线+周线；交易通知群 = 1 小时（分钟级别）。旧 `chan_trend_Strategy`（15m 均线趋势版）已从统一流水线移除
+- 同一份 `chanlun_fractal_Strategy.py` 提供 `get_cycle_signals_filtered(levels)` / `filter_views_by_levels(views, levels)`，信号与观点按群裁剪，不复制引擎
+- 远程单源模块已内置：`chanlun_backtest/vendor/chan_ma_trend_v2.py`、`vendor/chan_smc_index.py`；`python -m chanlun_backtest.sync_vendor --check` 校验漂移
+- SMC 仍未接入任何群；小波（wavelet）只在多尺度交易群运行，属于下一批收敛范围
+
 ### 均线版升级校验（2026-11-11）
 
 - `ma_trend.analyze` 直接加载远程 `bin/chan_ma_trend_v2.py`，与 `tech_summary.ma_layer`
