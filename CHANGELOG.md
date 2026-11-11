@@ -6,6 +6,35 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-11 23:18
+
+**feat(multiscale): 并入本地缠论多尺度交易工程（四级闸门 + v2 候选 + MACD 10/20/5）**
+
+### 改了什么
+1. **新增 `chanlun_multiscale/`**
+   - `chanlun_backtest/`：结构版核心（包含→分型→笔→中枢→背驰→买卖点）、四级闸门
+     `signal_gates.py`、v2 候选 `structure_signals_v2.py`、第二批对比脚本
+     `compare_v2_batch2.py`
+   - `Strategy/chanlun_fractal_Strategy.py`：生产监控（期货 + 股指期货 + ETF，四级周期）
+   - `data_fetcher.py`：数据采集（akshare）
+   - `README.md` / `MERGE_STATUS.md`：口径、合并进度与待办
+2. **口径对齐远程定稿**
+   - MACD `(20,40,5)` → `(10,20,5)`，与 `bin/chan_smc_index.py` 一致
+   - 三买遍历所有中枢 + 中枢递进校验 + 现价 > ZG；二买锚定一买后首个回踩
+   - 15m 不发信号；1h 只认三买（一买须 MA10>MA20）；日线一/二/三买；周线只认一/二买
+3. **公开库适配**：去掉本机绝对路径，持仓状态文件改 `FRACTAL_STATE_FILE` 环境变量；
+   内网编排脚本 `run_unified_monitor.py`（含飞书 chat_id）不并入公开库
+
+### 为什么
+- 大佬 2026-11-11：把本地缠论多尺度交易工程与远程 `techAnly-summary` 合并落盘并推分支
+
+### 影响文件
+- `chanlun_multiscale/**`（新增）
+- `README.md`
+- `CHANGELOG.md`
+
+> 注：`structure_signals_v2.py` 仅用于对比评估，**未接实盘**；实盘仍为 v1 信号。
+
 ## 2026-11-11 23:30
 
 **feat(strategies): 新增 `wavelet_day` 分支 —— 小波策略归档 + 五套口径统一级别入口**

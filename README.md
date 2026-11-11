@@ -40,6 +40,15 @@ python3 strategies/run_level.py --target 600519 --level week   # 周线（日线
 
 > 完整说明与「为什么小波不套 15 分钟」见 **[strategies/README.md](strategies/README.md)**。
 
+### 本地缠论多尺度交易工程并入（2026-11-11）
+
+本地结构版工程已并入 **[chanlun_multiscale/](chanlun_multiscale/README.md)**，与 `bin/` 口径对齐：
+
+- MACD `(10,20,5)`；包含 → 分型 → 笔 → 中枢 → 背驰 → B1/S1/B2/S2/B3/S3
+- 15m/1h/日线/周线四级交易闸门（15m 只做结构参考，1h 只认三买，周线只认一/二买）
+- `structure_signals_v2.py` 为第二批候选（三买中枢递进校验 + 二买锚定一买），**仅对比、未接实盘**
+- 实盘仍走 `chanlun_multiscale/Strategy/chanlun_fractal_Strategy.py`（v1 信号 + 四级闸门）
+
 ---
 
 ## 目录
