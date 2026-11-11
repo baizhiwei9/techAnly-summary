@@ -2,9 +2,47 @@
 
 > 每次改动必须在此登记：改了什么、为什么改、影响哪个文件。
 
-> 2026-11-11：`tech-summary`（私有）已合并进本库（`techAnly-summary`，公开），**历史条目全部保留**，共 27 条。
+> **2026-11-11 两库合并说明**：私有库 `tech-summary` 的全部内容（含代码、文档、发布工具、历史记录）已**合并进**本库 `techAnly-summary`（公开）后删除。
+> 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
+> 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
+
+## 2026-11-11 14:04
+
+**merge: 私有库 tech-summary 的文档/发布工具/历史记录全部并入（一条不丢）**
+
+### 背景
+上一轮合并只保留了 techAnly 版本文档，**私有库里的东西有 3 处没真正并进来**：
+读 REMOTE 备份逐文件比对才发现（幸好删库前存了 tarball）。
+
+### 这次补的点（逐条来自技术比对，不是估算）
+
+**1) CHANGELOG 补回 3 条历史记录**
+- 上次合并用「时间戳」做去重键 → 把同时间戳但**内容不同**的条目误删了
+- 实测丢失：`2026-11-10 00:21` 原本有 **3 条**（只留 2 条）、`2026-11-10 00:24` 有 2 条
+- 改法：去重键换成 **(时间戳 + 正文 md5)**，并用**多重集计数**抵扣 —— 内层重复也保留
+- 结果：techAnly 30 条 + 备份补回 3 条 = **33 条**；脚本化验证「备份 24 条每一条都在」✅
+
+**2) README 补回丢失的内容**
+- 顶部补「核心入口四个」脚本作用表（tech_summary / tech_buypoint / tech_intraday_buypoint / chan_ma_chart）
+- 补「把四套口径统一到一张报告里，避免看缠论说买、看 VWAP 说卖」这一定位句
+- 546 行 / 30.5KB
+
+**3) tools/publish_techsummary.py 保留为兼容别名**（私有库时的脚本名）
+- 原文件名直接丢弃等于断了老命令；现在它以转发形式入库，跑起来自动转到 publish_techanly.py
+- 老文档/老习惯写 publish_techsummary.py 也不会推错库
+
+### 验证
+- 逐文件 md5 比对：备份 30 个文件 → techAnly 现 38 个，**备份内容 100% 覆盖**
+- CHANGELOG 条数校验：备份 24 条全部在，无缺失
+- README 关键行校验：剩余 3 处差异经确认是**有意改动**（更详细 / 公开库声明），非丢失
+
+### 影响文件
+- README.md（546 行）
+- CHANGELOG.md（33 条历史）
+- tools/publish_techsummary.py（新增，兼容别名）
 
 ## 2026-11-11 13:48
+
 
 **fix: 补 xq_portfolio.py（xq_ind_monitor 硬依赖，漏了会崩）**
 
@@ -22,6 +60,7 @@
 - bin/xq_portfolio.py（新增）
 
 ## 2026-11-11 13:41
+
 
 **fix: 补齐 3 个隐式依赖模块（clone 后跑不通的真缺口）**
 
@@ -50,6 +89,7 @@
 - bin/xq_ind_monitor.py（新增）
 
 ## 2026-11-11 13:33
+
 
 **merge: 合并 tech-summary 全部内容到 techAnly-summary（唯一主库）**
 
@@ -620,6 +660,25 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 - `tools/gh_commit.py`、`tools/gh_publish.py`、`tools/publish_techsummary.py` 随仓库提供，
   别人 fork 后改一行 `--repo` 就能用同样的发布流程
 
+## 2026-11-10 00:24
+
+
+**docs+tools: README 补发布流程/新增踩坑，发布工具随仓库提供**
+
+### 文档
+- README 新增 **十二、发布 / 更新到 GitHub**：一条命令的流程 + 约定（每次改动必须发、必须写清改了什么/为什么/影响文件）
+- README **八、硬规矩** 补今晚踩到的坑：
+  - 走势类型的三个坑（相邻线段方向 ❌ / `trend_mode()` 逐根 ❌ / 摆动高低点 ✅）
+  - 笔/线段端点必须取区间真实极值（翻转那根的收盘 ≠ 本笔高低点）
+  - 末笔/段必须补活端点（否则图右侧空白），且起点用极值那根
+  - `trend_mode()` 的 look=20 是区间判定，不是当前方向
+- README 校验章节：给出可直接跑的 assert 脚本（笔数与技能口径一致、端点是真极值、
+  末段有活端点、走势类型必须真分段），并注明「比对区间要用 flip 索引、不能用极值索引」
+
+### 工具
+- `tools/gh_commit.py`、`tools/gh_publish.py`、`tools/publish_techsummary.py` 随仓库提供，
+  fork 后改一行 `--repo` 就能用同样的发布流程
+
 ## 2026-11-10 00:21
 
 
@@ -638,6 +697,54 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 ### 私密信息拦截（自动，命中即拒绝上传）
 tushare 代理/直连 token、飞书私聊/群 chat_id、飞书 webhook、GitHub token、
 OpenAI 风格 key、QQ openid、本机工作区绝对路径（前缀在名单文件里配置）。
+
+### 新增文件
+- `bin/gh_commit.py`
+- `bin/gh_publish.py`
+- `bin/gh_publish_techsummary.py`
+
+## 2026-11-10 00:21
+
+
+**chore(release): 发布脚本改用 Git Data API，全部文件合成单个 commit**
+
+### 发布链路改造（避免历史被同名 commit 刷屏）
+
+- **问题**：GitHub contents API 每次 PUT 只改一个文件 = 一条 commit。
+  一次改 10 个文件就产生 10 条**同名** commit，`git log` 完全没法读，
+  也无法回答「这次到底改了什么」。
+- **改法**：新增 `bin/gh_commit.py` —— blobs → tree → commit → 更新 ref，
+  **所有文件合成 1 个 commit**；未变更的文件按 git blob sha 自动跳过，不造空 commit。
+- `bin/gh_publish.py` 保留为单文件/兜底工具（同样带私密串拦截）。
+- `bin/gh_publish_techsummary.py` 增加：dry-run **不再污染 CHANGELOG**（试跑写出假条目已清理）。
+
+### 私密信息拦截（自动，命中即拒绝上传）
+tushare 代理/直连 token、飞书私聊/群 chat_id、飞书 webhook、GitHub token、
+OpenAI 风格 key、QQ openid、本机工作区绝对路径。
+
+### 新增文件
+- `bin/gh_commit.py`
+- `bin/gh_publish.py`
+- `bin/gh_publish_techsummary.py`
+
+## 2026-11-10 00:21
+
+
+**chore(release): 发布脚本改用 Git Data API，全部文件合成单个 commit**
+
+### 发布链路改造（避免历史被同名 commit 刷屏）
+
+- **问题**：GitHub contents API 每次 PUT 只改一个文件 = 一条 commit。
+  一次改 10 个文件就产生 10 条**同名** commit，`git log` 完全没法读，
+  也无法回答「这次到底改了什么」。
+- **改法**：新增 `bin/gh_commit.py` —— blobs → tree → commit → 更新 ref，
+  **所有文件合成 1 个 commit**；未变更的文件按 git blob sha 自动跳过，不造空 commit。
+- `bin/gh_publish.py` 保留为单文件/兜底工具（同样带私密串拦截）。
+- `bin/gh_publish_techsummary.py` 增加：dry-run **不再污染 CHANGELOG**（试跑写出假条目已清理）。
+
+### 私密信息拦截（自动，命中即拒绝上传）
+tushare 代理/直连 token、飞书私聊/群 chat_id、飞书 webhook、GitHub token、
+OpenAI 风格 key、QQ openid、本机工作区绝对路径。
 
 ### 新增文件
 - `bin/gh_commit.py`
