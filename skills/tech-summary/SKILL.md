@@ -365,6 +365,27 @@ python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out
 | `--per-page N` | `tech_buypoint.py` | **已废弃** | 现在固定「一张图 ≤20 子图，不分页」（大佬 2026-11-11 定） |
 | `--bars N` | `tech_buypoint.py` | 120 | 每张子图显示多少根 K 线 |
 
+### ⚠️ 布局硬规则（2026-11-11 23:xx 大佬：「图里边的这个字都重叠了」）
+
+**根因**：标题/副标题/底部标注全用 `transAxes` 相对坐标固定偏移（`1.012` / `-0.085`），
+行距靠 `tight_layout(h_pad=…)` 猜；字号一大就互相压，长文字还会捅出画布 / 压到隔壁列。
+`bbox_inches="tight"` 更坏：它只保证不出画布，不保证不重叠。
+
+**改法（`buypoint_chart.draw_stock_grid` 已重写）**：
+1. **按英寸绝对布局**，每个子图固定占 表头 0.62″ + K线面板 2.78″ + 表脚 0.96″，用
+   `fig.add_axes([x/fig_w, y/fig_h, w/fig_w, h/fig_h])` 定位，不用 `subplots` + `tight_layout`
+2. 所有文字走 `_fit_text(fig, text, fs, max_w_in)`：**先量宽**（`get_window_extent`），
+   超宽按比例缩字号（下限 8.5pt），仍超宽就截断加 `…` —— 绝不靠猜
+3. 价格轴上下留白 `set_ylim(y0-17%range, y1+10%range)`，给「买/卖 xx.xx」气泡腾地方
+4. 边缘标注自动换锚点：`xi > 87%` 改右对齐、`xi < 10%` 改左对齐；价格贴近底部时气泡改挂上方
+5. 多买点/多卖点标签纵向间距 27pt / 25pt，不 21pt（会叠）
+6. x 轴刻度**跳过第 0 根**（最左日期会撞 y 轴数字）
+7. ZG/ZD 标签贴中枢框**左端内侧**带白底，不贴右边缘（右边缘常被买卖点气泡占）
+
+**自检**：`TECH_GRID_DEBUG=1 python3 bin/tech_buypoint.py ...` 会打印
+`[OVERLAP]` / `[OOB]` / `[dbg:grid] texts=N overlaps=M oob=K`。
+**验收标准：overlaps=0 且 oob=0**。改任何图都要先跑这个再交付。
+
 出图硬规则：
 1. 网格图子图 **6.6×3.8 英寸**、字号 19/15/14/12.5pt、笔线宽 3.0、月牙 s=430
 2. 标题**必须折两行**（名称+涨幅一行，买点+VWAP+板块一行）——单行长标题会把
