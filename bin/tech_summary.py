@@ -259,19 +259,16 @@ def load_h1(tg, n=400):
 
 # ══════════════════════════ 四层计算 ══════════════════════════
 def chan_fx(df, level):
-    bars = list(zip(df["high"].astype(float).values, df["low"].astype(float).values))
+    # 收盘价一并传入：MACD 必须用真实 close（不能用合并K线 (H+L)/2）
+    bars = list(zip(df["high"].astype(float).values,
+                    df["low"].astype(float).values,
+                    df["close"].astype(float).values))
     return C.chan_read(bars, level)
 
 
 def smc_layer(df, k, atr_n=14):
-    at = S.atr(df, n=atr_n)
-    hi, lo = S.pivots(df, k)
-    fvgs = S.find_fvgs(df, at.values, lookback=S.FVG_LOOKBACK_FAR, end=len(df) - 1)
-    obs = S.find_order_blocks(df, hi, lo, at.values, k=k, end=len(df) - 1,
-                              lookback_far=S.OB_LOOKBACK_FAR)
-    av = float(at.iloc[-1]) if np.isfinite(at.iloc[-1]) else None
-    sigs = S.pick_signals(fvgs, obs, df, atr_val=av, max_n=4)
-    return {"hi": hi, "lo": lo, "fvgs": fvgs, "obs": obs, "sigs": sigs, "atr": at, "k": k}
+    """四层汇总 SMC：统一走 smc_core.smc_layer（单一口径）。"""
+    return S.smc_layer(df, k, atr_n=atr_n)
 
 
 def vwap_layer(df):

@@ -73,15 +73,18 @@
    `smc_core.py:488` 的候选截断是展示层选择（按新鲜度/强度/年龄排序），
    不会改变已选中 zone 的判定，但可能漏掉排在第 4 位的有效 zone。
 
-## 六、统一建议
+## 六、统一结论（2026-11-11 定稿）
 
-- **执行口径用本地 `smc_core.confirm_zone`**：它有明确的 A/B/C/D 与状态机，能回测、能加止损。
-- **远程 `smc_read` 保留为「结构摘要」**，只用于四层汇总里的文字提示；不要把它升级成买点触发。
-- 若要把远程摘要也接进统一库，至少补三件事：突破事件化（记录首次上穿日）、区间按同一腿构造、机会去重/过期。
-- 本地侧后续可把 OB 的 B 条件从「碰 top」收紧到「进入 zone 上半区/回踩不破下沿」，再用回测验证。
+- **SMC 只有一个口径：本地 `smc/smc_core.py`**。
+  - `smc_core.smc_layer(df, k)` 是唯一组装入口（摆动点 + FVG/OB + `confirm_zone`）。
+  - `bin/chan_smc_index.py::smc_local()` 与 `bin/tech_summary.py::smc_layer()` 都调它。
+  - 原远程 `smc_read`（价格 > 旧摆动高）已从 `chan_smc_index.py` 移除；仅在 `chanlun_multiscale/chanlun_backtest/vendor/` 保留逐字节副本，供历史对比脚本使用。
+- 日报里的 SMC 行改为：结构上下文 + FVG/OB 新鲜数 + `confirm_zone` 确认信号；不再输出「长期转多状态」。
+- 后续可把 OB 的 B 条件从「碰 top」收紧到「进入 zone 上半区/回踩不破下沿」，再用回测验证；届时只改 `smc_core` 一处。
 
 ## 七、复现
 
-- 远程：`bin/chan_smc_index.py::smc_read(df, k=3, tag)`，逐根喂 `df.iloc[:i+1]`。
-- 本地：`smc_core.find_fvgs` → `find_order_blocks` → `pick_signals(df, end=i)`，逐根计算。
+- 本地（现行）：`smc_core.smc_layer(df, k)`；逐根验证时用 `find_fvgs` → `find_order_blocks` → `pick_signals(df, end=i)`。
+- 远程（仅归档对比）：`chanlun_multiscale/chanlun_backtest/vendor/chan_smc_index.py::smc_read`，逐根喂 `df.iloc[:i+1]`。
 - 数据：`data_fetcher.get_index_daily` 日线，截取最近 400 根。
+- 笔/中枢对比图：`reports/plot_pen_pivot_compare.py`。

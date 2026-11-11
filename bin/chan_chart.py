@@ -67,7 +67,8 @@ def merge_bars_idx(bars):
     ⚠️ 逻辑必须与 chan_smc_index.merge_bars 完全一致，否则画出来的笔和判定口径对不上。
     """
     out = []   # [h, l, first_i, last_i, hi_i, lo_i]
-    for i, (h, l) in enumerate(bars):
+    for i, bar in enumerate(bars):
+        h, l = float(bar[0]), float(bar[1])
         if not out:
             out.append([h, l, i, i, i, i])
             continue
@@ -115,8 +116,10 @@ def build_bi_idx(mb, fr):
 
 
 def chan_geometry(hb):
-    """从 (high, low) 列算出一整套可绘图几何：笔端点 / 中枢 / 买卖点"""
-    bars = list(zip(hb["high"].astype(float).values, hb["low"].astype(float).values))
+    """从 OHLC 算出一整套可绘图几何：笔端点 / 中枢 / 买卖点"""
+    bars = list(zip(hb["high"].astype(float).values,
+                    hb["low"].astype(float).values,
+                    hb["close"].astype(float).values))
     mb = merge_bars_idx(bars)
     fr = fractals_idx(mb)
     bi = build_bi_idx(mb, fr)

@@ -137,7 +137,7 @@ python3 strategies/run_level.py --target 600519 --level week   # 周线（日线
 |---|---|---|
 | ① 缠论·分型版 | 包含处理 → 顶底分型 → 笔 → 中枢 ZG/ZD → 背驰 | 日线认一/二/三买 + 二/三卖；**小时线只认三买，及一买 + MA10 金叉** |
 | ② 缠论·均线版 | 笔 = MA5/MA10 双穿 MA20；线段 = MA20/MA40 双穿 MA80；大级别 = 价格 vs MA160 | 只问「当前级别能不能支撑交易」，不递归、不用 MA320 |
-| ③ SMC | 摆动点 → 结构突破 → FVG / OB → 方向确认 | 日线 k=3，小时线 k=1；**只作机会/风险提示，不参与入场** |
+| ③ SMC | 摆动点 → FVG / OB → 不破 + 回踩 + 方向确认 + 不走远 | **单一口径 `smc/smc_core.py`**（`chan_smc_index`、`tech_summary` 都调它）；日线 k=3，小时线 k=1 |
 | ④ VWAP 六轨 | 量加权 VWAP ± 1σ/2σ/3σ（窗口 60 根）+ MA40 方向 | +3σ 全平 / +2σ 减半 / −1σ 全止损；右侧标正态分位 |
 | ⑤ 买点/卖点分析 | 买点：①三买 > ②一买（须 MA20 向上）> ③二买（**胜率最低·仅作参考**）；卖点：①三卖 > ②一卖（须 MA20 向下）> ③二卖 | 行业先过闸才下钻个股（详见第一章） |
 
@@ -398,7 +398,7 @@ bin/
   tech_summary.py        五层分析主脚本（报告 + 双图 + 推送）
   tech_buypoint.py       买点分析（指数/行业/概念/个股）
   buypoint_chart.py      买点分析三联图
-  chan_smc_index.py      缠论分型版核心 + 日线取数 + 标的表
+  chan_smc_index.py      缠论分型版核心 + 本地 SMC 日/周摘要 + 日线取数 + 标的表
   chan_ma_trend_v2.py    缠论均线版核心（笔/线段/走势类型/verdict）
   chan_chart.py          缠论几何（保证图与判定同口径）
   datahub.py             日线三级灾备（akshare → tushare → 网页）

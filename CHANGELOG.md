@@ -6,6 +6,31 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 01:40
+
+**feat(lib): SMC 统一本地口径；分型版 MACD/背驰改用真实收盘价与本地规则**
+
+### 改了什么
+1. `smc/smc_core.py`：新增 `smc_layer(df, k, atr_n=14)` 单一组装入口（摆动点 + FVG/OB + `confirm_zone`）
+2. `bin/tech_summary.py`：`smc_layer()` 改为直接委托 `smc_core.smc_layer`，删除重复组装
+3. `bin/chan_smc_index.py`：
+   - 删除远程 `smc_read` / `pivots`，新增 `smc_local(df, k, tag)`，日/周 SMC 全部走本地
+   - `smc_line()` 改为渲染本地确认信号（结构上下文 + FVG/OB 新鲜数 + `confirm_zone` 文案）
+   - `merge_bars()` 记录每条合并K线的原始索引 / 最高点 / 最低点索引，前两列口径不变
+   - `bars_of()` 返回 `(high, low, close)`；`chan_read()` 的 MACD(10/20/5) 改用**真实收盘价**
+   - 背驰改为本地规则：同向笔端点比较，`MACD 面积 < 前段 × 0.9` 且创新低/新高
+   - `segs_from_bi()` 保留合并索引 `i0/i1`（年龄/中枢逻辑不变），新增原始索引 `i0o/i1o` 供背驰切片
+4. `bin/tech_summary.py::chan_fx`、`bin/chan_chart.py::chan_geometry`：K线参数补传 close
+5. `reports/plot_pen_pivot_compare.py`（新增）：笔 / 中枢差异对比图生成脚本
+
+### 为什么
+- 大佬定稿：「SMC 用本地的，不用远程那套」「缠论分型版背驰以本地为准」「MACD 用本地真实收盘价」
+- 远程 `smc_read` 只是「价格 > 旧摆动高」的结构播报，不是买点算法；本地 `confirm_zone` 才有 A/B/C/D 状态机与回测能力
+
+### 兼容性
+- 远程原文仍保留在 `chanlun_multiscale/chanlun_backtest/vendor/`，仅用于历史对比，不参与任何线上判定
+- `merge_bars` 仍接受 `(high, low)` 二元组；无 close 的旧调用自动退回合成分K线中值
+
 ## 2026-11-12 01:00
 
 **docs(smc): 远程/本地 SMC 买点口径对比 + 小波归档验收**
