@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""笔 / 中枢 引擎差异对比图（远程 chan_smc_index vs 本地 chanlun_backtest）
+"""笔 / 中枢 引擎差异对比图（vendor 远程快照 vs 本地 structure_indicators）
+
+⚠️ 2026-11-12 起线上 chan_smc_index 已改为本地引擎；本脚本的「远程」侧固定读
+   chanlun_multiscale/chanlun_backtest/vendor/chan_smc_index.py，仅用于复现统一前差异。
 
 用法（在含 data_fetcher 的工作目录或设置 DATA_FETCHER_PATH）：
     python3 reports/plot_pen_pivot_compare.py sh510300 --n 180 --out reports
@@ -32,6 +35,14 @@ sys.path.insert(0, os.path.join(REPO, "chanlun_multiscale"))
 import chan_smc_index as C                       # noqa: E402
 import chanlun_backtest.structure_indicators as LI  # noqa: E402
 
+# 远程引擎快照（vendor 逐字节副本，仅用于历史对比）；现行 chan_smc_index 已是本地口径
+import importlib.util as _ilu
+_vp = os.path.join(REPO, "chanlun_multiscale", "chanlun_backtest", "vendor",
+                   "chan_smc_index.py")
+_spec = _ilu.spec_from_file_location("vendor_chan_smc_index", _vp)
+R = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(R)
+
 for _f in ("Noto Serif CJK SC", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "SimHei"):
     try:
         font_manager.findfont(_f, fallback_to_default=False)
@@ -60,11 +71,42 @@ def load(sym):
     return d
 
 
+def _vendor_mb_idx(bars):
+    """与 vendor 远程 merge_bars 完全一致，额外记录原始极值索引。"""
+    out = []   # [h, l, last_i, hi_i, lo_i]
+    for i, (h, l) in enumerate(bars):
+        h, l = float(h), float(l)
+        if not out:
+            out.append([h, l, i, i, i])
+            continue
+        ph, pl, _last, phi, plo = out[-1]
+        if (h <= ph and l >= pl) or (h >= ph and l <= pl):
+            up = len(out) < 2 or out[-1][0] >= out[-2][0]
+            if up:
+                nhi = i if h > ph else phi
+                nlo = i if l > pl else plo
+                out[-1] = [max(ph, h), max(pl, l), i, nhi, nlo]
+            else:
+                nhi = i if h < ph else phi
+                nlo = i if l < pl else plo
+                out[-1] = [min(ph, h), min(pl, l), i, nhi, nlo]
+        else:
+            out.append([h, l, i, i, i])
+    return out
+
+
 def remote_geometry(df):
-    bars = C.bars_of(df)
-    mb = C.merge_bars(bars)
-    bi = C.build_bi(mb)
-    segs = C.segs_from_bi(bi, mb)
+    bars = [(float(h), float(l)) for h, l in zip(df["high"], df["low"])]
+    mb = _vendor_mb_idx(bars)
+    bi = R.build_bi(mb)
+    segs = R.segs_from_bi(bi)
+
+    def oi(midx, kind):
+        return int(mb[midx][3] if kind == 1 else mb[midx][4])
+
+    for sg in segs:
+        sg["i0o"] = oi(sg["i0"], -1 if sg["up"] else 1)
+        sg["i1o"] = oi(sg["i1"], 1 if sg["up"] else -1)
     pts = [{"orig": s["i0o"], "price": s["from"], "type": (-1 if s["up"] else 1)} for s in segs]
     if segs:
         pts.append({"orig": segs[-1]["i1o"], "price": segs[-1]["to"],

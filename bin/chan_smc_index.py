@@ -19,6 +19,12 @@ import pandas as pd
 
 from smc import smc_core as SMC   # 本地 SMC 唯一口径（FVG/OB/confirm_zone）
 
+# 本地缠论分型引擎（唯一口径）：包含处理 / 分型 / 笔 / 中枢
+_CMS = os.path.join(WS, "chanlun_multiscale")
+if _CMS not in sys.path:
+    sys.path.insert(0, _CMS)
+from chanlun_backtest import structure_indicators as LI  # noqa: E402
+
 # ─────────── 机会/风险 判定参数（2026-10-22 用户要求：只给真买卖点打图标）───────────
 NEAR = float(os.environ.get("CHAN_NEAR_PCT", "3"))     # 现价与买卖点 ±NEAR% 内 = 「就在点位上」
 MAX_AGE = {"h1": 30, "day": 25, "week": 12}            # 买卖点新鲜度（多少根K线内还算数）
@@ -35,48 +41,59 @@ H1_ALLOWED_SELL = {"三卖"}     # 小时线允许的卖点类型（对称口径
 
 # ─────────── 缠论核心（与 xq_industry 同口径） ───────────
 def merge_bars(bars):
-    """包含处理。输入 (high, low) 或 (high, low, close)；输出 [h, l, last_i, hi_i, lo_i]。
+    """包含处理（本地分型版口径）。输入 (high, low) 或 (high, low, close)。
 
-    前两列仍是合并K线高低点（与旧口径逐字节一致），后三列记录该合并K线
-    覆盖到的最后原始索引 / 最高点原始索引 / 最低点原始索引，
-    供 MACD 用真实收盘价、背驰按原始K线切片使用。
+    输出 [high, low, last_i, hi_i, lo_i]：
+      前两列 = 合并K线高低点；last_i = 该合并K线覆盖到的最后原始索引；
+      hi_i / lo_i = 该合并K线区间内最高价 / 最低价所在原始索引。
+    算法直接复用本地 structure_indicators.merge_klines，保证全库一个口径。
     """
+    highs = np.array([float(b[0]) for b in bars], float)
+    lows = np.array([float(b[1]) for b in bars], float)
     out = []
-    for i, bar in enumerate(bars):
-        h, l = float(bar[0]), float(bar[1])
-        if not out:
-            out.append([h, l, i, i, i]); continue
-        ph, pl, _plast, phi, plo = out[-1]
-        if (h <= ph and l >= pl) or (h >= ph and l <= pl):
-            up = len(out) < 2 or out[-1][0] >= out[-2][0]
-            if up:
-                nhi = i if h > ph else phi
-                nlo = i if l > pl else plo
-                out[-1] = [max(ph, h), max(pl, l), i, nhi, nlo]
-            else:
-                nhi = i if h < ph else phi
-                nlo = i if l < pl else plo
-                out[-1] = [min(ph, h), min(pl, l), i, nhi, nlo]
-        else:
-            out.append([h, l, i, i, i])
+    for m in LI.merge_klines(highs, lows):
+        a, b = int(m.start_idx), int(m.end_idx)
+        hi_i = a + int(np.argmax(highs[a:b + 1]))
+        lo_i = a + int(np.argmin(lows[a:b + 1]))
+        out.append([float(m.high), float(m.low), b, hi_i, lo_i])
     return out
 
 def fractals(mb):
+    """顶底分型（本地口径）：顶只看高点、底只看低点，左右各一根合并K线。"""
     fr = []
     for i in range(1, len(mb) - 1):
         a, b, c = mb[i-1], mb[i], mb[i+1]
-        if b[0] > a[0] and b[0] > c[0] and b[1] > a[1] and b[1] > c[1]: fr.append((i, 1, b[0]))
-        elif b[0] < a[0] and b[0] < c[0] and b[1] < a[1] and b[1] < c[1]: fr.append((i, -1, b[1]))
+        if b[0] > a[0] and b[0] > c[0]:
+            fr.append((i, 1, b[0]))
+        elif b[1] < a[1] and b[1] < c[1]:
+            fr.append((i, -1, b[1]))
     return fr
 
 def build_bi(mb):
-    fr = fractals(mb); bi = []
-    for idx, t, px in fr:
-        if not bi: bi.append([t, px, idx])
-        elif bi[-1][0] == t:
-            if (t == 1 and px > bi[-1][1]) or (t == -1 and px < bi[-1][1]): bi[-1] = [t, px, idx]
+    """成笔（本地口径）：同类分型取更极端；异类间隔 ≥5 根合并K线。"""
+    fr = fractals(mb)
+    if not fr:
+        return []
+    unique = [fr[0]]
+    for f in fr[1:]:
+        if f[1] == unique[-1][1]:
+            if (f[1] == 1 and f[2] > unique[-1][2]) or (f[1] == -1 and f[2] < unique[-1][2]):
+                unique[-1] = f
         else:
-            if abs(idx - bi[-1][2]) >= 3: bi.append([t, px, idx])
+            unique.append(f)
+    f0 = unique[0]
+    bi = [[f0[1], f0[2], f0[0]]]    # [type, price, merged_idx]
+    for f in unique[1:]:
+        last = bi[-1]
+        if f[1] == last[0]:
+            if (f[1] == 1 and f[2] > last[1]) or (f[1] == -1 and f[2] < last[1]):
+                last[1], last[2] = f[2], f[0]
+            continue
+        if abs(f[0] - last[2]) < LI.MIN_BI_GAP + 1:
+            continue
+        if (f[1] == 1 and f[2] <= last[1]) or (f[1] == -1 and f[2] >= last[1]):
+            continue
+        bi.append([f[1], f[2], f[0]])
     return bi
 
 def segs_from_bi(bi, mb=None):
@@ -96,6 +113,31 @@ def segs_from_bi(bi, mb=None):
                      "i0": a[2], "i1": b[2],
                      "i0o": _orig(a[2], a[0]), "i1o": _orig(b[2], b[0])})
     return segs
+
+class _ZsEnd:
+    __slots__ = ("price",)
+    def __init__(self, px):
+        self.price = float(px)
+
+
+def zhongshu_from_segs(segs):
+    """中枢（本地口径：逐笔链式延伸）。返回 [{'i','end','zd','zg'}]，按时间顺序。
+
+    i / end 都是**段索引**：中枢由 segs[i:i+3] 起，逐笔延伸至 segs[end-1]。
+    直接复用本地 structure_indicators.detect_zhongshu，避免两份中枢逻辑。
+    """
+    if len(segs) < 3:
+        return []
+    ends = [_ZsEnd(segs[0]["from"])] + [_ZsEnd(x["to"]) for x in segs]
+    out = []
+    for z in LI.detect_zhongshu(ends):
+        i0 = int(z.start_bi)
+        i1 = min(int(z.end_bi), len(segs) - 1)
+        if i1 <= i0:
+            continue
+        out.append({"i": i0, "end": i1, "zd": float(z.zd), "zg": float(z.zg)})
+    return out
+
 
 # ── MACD 参数（2026-10-29 22:48 大佬定稿：改成 10/20/5，不是原来的 12/26/9）──
 # 可用环境变量覆盖，方便回测对比；默认即 10/20/5
@@ -135,12 +177,13 @@ def chan_read(bars, tag):
         closes = np.array([(h + l) / 2 for h, l, *_ in mb], float)
         hist, dif, dea = macd_hist(closes)
         px_last = float(mb[-1][0])
-    # 中枢
-    zs, zs_i = None, None
-    for i in range(len(segs) - 3, -1, -1):
-        w = segs[i:i+3]
-        zg = min(x["hi"] for x in w); zd = max(x["lo"] for x in w)
-        if zg > zd: zs = (round(zd, 2), round(zg, 2)); zs_i = i; break
+    # 中枢（本地逐笔链式，取最近一个）
+    zs_list = zhongshu_from_segs(segs)
+    zs, zs_i, zs_end = None, None, None
+    if zs_list:
+        _z = zs_list[-1]
+        zs = (round(_z["zd"], 2), round(_z["zg"], 2))
+        zs_i, zs_end = _z["i"], _z["end"]
     last = segs[-1]; d = "上升" if last["up"] else "下降"
     cur = px_last
     amp = lambda s: abs(s["to"] - s["from"])
@@ -201,7 +244,8 @@ def chan_read(bars, tag):
                 sells.append(("二卖", round(segs[k]["to"], 2), segs[k]["i1"]))
                 break
     if zs:
-        dleaf = [k for k in range(zs_i + 3, len(segs) - 1)
+        zstart = max(zs_i + 3, zs_end)
+        dleaf = [k for k in range(zstart, len(segs) - 1)
                  if not segs[k]["up"] and segs[k]["lo"] < zs[0]]
         for k in dleaf:
             r = segs[k + 1]
@@ -209,7 +253,7 @@ def chan_read(bars, tag):
                 sells.append(("三卖", round(r["hi"], 2), r["i1"]))
                 break
         # 三买：向上离开中枢后回调不破 ZG
-        uleaf = [k for k in range(zs_i + 3, len(segs) - 1)
+        uleaf = [k for k in range(zstart, len(segs) - 1)
                  if segs[k]["up"] and segs[k]["hi"] > zs[1]]
         for k in uleaf:
             r = segs[k + 1]

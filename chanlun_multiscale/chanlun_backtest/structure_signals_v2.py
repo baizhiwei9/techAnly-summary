@@ -24,7 +24,7 @@ from typing import List, Dict, Any
 
 import numpy as np
 
-from .structure_indicators import calc_macd
+from .structure_indicators import calc_macd, detect_zhongshu
 from .structure_signals import detect_structure_signals
 
 TB_MAX_AGE = 90       # 三买/三卖最大年龄（对齐远程 TB_MAX_AGE）
@@ -171,29 +171,18 @@ def _all_zhongshu_breaks(df, close, lows, highs, n):
     seen = set()
 
     # ── 三买 ──
-    for i in range(ns - 3, -1, -1):
-        w = segs[i:i + 3]
-        zg = min(x['hi'] for x in w)
-        zd = max(x['lo'] for x in w)
-        if not (zg > zd):
-            continue
-        for k in range(ns - 2, i + 2, -1):
+    zlist = detect_zhongshu(bi_ends)      # 本地逐笔链式中枢（唯一口径）
+    for zi in range(len(zlist) - 1, -1, -1):
+        z = zlist[zi]
+        zg, zd, i = float(z.zg), float(z.zd), int(z.start_bi)
+        k_hi = min(ns - 2, int(zlist[zi + 1].start_bi) - 1) if zi + 1 < len(zlist) else ns - 2
+        for k in range(k_hi, max(i + 2, int(z.end_bi) - 1), -1):
             if not (segs[k]['up'] and segs[k]['hi'] > zg):
                 continue
             r = segs[k + 1]
             if r['up'] or r['lo'] <= zg:
                 continue
-            # 中枢递进校验：离开途中不得再形成新中枢
-            mid = False
-            for j in range(i + 3, k - 1):
-                w2 = segs[j:j + 3]
-                if len(w2) < 3:
-                    continue
-                if min(x['hi'] for x in w2) > max(x['lo'] for x in w2):
-                    mid = True
-                    break
-            if mid:
-                continue
+            # 中枢递进：k_hi 已限制在下一中枢之前，无需逐段重算
             lvl = r['lo']
             idx = r['i1']
             age = n - 1 - idx
@@ -217,28 +206,17 @@ def _all_zhongshu_breaks(df, close, lows, highs, n):
             break
 
     # ── 三卖（对称）──
-    for i in range(ns - 3, -1, -1):
-        w = segs[i:i + 3]
-        zg = min(x['hi'] for x in w)
-        zd = max(x['lo'] for x in w)
-        if not (zg > zd):
-            continue
-        for k in range(ns - 2, i + 2, -1):
+    for zi in range(len(zlist) - 1, -1, -1):
+        z = zlist[zi]
+        zg, zd, i = float(z.zg), float(z.zd), int(z.start_bi)
+        k_hi = min(ns - 2, int(zlist[zi + 1].start_bi) - 1) if zi + 1 < len(zlist) else ns - 2
+        for k in range(k_hi, max(i + 2, int(z.end_bi) - 1), -1):
             if segs[k]['up'] or not (segs[k]['lo'] < zd):
                 continue
             r = segs[k + 1]
             if not r['up'] or r['hi'] >= zd:
                 continue
-            mid = False
-            for j in range(i + 3, k - 1):
-                w2 = segs[j:j + 3]
-                if len(w2) < 3:
-                    continue
-                if min(x['hi'] for x in w2) > max(x['lo'] for x in w2):
-                    mid = True
-                    break
-            if mid:
-                continue
+            # 中枢递进：k_hi 已限制在下一中枢之前
             lvl = r['hi']
             idx = r['i1']
             age = n - 1 - idx

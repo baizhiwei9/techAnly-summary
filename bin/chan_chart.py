@@ -62,91 +62,27 @@ VER = "缠论·分型版"
 
 
 # ─────────── 缠论：带原始索引的合并K线 ───────────
-def merge_bars_idx(bars):
-    """包含处理，保留每条合并K线对应的原始索引（hi/lo 极值所在位置）。
-    ⚠️ 逻辑必须与 chan_smc_index.merge_bars 完全一致，否则画出来的笔和判定口径对不上。
-    """
-    out = []   # [h, l, first_i, last_i, hi_i, lo_i]
-    for i, bar in enumerate(bars):
-        h, l = float(bar[0]), float(bar[1])
-        if not out:
-            out.append([h, l, i, i, i, i])
-            continue
-        ph, pl, _pf, _plast, phi, plo = out[-1]
-        if (h <= ph and l >= pl) or (h >= ph and l <= pl):
-            up = len(out) < 2 or out[-1][0] >= out[-2][0]
-            if up:
-                nhi = i if h > ph else phi
-                nlo = i if l > pl else plo
-                out[-1] = [max(ph, h), max(pl, l), out[-1][2], i, nhi, nlo]
-            else:
-                nhi = i if h < ph else phi
-                nlo = i if l < pl else plo
-                out[-1] = [min(ph, h), min(pl, l), out[-1][2], i, nhi, nlo]
-        else:
-            out.append([h, l, i, i, i, i])
-    return out
-
-
-def fractals_idx(mb):
-    """顶底分型（与 chan_smc_index.fractals 同判据），返回 (merged_idx, type, price)"""
-    fr = []
-    for i in range(1, len(mb) - 1):
-        a, b, c = mb[i - 1], mb[i], mb[i + 1]
-        if b[0] > a[0] and b[0] > c[0] and b[1] > a[1] and b[1] > c[1]:
-            fr.append((i, 1, b[0]))
-        elif b[0] < a[0] and b[0] < c[0] and b[1] < a[1] and b[1] < c[1]:
-            fr.append((i, -1, b[1]))
-    return fr
-
-
-def build_bi_idx(mb, fr):
-    """成笔（与 build_bi 同判据：异类且间隔≥3根合并K线）"""
-    bi = []
-    for idx, t, px in fr:
-        if not bi:
-            bi.append([idx, t, px])
-        elif bi[-1][1] == t:
-            if (t == 1 and px > bi[-1][2]) or (t == -1 and px < bi[-1][2]):
-                bi[-1] = [idx, t, px]
-        else:
-            if abs(idx - bi[-1][0]) >= 3:
-                bi.append([idx, t, px])
-    return bi
-
-
+# 几何计算全部复用 chan_smc_index（本地分型版唯一口径），
+# 不再在画图层维护第二套包含/分型/成笔逻辑。
 def chan_geometry(hb):
     """从 OHLC 算出一整套可绘图几何：笔端点 / 中枢 / 买卖点"""
     bars = list(zip(hb["high"].astype(float).values,
                     hb["low"].astype(float).values,
                     hb["close"].astype(float).values))
-    mb = merge_bars_idx(bars)
-    fr = fractals_idx(mb)
-    bi = build_bi_idx(mb, fr)
-    # 合并K线索引 → 原始K线索引（顶取 hi_i，底取 lo_i）
-    pts = []
-    for midx, t, px in bi:
-        oi = mb[midx][4] if t == 1 else mb[midx][5]
-        pts.append({"orig": oi, "type": t, "price": px})
-    segs = []
-    for k in range(len(pts) - 1):
-        a, b = pts[k], pts[k + 1]
-        segs.append({"up": b["type"] == 1, "from": a["price"], "to": b["price"],
-                     "lo": min(a["price"], b["price"]), "hi": max(a["price"], b["price"]),
-                     "i0": a["orig"], "i1": b["orig"]})
-    # 中枢：最近三段重叠
-    zs, zs_i = None, None
-    for i in range(len(segs) - 3, -1, -1):
-        w = segs[i:i + 3]
-        zg = min(x["hi"] for x in w)
-        zd = max(x["lo"] for x in w)
-        if zg > zd:
-            zs = (round(zd, 2), round(zg, 2))
-            zs_i = i
-            break
-    zs_x = None
-    if zs_i is not None:
-        zs_x = (segs[zs_i]["i0"], len(bars) - 1)
+    mb = C.merge_bars(bars)
+    bi = C.build_bi(mb)
+    segs = C.segs_from_bi(bi, mb)
+    # 笔端点（原始K线索引：顶取 hi_i，底取 lo_i）
+    pts = [{"orig": (mb[i][3] if t == 1 else mb[i][4]),
+            "type": int(t), "price": float(px)} for t, px, i in bi]
+    # 中枢：本地逐笔链式，取最近一个
+    zs, zs_x = None, None
+    zlist = C.zhongshu_from_segs(segs)
+    if zlist:
+        z = zlist[-1]
+        zs = (round(z["zd"], 2), round(z["zg"], 2))
+        e = min(z["end"], len(segs) - 1)
+        zs_x = (segs[z["i"]]["i0o"], segs[e]["i1o"])
     # 买卖点（复用 chan_smc_index 的正式判定，保证和图一致）
     ck = C.chan_read(bars, "h1")
     return {"bars": bars, "mb": mb, "bi": pts, "segs": segs,

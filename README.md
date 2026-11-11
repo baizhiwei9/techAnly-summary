@@ -45,6 +45,9 @@ python3 strategies/run_level.py --target 600519 --level week   # 周线（日线
 本地结构版工程已并入 **[chanlun_multiscale/](chanlun_multiscale/README.md)**，与 `bin/` 口径对齐：
 
 - MACD `(10,20,5)`；包含 → 分型 → 笔 → 中枢 → 背驰 → B1/S1/B2/S2/B3/S3
+- **几何只有一套实现**：`chanlun_multiscale/chanlun_backtest/structure_indicators.py`
+  （包含处理 / 分型 / 笔 / 逐笔链式中枢），`bin/chan_smc_index.py` 只是包装并附加 MACD/买卖点；
+  `chan_chart.py`、`tech_buypoint.py` 的三买/三卖扫描也全部复用这套中枢，不再各自维护「最近3段」
 - 15m/1h/日线/周线四级交易闸门（15m 只做结构参考，1h 只认三买，周线只认一/二买）
 - `structure_signals_v2.py` 为第二批候选（三买中枢递进校验 + 二买锚定一买），**仅对比、未接实盘**
 - 实盘仍走 `chanlun_multiscale/Strategy/chanlun_fractal_Strategy.py`（v1 信号 + 四级闸门）
@@ -398,9 +401,9 @@ bin/
   tech_summary.py        五层分析主脚本（报告 + 双图 + 推送）
   tech_buypoint.py       买点分析（指数/行业/概念/个股）
   buypoint_chart.py      买点分析三联图
-  chan_smc_index.py      缠论分型版核心 + 本地 SMC 日/周摘要 + 日线取数 + 标的表
+  chan_smc_index.py      缠论分型版包装（几何委托 structure_indicators）+ 本地 SMC 日/周摘要 + 日线取数 + 标的表
   chan_ma_trend_v2.py    缠论均线版核心（笔/线段/走势类型/verdict）
-  chan_chart.py          缠论几何（保证图与判定同口径）
+  chan_chart.py          缠论画图（几何全部复用 chan_smc_index / structure_indicators）
   datahub.py             日线三级灾备（akshare → tushare → 网页）
   minute_hub.py          60m 分钟线（index / stock 两种 kind）
   weekly_zs.py           申万行业指数日线

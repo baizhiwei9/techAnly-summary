@@ -80,6 +80,11 @@
   - `bin/chan_smc_index.py::smc_local()` 与 `bin/tech_summary.py::smc_layer()` 都调它。
   - 原远程 `smc_read`（价格 > 旧摆动高）已从 `chan_smc_index.py` 移除；仅在 `chanlun_multiscale/chanlun_backtest/vendor/` 保留逐字节副本，供历史对比脚本使用。
 - 日报里的 SMC 行改为：结构上下文 + FVG/OB 新鲜数 + `confirm_zone` 确认信号；不再输出「长期转多状态」。
+- **2026-11-12 追加：笔 / 中枢也统一到本地**。
+  - 包含处理、分型、笔、中枢全部走 `chanlun_multiscale/chanlun_backtest/structure_indicators.py`；
+    `bin/chan_smc_index.py` 只是包装，`chan_chart.py`、`tech_buypoint.py` 不再维护副本。
+  - 笔：统一 `MIN_BI_GAP=4`（≥5 根合并K线）；中枢：统一逐笔链式 `detect_zhongshu`。
+  - 对比图脚本的远端改为 `vendor/chan_smc_index.py` 快照，仅用于复现「统一前」差异。
 - 后续可把 OB 的 B 条件从「碰 top」收紧到「进入 zone 上半区/回踩不破下沿」，再用回测验证；届时只改 `smc_core` 一处。
 
 ## 七、复现

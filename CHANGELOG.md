@@ -6,6 +6,42 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 02:20
+
+**feat(chanlun): 分型版笔/中枢全部切到本地引擎（技术分析单一库收口）**
+
+### 改了什么
+1. `bin/chan_smc_index.py`
+   - `merge_bars()`：改为直接调用 `structure_indicators.merge_klines`（本地栈式包含处理），
+     输出仍为 `[high, low, last_i, hi_i, lo_i]`，所有下游无感
+   - `fractals()`：改为本地宽松分型（顶只看高点、底只看低点）
+   - `build_bi()`：改为本地成笔（同类取极值、异类间隔 ≥5 根合并K线，`MIN_BI_GAP=4`）
+   - 新增 `zhongshu_from_segs()`：直接调用本地 `detect_zhongshu`，逐笔链式延伸
+   - `chan_read()`：中枢由「最近 3 段重叠」改为「本地最近一个链式中枢」；
+     三买/三卖扫描从该中枢延伸结束位置开始，避免把中枢内部震荡当离开段
+2. `bin/chan_chart.py`：删除自带的包含/分型/成笔副本，`chan_geometry()` 全部复用
+   `chan_smc_index.merge_bars/build_bi/segs_from_bi/zhongshu_from_segs`
+3. `bin/tech_buypoint.py`：三买/三卖扫描的外层由「遍历所有 3 段窗口」改为
+   「遍历本地中枢链」；离开点限制在下一中枢之前，替代原逐段重算的「中枢递进校验」
+4. `reports/plot_pen_pivot_compare.py`：远程侧改为加载 `vendor/chan_smc_index.py` 快照，
+   本地侧为现行引擎；改完仍可复现「统一前」的笔/中枢差异
+
+### 为什么
+- 大佬定稿：「分型版也用本地的」「刚才说那两个不一致的（笔、中枢）也用本地的」
+- 此前只有 SMC/MACD/背驰统一，笔与中枢仍是远程简化实现（≥3 根成笔、只看最近 3 段）；
+  同一份 K 线在两套引擎下笔数 99 vs 67、中枢 1 vs 5，报告和实盘判定容易互相矛盾
+
+### 验证
+- `bin/chan_smc_index.build_bi` 与 `structure_indicators.build_bi` 在 sh510300 日线（1023 根）
+  与 60m（400 根）上逐端点一致；中枢列表逐项一致
+- sh510300 日线 `chan_read`：正常返回，中枢 4.61~4.84，周线底背驰 + 一买 4.03
+- 全库 `compileall` 通过；`tech_buypoint.find_third_buys/find_third_sells` 正常执行
+- 对比图统计（统一前）：远程 99 笔 / 1 个中枢，本地 67 笔 / 5 个中枢
+
+### 影响
+- 笔、中枢、三买/三卖的数量与位置会变化（这是本次目的）；一买/二买仍基于本地背驰口径
+- 远程快照仅保留在 `chanlun_multiscale/chanlun_backtest/vendor/`，不参与线上判定
+
 ## 2026-11-12 01:40
 
 **feat(lib): SMC 统一本地口径；分型版 MACD/背驰改用真实收盘价与本地规则**
