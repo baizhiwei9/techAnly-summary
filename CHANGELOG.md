@@ -6,6 +6,25 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 00:30
+
+**refactor(lib): 远程单源模块内置到 vendor/，库自包含不再依赖外部目录**
+
+### 改了什么
+1. `chanlun_multiscale/chanlun_backtest/vendor/`（新增）：内置远程原文 `chan_ma_trend_v2.py`、`chan_smc_index.py`（逐字节拷贝，md5 记录在同步脚本输出中）
+2. `chanlun_multiscale/chanlun_backtest/ma_trend.py`：查找顺序改为 `$CHAN_MA_BIN → vendor/ → 仓库 bin/ → 合并目录`，默认走库内单源
+3. `chanlun_multiscale/chanlun_backtest/sync_vendor.py`（新增）：上游更新后一条命令同步；`--check` 只比对 md5，漂移时退出码 1
+
+### 为什么
+- 目标：所有技术分析收敛到一个库、一套代码；部署环境（agent workspace）没有 `bin/`，原先 `import ma_trend` 直接报 `ImportError`
+- 内置后同一份 `chanlun_backtest` 在仓库、合并目录、agent workspace 都能独立运行
+
+### 同步方式
+```bash
+python -m chanlun_backtest.sync_vendor          # 同步
+python -m chanlun_backtest.sync_vendor --check  # CI/上线前校验漂移
+```
+
 ## 2026-11-12 00:05
 
 **feat(ma): 均线版改用远程原文口径 chan_ma_trend_v2（弃用旧简版 MA20/40/160）**

@@ -12,8 +12,10 @@
   · 买卖点 = 笔由下转上（一类买点）、上涨笔中快线回踩不碰慢线（延续点）、
              背驰（MACD 面积衰减）或笔翻下（卖点）
 
-模块不复制公式，**直接加载**远程单源模块，避免两套口径漂移。
-查找顺序：$CHAN_MA_BIN → 同仓 bin/ → 合并目录 techAnly-summary/bin/。
+口径单源：`chanlun_backtest/vendor/chan_ma_trend_v2.py`（远程原文逐字节拷贝），
+库内直接加载，不再依赖外部仓库路径。上游更新时用
+`python -m chanlun_backtest.sync_vendor` 重新同步。
+查找顺序：$CHAN_MA_BIN → vendor/ → 同仓 bin/ → 合并目录 techAnly-summary/bin/。
 """
 from __future__ import annotations
 
@@ -31,6 +33,7 @@ def _find_bin():
     up2 = os.path.dirname(up1)                  # 合并根目录 / workspace
     cands = [
         os.environ.get("CHAN_MA_BIN"),
+        os.path.join(here, "vendor"),           # 库内单源（优先）
         os.path.join(up1, "..", "bin"),         # 仓库布局：<repo>/chanlun_multiscale/../bin
         os.path.join(up1, "..", "..", "bin"),   # 兜底再往上一层
         os.path.join(up2, "techAnly-summary", "bin"),   # 合并目录布局
