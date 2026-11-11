@@ -8,6 +8,19 @@
 
 ## 2026-11-11 21:16
 
+**chore: 移除已删除的 sector_buypoint_top20.py 登记**
+
+### 改了什么
+- gh_publish_techanly.py 的 FILES 去掉 bin/sector_buypoint_top20.py（该临时脚本已删除，能力已并入 tech_buypoint.py 的 --targets/--top/--grid）
+
+### 为什么
+- 大佬 2026-11-11：不该另写脚本，技能库传参就该支持
+
+### 影响文件
+- bin/gh_publish_techanly.py
+
+## 2026-11-11 21:16
+
 **feat(tech_buypoint): 支持多板块合并 --targets / --top / --grid（多行业一起挑买点个股 Top N + 网格图）**
 
 ### 改了什么
