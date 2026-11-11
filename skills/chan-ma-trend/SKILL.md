@@ -501,5 +501,13 @@ swings = [(low, high) for 相邻两段 if a.dir=="up" and b.dir=="dn"]
 
 ## 十八、📤 发布
 
-本技能的权威实现 `bin/chan_ma_trend_v2.py` 在 **tech-summary** 仓库里同步维护：
-https://github.com/baizhiwei9/tech-summary —— 改了这个文件要一起发（见 tech-summary 技能「发布约定」）。
+本技能的权威实现 `bin/chan_ma_trend_v2.py` 在 **techAnly-summary** 仓库里同步维护：
+https://github.com/baizhiwei9/techAnly-summary —— 改了这个文件要一起发（见 tech-summary 技能「发布约定」）。
+
+单标的**出图**用 `bin/chan_ma_chart.py`：
+```bash
+python3 bin/chan_ma_chart.py --target 中证500          # 指数
+python3 bin/chan_ma_chart.py --target 600519 --n 300   # 个股
+python3 bin/chan_ma_chart.py --target 中证500 --push   # 出图 + 推 QQ/飞书
+```
+画的是：K线 + MA10/MA20/MA160 + 笔（橙）+ 线段（深蓝粗）+ 中枢（黄框）+ 走势类型底色 + 角标结论。

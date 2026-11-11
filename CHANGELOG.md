@@ -2,6 +2,31 @@
 
 > 每次改动必须在此登记：改了什么、为什么改、影响哪个文件。
 
+## 2026-11-11 12:56
+
+**feat: 统一到 techAnly-summary 单库 + 新增缠论均线版单图**
+
+### 改了什么
+- 新增 bin/chan_ma_chart.py：缠论·均线版**单标的出图**（只画均线版一层，图大看得清）
+  · 笔 = MA5/10 双穿 MA20 ｜ 线段 = MA20/40 双穿 MA80 ｜ 大级别 = 价格 vs MA160
+  · K线 + MA10/MA20/MA160 + 笔(橙) + 线段(深蓝粗) + 中枢(黄框) + 走势类型底色带
+  · 角标：可交易性 / 大级别 MA160 排列 / 当前走势+笔线段数 / 当前位置+关键位
+  · 用法 --target 支持中文宽基名 / 000905.SH / 600519；--push 出图并推 QQ+飞书
+- bin/push_image.py 补入发布清单（原先两个库都没有，wyckoff_buypoint_v2 import 它会崩）
+  · 脱敏：QQ_TARGET / QQ_ACCOUNT / FEISHU_CHAT 默认值清空，全走环境变量
+- skills/tech-summary/SKILL.md 第八节发布约定：仓库地址改 techAnly-summary，脚本改 gh_publish_techanly.py
+- skills/chan-ma-trend/SKILL.md 第十八节：仓库地址改 techAnly-summary + 补 chan_ma_chart.py 用法
+
+### 为什么
+大佬 2026-11-11：技术分析只保留 techAnly-summary 一个库（多余的那个删掉），
+以后技术分析全部用这个；并要求出一版缠论均线版画图验收。
+
+### 影响文件
+- bin/chan_ma_chart.py（新增）
+- bin/push_image.py（新增入库）
+- skills/tech-summary/SKILL.md
+- skills/chan-ma-trend/SKILL.md
+
 ## 2026-11-10 16:16
 
 **feat: 行业/个股过滤规则落地（周线一二三买+日线只认三买 / 个股VWAP −1σ）+ 盘中吸筹买点v2**

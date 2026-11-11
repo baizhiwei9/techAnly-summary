@@ -384,11 +384,14 @@ PY
 
 ## 八、发布约定（每次改完必发 GitHub）
 
-仓库：https://github.com/baizhiwei9/tech-summary （private）
+仓库：https://github.com/baizhiwei9/techAnly-summary （**唯一权威库**，public）
+
+> 2026-11-11 大佬定稿：技术分析只保留 `techAnly-summary` 这一个库，其余（`tech-summary`）已删除。
+> 以后所有技术分析代码、技能、出图，全部以这个库为准。
 
 ```bash
-python3 bin/gh_publish_techsummary.py --msg "feat: xxx" --dry-run          # 先看差异
-python3 bin/gh_publish_techsummary.py --msg "feat: xxx" \
+python3 bin/gh_publish_techanly.py --msg "feat: xxx" --dry-run          # 先看差异
+python3 bin/gh_publish_techanly.py --msg "feat: xxx" \
   --notes "### 改了什么\n- ...\n\n### 为什么\n- ...\n\n### 影响文件\n- bin/xxx.py"
 ```
 
