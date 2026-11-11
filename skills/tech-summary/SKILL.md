@@ -13,7 +13,7 @@ description: "技术分析汇总：缠论分型版+均线版+SMC+VWAP六轨四�
 | `bin/tech_summary.py` | **单标的**四层分析（日线+小时线）+ 两张图 + 飞书卡片 |
 | `bin/tech_buypoint.py` | **买点分析**：指数/行业/概念/个股，先判板块有无买点再下钻个股 |
 | `bin/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
-| `bin/buypoint_chart.py` | 买点图（日线 / 60m / 均线版三面板） |
+| `bin/buypoint_chart.py` | 买点图（日线 / 60m / 均线版三面板）+ `draw_stock_grid()` 多标的网格图 |
 | `bin/wyckoff_buypoint_v2.py` | **盘中吸筹买点分析 v2**：威科夫吸筹 → 四层过滤 → Top10 行业 → Top20 个股 → 多子图 |
 
 ---
@@ -199,6 +199,13 @@ python3 bin/tech_summary.py --target 600519
 
 # 买点分析
 python3 bin/tech_buypoint.py --target 传媒                 # 行业：过闸后下钻个股
+
+# ⭐ 多个行业合并 → 有买点个股 Top20 + 网格图（大佬 2026-11-11）
+python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per-page 8 --out x.md
+#   --targets 逗号分隔多个行业/概念/指数，成分股按代码去重（影视院线 ⊂ 传媒）
+#   --top N     只取有买点的前 N 只（排序：三买1>一买2>二买3 → 买点新鲜度 → 质量分）
+#   --grid      出网格图（每只一个子图：K线+缠论分型版+VWAP六轨+量），--per-page 控制每页几只
+#   板块没买点不阻断（多行业模式看个股自身结构），但报告会标「板块效应偏弱」
 python3 bin/tech_buypoint.py --target 文化传媒概念          # 概念
 python3 bin/tech_buypoint.py --target 中证500              # 指数成分股
 python3 bin/tech_buypoint.py --target 传媒 --chart --chart-top 3
@@ -267,6 +274,29 @@ python3 bin/tech_intraday_buypoint.py --with-concept --limit 20
 **开关**：`--stock-per N`（每行业个股数，默认 3）｜`--stock-cap N`（每板块最多扫几只，默认 40）｜`--no-stock`（只看行业）
 
 ---
+
+### 3.15 多板块合并 → 买点个股 Top N + 网格图（`--targets`，大佬 2026-11-11）
+
+> 需求原话：「用技术分析汇总分析影视传媒这两个行业，选出符合条件有买点的股票前 20，把图也画出来」
+
+**不再为这种需求另写脚本** —— `tech_buypoint.py` 加三个参数就够：
+
+| 参数 | 作用 |
+|---|---|
+| `--targets a,b` | 多个行业/概念/指数合并（逗号分隔，中文逗号也认）；成分股按 **代码去重** |
+| `--top N` | 只取**有买点**的前 N 只（0=全部） |
+| `--grid` / `--per-page` | 出网格图，每只一个子图（K线+缠论分型版+VWAP六轨+量），默认每页 8 只 |
+
+```bash
+python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per-page 8 --out x.md
+```
+
+行为要点：
+- **板块没买点不阻断**（多行业模式看的是个股自身结构），但报告首节会标「板块效应偏弱」+ 列出被否原因 + 板块卖点
+- 排序 `pick_sort_key`：`买点等级(三买1>一买2>二买3) → 买点年龄 → 质量分 → 涨幅`
+- 个股附加展示：VWAP 偏离 σ（≥+3σ 全平区 / ≥+2σ 减半区 / ≤−0.8σ 贴近止损）、站上 MA20/MA160、多头排列、h1 买点
+- 报告标题「📊 买点分析（多板块合并）」，署名 `📎 来自 OpenClaw.Deepseek`
+- ⚠️ `board_metrics()` 的字段**不能叫 align**（`analyse_one` 的 align 是 dict），否则 `score_quality` 崩；用 `align_state` + `row_align_state()` 兼容
 
 ### 3.2 盘中吸筹买点分析 v2（`bin/wyckoff_buypoint_v2.py`）
 

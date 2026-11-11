@@ -390,3 +390,143 @@ def draw_buypoint_chart(disp, day, h1=None, out=None, n_day=120, n_h1=110, n_ma=
     fig.savefig(out, dpi=125, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return out
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  多标的网格图：每只一个子图（日线 K 线 + 缠论分型版 + VWAP 六轨 + 量）
+#  用于「多个行业合并后，选出有买点的前 N 只」一次性出图
+# ══════════════════════════════════════════════════════════════════════
+def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2):
+    """picks: [{'name','code','df',...}]；df 为 [dt,open,high,low,close,volume] 日线
+
+    图里画：K线（涨跌上色）+ 缠论分型版（笔/中枢/买卖点）+ VWAP 六轨 + 量。
+    与 tech_summary / tech_buypoint 同口径，0 token。
+    """
+    if not picks:
+        return None
+    import smc_core as S
+    from chan_chart import chan_geometry
+
+    n = len(picks)
+    ncol = 2 if (n > 1 and ncol >= 2) else 1
+    nrow = (n + ncol - 1) // ncol
+    fig, axes = plt.subplots(nrow, ncol, figsize=(9.4 * ncol, 4.3 * nrow), squeeze=False)
+    axes = axes.ravel()
+
+    for k, s in enumerate(picks):
+        ax = axes[k]
+        d = s.get("df")
+        if d is None or len(d) < 60:
+            ax.text(.5, .5, "取数失败", ha="center", transform=ax.transAxes)
+            ax.axis("off")
+            continue
+        total = len(d)
+        start = max(0, total - n_show)
+        view = d.iloc[start:].reset_index(drop=True)
+        nv = len(view)
+        x = np.arange(nv)
+        o = view["open"].values.astype(float)
+        h = view["high"].values.astype(float)
+        lo = view["low"].values.astype(float)
+        c = view["close"].values.astype(float)
+        prev_c = np.concatenate([[np.nan], c[:-1]])
+        if start > 0:
+            prev_c[0] = float(d["close"].iloc[start - 1])
+        cols = [RED if (np.isfinite(prev_c[i]) and c[i] >= prev_c[i]) else GRN for i in range(nv)]
+        bw = 0.62
+        for i in range(nv):
+            ax.vlines(x[i], lo[i], h[i], color=cols[i], lw=0.7, zorder=3)
+            b0, b1 = min(o[i], c[i]), max(o[i], c[i])
+            if abs(b1 - b0) < 1e-9:
+                b1 = b0 + max((h[i] - lo[i]) * 1e-3, 1e-6)
+            ax.add_patch(Rectangle((x[i] - bw / 2, b0), bw, b1 - b0,
+                                   facecolor=cols[i], edgecolor=cols[i], lw=0.35, zorder=4))
+        # VWAP 六轨（窗口 60）
+        try:
+            vw = S.vwap_tracks(d)
+            for key, col, lw_, ls, lab in (("up3", "#8e0000", 0.9, "-", "+3σ"),
+                                           ("up2", "#c0392b", 0.85, "--", "+2σ"),
+                                           ("up1", "#e08b7a", 0.7, ":", "+1σ"),
+                                           ("vwap", "#222222", 1.5, "-", "VWAP"),
+                                           ("dn1", "#1e8449", 0.85, "--", "−1σ"),
+                                           ("dn2", "#0b4f2c", 0.9, "-", "−2σ")):
+                v_ = vw[key][start:]
+                if not np.all(np.isnan(v_)):
+                    ax.plot(x, v_, color=col, lw=lw_, ls=ls, zorder=5,
+                            label=lab if k == 0 else None)
+        except Exception:
+            pass
+        # 缠论分型版：笔 / 中枢 / 买卖点
+        try:
+            geo = chan_geometry(d)
+            bx, by = [], []
+            for p in geo["bi"]:
+                xi = p["orig"] - start
+                if -2 <= xi <= nv + 2:
+                    bx.append(xi)
+                    by.append(p["price"])
+            if len(bx) >= 2:
+                ax.plot(bx, by, color=BLUE, lw=1.3, zorder=6, label="缠论笔" if k == 0 else None)
+            if geo["zs"] and geo["zs_x"]:
+                zs0, zs1 = geo["zs"]
+                x0 = max(geo["zs_x"][0] - start, -0.5)
+                x1 = min(geo["zs_x"][1] - start, nv)
+                if x1 > x0:
+                    ax.add_patch(Rectangle((x0, zs0), x1 - x0, zs1 - zs0,
+                                           facecolor="#ffd24d", alpha=0.25,
+                                           edgecolor="#b8860b", lw=1.1, zorder=3))
+                    ax.axhline(zs1, color="#b8860b", lw=0.6, ls="--", alpha=0.7, zorder=4)
+                    ax.axhline(zs0, color="#b8860b", lw=0.6, ls="--", alpha=0.7, zorder=4)
+        except Exception:
+            geo = None
+        # 买点：只画**过闸门**的（与报告同口径，别把几百根前的老买点画出来）
+        try:
+            _cl = float(d["close"].iloc[-1])
+            for b in TS.rank_buys(TS.chan_fx(d, "day").get("buy_list") or [],
+                                  TS.ma20_state(d), close=_cl):
+                if not b.get("accept"):
+                    continue
+                cand = [p for p in (geo or {"bi": []})["bi"] if p["type"] == -1]
+                if not cand:
+                    continue
+                pt = min(cand, key=lambda p: abs(p["price"] - b["level"]))
+                xi = pt["orig"] - start
+                if not (-1 <= xi <= nv):
+                    continue
+                ax.scatter([xi], [pt["price"]], s=200, marker=MOON, color="#0b6e0b",
+                           edgecolor="#0b6e0b", lw=1.5, zorder=10)
+                ax.annotate("%s %.2f" % (b["tag"], b["level"]), xy=(xi, pt["price"]),
+                            xytext=(0, -20), textcoords="offset points", ha="center",
+                            fontsize=7, color="#0b6e0b", fontweight="bold", zorder=11,
+                            bbox=dict(boxstyle="round,pad=0.18", fc="white",
+                                      ec="#0b6e0b", alpha=0.92, lw=0.7))
+        except Exception:
+            pass
+        # 标题：名称 代码 涨幅 ｜ 买点摘要 ｜ VWAP 偏离
+        pct = s.get("pct")
+        if pct is None:
+            pct = (c[-1] / prev_c[-1] - 1) * 100 if np.isfinite(prev_c[-1]) else 0.0
+        ax.set_title("%s(%s) %+.2f%% ｜ %s ｜ VWAP %+.2fσ ｜ %s"
+                     % (s.get("name", ""), s.get("code", ""), pct,
+                        s.get("fx_txt") or "-", s.get("vw_z", 0) or 0, s.get("ind", "")),
+                     fontsize=9, loc="left", pad=4)
+        ax.grid(True, ls=":", color="#dddddd", alpha=0.6)
+        ax.tick_params(labelsize=6.5)
+        if nv > 12:
+            step = max(1, nv // 8)
+            tks = list(range(0, nv, step))
+            ax.set_xticks(tks)
+            ax.set_xticklabels([pd.Timestamp(view["dt"].iloc[i]).strftime("%m-%d") for i in tks],
+                               fontsize=6.5, rotation=0)
+        if k == 0:
+            ax.legend(loc="upper left", fontsize=6.5, ncol=4, framealpha=0.85)
+
+    for j in range(n, len(axes)):
+        axes[j].axis("off")
+    fig.suptitle(title or ("买点个股结构图（缠论分型版 + VWAP 六轨）· %s"
+                           % pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")),
+                 fontsize=13, y=0.998)
+    fig.tight_layout(rect=(0, 0, 1, 0.985))
+    fig.savefig(out_path, dpi=115, facecolor="white", bbox_inches="tight")
+    plt.close(fig)
+    return out_path

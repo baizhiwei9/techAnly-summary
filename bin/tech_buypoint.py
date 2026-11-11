@@ -1642,6 +1642,89 @@ def scan_codes(codes, names=None):
     return rows
 
 
+def _sector_parts(name, kind, extra, a):
+    """解析一个标的 → (kind, name, codes, names, 板块指数代码)
+
+    多行业模式复用：把「行业名/概念名」统一解析成成分股清单。
+    """
+    if kind == "industry":
+        codes = extra.get("codes") or []
+        swmap = load_sw_index_map()
+        icode = swmap.get(name) or swmap.get(strip_roman(name))
+    elif kind == "concept":
+        mem = concept_members(extra.get("concept_code") or "")
+        codes = [c for c, _ in mem]
+        icode = extra.get("concept_code")
+    else:
+        codes, icode = extra.get("codes") or [], None
+    nm_map = name_map()
+    names = extra.get("names") or {c: nm_map.get(c, "") for c in codes}
+    return kind, name, codes, names, icode
+
+
+def resolve_one(t):
+    """把一个 --target 字符串解析成 (kind, name, code, extra)，概念码放进 extra"""
+    kind, name, code, extra = classify_target(t)
+    if kind == "concept":
+        extra = dict(extra or {})
+        extra["concept_code"] = code
+    return kind, name, code, extra
+
+
+def board_metrics(df):
+    """个股附加信息（仅用于展示/排序加分）：VWAP 偏离 σ、MA20/MA160、多头排列"""
+    import smc_core as S
+    # ⚠️ 键名不能碰 analyse_one 的字段：align 是 dict（含 state），这里另起 align_state
+    out = {"vw_z": None}
+    try:
+        dd = M.add_ind(df)
+        al = M.ma_alignment(dd)
+        out["align_state"] = al.get("state")
+        ma20 = float(dd["ma20"].iloc[-1]) if pd.notna(dd["ma20"].iloc[-1]) else None
+        ma160 = float(dd["ma160"].iloc[-1]) if pd.notna(dd["ma160"].iloc[-1]) else None
+        cl = float(df["close"].iloc[-1])
+        out["above_ma20"] = (ma20 is not None and cl > ma20)
+        out["above_ma160"] = (ma160 is not None and cl > ma160)
+    except Exception:
+        pass
+    try:
+        vw = S.vwap_tracks(df)
+        v, sg = float(vw["vwap"][-1]), float(vw["sigma"][-1])
+        if sg > 0 and v > 0:
+            out["vw_z"] = (float(df["close"].iloc[-1]) - v) / sg
+    except Exception:
+        pass
+    return out
+
+
+def row_align_state(r):
+    """兼容两种字段：analyse_one 给 dict(align.state)，board_metrics 给字符串 align_state"""
+    al = r.get("align")
+    if isinstance(al, dict):
+        return al.get("state")
+    return r.get("align_state") or (al if isinstance(al, str) else None)
+
+
+def merge_sector_rows(sec_list):
+    """多行业合并：按代码去重（影视院线 ⊂ 传媒 会重叠），保留更靠前行业的那条"""
+    seen, out = set(), []
+    for sec, rows in sec_list:
+        for r in rows:
+            key = (r.get("code"), r.get("wk") and r["wk"].get("level"))
+            if r.get("code") in seen:
+                continue
+            seen.add(r.get("code"))
+            r["ind"] = sec.get("name")
+            out.append(r)
+    return out
+
+
+def pick_sort_key(r):
+    """可买个股排序：买点等级(三买1>一买2>二买3) → 新鲜度 → 质量分 → 涨幅"""
+    b = r.get("best") or {}
+    return (b.get("pri", 9), b.get("age", 999), -score_quality(r), -r.get("pct", 0))
+
+
 def is_index_code(code):
     """指数代码规则（比 datahub.is_index 可靠）
 
@@ -1806,6 +1889,198 @@ def scan_all_industries(a):
     return 0
 
 
+def run_multi(a):
+    """多行业/概念合并 → 全市场有买点个股 Top N + 网格图（大佬 2026-11-11）
+
+    流程与单行业完全一致（行业先判自身买点 → 再下钻成分股），只是：
+      ① 支持一次传多个 --targets（逗号分隔），成分股按代码去重（影视院线 ⊂ 传媒）
+      ② --top N 只取有买点的前 N 只（排序：三买>一买>二买 → 买点新鲜度 → 质量分）
+      ③ --grid 出一张网格图（每只一个子图：K线+缠论分型版+VWAP六轨+量）
+    """
+    tgs = [x.strip() for x in str(a.targets).replace("，", ",").split(",") if x.strip()]
+    sec_list, all_codes, all_names, code_ind = [], [], {}, {}
+    for t in tgs:
+        try:
+            kind, name, code, extra = resolve_one(t)
+        except SystemExit as e:
+            log("[跳过] %s：%s" % (t, e))
+            continue
+        _k, _n, codes, names, icode = _sector_parts(name, kind, extra, a)
+        if not codes:
+            log("[跳过] %s：没有成分股" % t)
+            continue
+        # 行业自身买点（不改闸门：行业没买点也照样扫，因为多行业模式下看的是个股自身结构）
+        sec = _sector_block(kind, name, icode, codes, names) if icode else \
+            {"ok": False, "err": "无板块指数"}
+        sec["codes"] = icode
+        sec_list.append(sec)
+        log("[行业] %s %s ｜ 成分 %d 只 ｜ 指数 %s ｜ 自身买点 %s"
+            % (name, extra.get("lvl", ""), len(codes), icode or "无",
+               (PRI_MARK.get(sec["best"]["pri"], sec["best"]["tag"]) if sec.get("best") else "无")))
+        for c in codes:
+            code_ind.setdefault(c, name)
+            if c not in all_names:
+                all_names[c] = names.get(c) or name_map().get(c, "")
+                all_codes.append(c)
+    if not all_codes:
+        raise SystemExit("没有可扫的成分股")
+
+    log("[合并] %d 个板块 → 去重后 %d 只成分股" % (len(sec_list), len(all_codes)))
+    rows = scan_codes(all_codes, all_names)
+
+    # 附加展示信息（VWAP 偏离 / 均线状态）
+    hist = _today_hist()
+    ok_rows = [r for r in rows if r.get("ok")]
+    for r in ok_rows:
+        r["ind"] = code_ind.get(r.get("code"), "")
+        try:
+            d = load_daily(r["code"], hist)
+            if d is not None:
+                r.update(board_metrics(d))
+                r["_d"] = d
+        except Exception:
+            pass
+
+    buy = [r for r in ok_rows if r.get("best")]
+    buy.sort(key=pick_sort_key)
+    picks = buy[:a.top] if a.top > 0 else buy
+
+    txt = render_multi(sec_list, ok_rows, picks, a)
+
+    # ── 出图 ──
+    imgs = []
+    if a.grid or a.chart:
+        for sec in sec_list:
+            if not sec.get("codes"):
+                continue
+            p = chart_sector(sec.get("kind") or "industry", sec["name"], sec["codes"])
+            if p:
+                imgs.append(p)
+                log("[图] 板块 %s → %s" % (sec["name"], p))
+        if picks:
+            import buypoint_chart as BC
+            pages = [picks[i:i + a.per_page] for i in range(0, len(picks), a.per_page)] or []
+            for pi, page in enumerate(pages, 1):
+                items = []
+                for r in page:
+                    b = r.get("best") or {}
+                    fx_txt = "%s %.2f" % (b.get("tag", "-"), b.get("level", 0))
+                    wk = r.get("wk")
+                    items.append({"name": r.get("name") or r["code"], "code": r["code"],
+                                  "df": r.get("_d"), "pct": r.get("pct"),
+                                  "vw_z": r.get("vw_z") or 0,
+                                  "fx_txt": fx_txt, "ind": r.get("ind") or "",
+                                  "wk": wk})
+                tag = "_".join([s.get("name", "") for s in sec_list])[:24]
+                out = os.path.join(WS, ".cache", "charts",
+                                   "buypoint_grid_%s_p%d_%s.png"
+                                   % (tag or "multi", pi,
+                                      datetime.now().strftime("%Y%m%d")))
+                p = BC.draw_stock_grid(items, out,
+                                       title="有买点个股 Top%d（第 %d/%d 页）· %s ｜缠论分型版 + VWAP 六轨"
+                                             % (len(picks), pi, len(pages),
+                                                datetime.now().strftime("%Y-%m-%d %H:%M")))
+                if p:
+                    imgs.append(p)
+                    log("[图] 网格 p%d → %s" % (pi, p))
+    if imgs:
+        txt += "\n\n📎 图（%d 张）：\n" % len(imgs) + "\n".join(os.path.basename(x) for x in imgs)
+
+    print(txt)
+    if a.out:
+        os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
+        open(a.out, "w", encoding="utf-8").write(txt + "\n")
+        log("[存档]", a.out)
+    if a.push:
+        title = "🌙 买点个股 Top%d · %s" % (len(picks), "+".join(s.get("name", "") for s in sec_list))
+        okk, chat = push_feishu(title, txt, imgs or None, a.chat,
+                                "green" if picks else "blue")
+        log("[飞书]", "已推送" if okk else "推送失败", "→", chat)
+        if not okk:
+            return 2
+    return 0
+
+
+def render_multi(sec_list, rows, picks, a):
+    """多行业合并报告"""
+    L = []
+    A = L.append
+    A("📊 买点分析（多板块合并）· %s" % datetime.now().strftime("%Y-%m-%d %H:%M"))
+    A("口径：① 三买 > ② 一买（须 MA20 向上）> ③ 二买（胜率最低）｜ 卖点：三卖 > 一卖 > 二卖")
+    A("板块：%s" % " + ".join(s.get("name", "") for s in sec_list))
+    A("")
+    A("═══ 一、各板块自身有没有买点 ═══")
+    for s in sec_list:
+        if not s.get("ok"):
+            A("  ⛔ %s：%s" % (s.get("name"), s.get("err")))
+            continue
+        b = s.get("best")
+        A("  %s（%s）收 %.2f（%+.2f%%）｜%s｜中枢 %s｜MA20 %s"
+          % (s["name"], s["code"], s["close"], s["pct"], s.get("stage") or "-",
+             ("%.2f~%.2f" % tuple(s["zs"])) if s.get("zs") else "-",
+             ("%.2f %s" % (s["ma20"].get("ma20") or 0,
+                           "向上" if s["ma20"].get("up") else "未向上"))
+             if s["ma20"].get("ok") else "-"))
+        if b:
+            A("    🌙 板块买点：%s %.2f（%d根前，现价%+.1f%%）→ ✅ 板块效应成立"
+              % (PRI_MARK.get(b["pri"], b["tag"]), b["level"], b.get("age", 0), b.get("gap", 0)))
+        else:
+            A("    🌙 板块买点：无 → ⚠️ 板块效应偏弱，个股买点打折看")
+            den = [x for x in (s.get("buys") or []) if not x.get("accept")]
+            if den:
+                A("    （见到但被否：%s）" % "；".join(
+                    "%s %.2f → %s" % (PRI_MARK.get(x["pri"], x["tag"]), x["level"],
+                                     (x.get("why") or "").split("（")[0]) for x in den[:3]))
+        sb = s.get("best_sell")
+        if sb:
+            A("    ⛔ 板块卖点：%s %.2f（%d根前，现价距卖点 %+.1f%%）→ 板块层面有风险"
+              % (sb.get("tag"), sb.get("level", 0), sb.get("age", 0), sb.get("gap", 0)))
+        A("")
+    ok = [r for r in rows if r.get("ok")]
+    n_buy = len([r for r in ok if r.get("best")])
+    A("═══ 二、筛选统计 ═══")
+    A("  成分股（去重）%d 只 → 数据有效 %d 只 → 有买点 %d 只 → 取前 %d"
+      % (len(rows), len(ok), n_buy, len(picks)))
+    A("")
+    A("═══ 三、有买点个股 Top%d ═══" % len(picks))
+    for i, r in enumerate(picks, 1):
+        b = r["best"]
+        z = r.get("vw_z")
+        zt = ("VWAP %+.2fσ" % z) if z is not None else "VWAP -"
+        if z is not None:
+            if z >= 3:
+                zt += " ⚠️+3σ全平区·不追"
+            elif z >= 2:
+                zt += " ⚠️+2σ减半区·追高慎"
+            elif z <= -0.8:
+                zt += " ⚠️贴近−1σ止损线"
+        q = []
+        if r.get("above_ma20"):
+            q.append("站上MA20")
+        if r.get("above_ma160"):
+            q.append("站上MA160")
+        if row_align_state(r) == "多头排列":
+            q.append("多头排列")
+        h1b = (r.get("h1") or {}).get("best")
+        if h1b:
+            q.append("h1 %s" % PRI_MARK.get(h1b["pri"], h1b.get("tag")))
+        A("  %2d) %s(%s) %+.2f%% ｜%s｜ %s %.2f（%d根前，现价%+.1f%%）"
+          % (i, r["name"] or r["code"], r["code"], r.get("pct") or 0,
+             r.get("ind") or "-", PRI_MARK.get(b["pri"], b.get("tag")),
+             b["level"], b.get("age", 0), b.get("gap", 0)))
+        A("      %s%s" % (zt, ("（%s）" % "、".join(q)) if q else ""))
+    if not picks:
+        A("  无")
+    bad = [r for r in rows if not r.get("ok")]
+    if bad:
+        A("")
+        A("  （另有 %d 只停牌/数据不足）" % len(bad))
+    A("")
+    A("注：二买胜率最低（回踩尚未确认转多），仅作次优观察；三买确认度最高。")
+    A("⚠️ 技术结构扫描，不构成投资建议。")
+    return "\n".join(L)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", "-t", default=None,
@@ -1825,6 +2100,15 @@ def main():
                     help="出图（日线/小时线/均线版 三面板一张图）")
     ap.add_argument("--chart-top", type=int, default=3,
                     help="给前 N 只可买个股出图（默认 3，0=不出）")
+    ap.add_argument("--targets", default=None,
+                    help="**多个行业/概念合并**（逗号分隔），如 传媒,影视院线；"
+                         "配合 --top N 取全市场前 N 只 + --grid 出网格图")
+    ap.add_argument("--top", type=int, default=0,
+                    help="--targets 模式下：只取有买点的前 N 只（0=全部）")
+    ap.add_argument("--grid", action="store_true",
+                    help="--targets 模式下：出一张多标的网格图（每只一个子图）+ 板块指数图")
+    ap.add_argument("--per-page", type=int, default=8,
+                    help="网格图每页几只（默认 8，2 列）")
     ap.add_argument("--push", action="store_true")
     ap.add_argument("--chat", default=None)
     ap.add_argument("--out", default=None)
@@ -1841,6 +2125,10 @@ def main():
 
     if a.scan_industries:
         return scan_all_industries(a)
+
+    # ── 多标的合并模式（大佬 2026-11-11：两个行业一起看，挑有买点的前 N 只 + 网格图）──
+    if a.targets:
+        return run_multi(a)
 
     if a.codes:
         # ⚠️ 6 位纯代码要归一成 ts_code（缓存文件名就是 ts_code：600519.SH.csv）

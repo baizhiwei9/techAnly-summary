@@ -6,6 +6,28 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-11 21:16
+
+**feat(tech_buypoint): 支持多板块合并 --targets / --top / --grid（多行业一起挑买点个股 Top N + 网格图）**
+
+### 改了什么
+- `tech_buypoint.py` 新增三个参数，**不需要新脚本就能做「多个行业 → 有买点个股 Top N → 出图」**：
+  - `--targets 传媒,影视院线`：多行业/概念/指数合并，成分股按代码去重（影视院线 ⊂ 传媒）
+  - `--top N`：只取有买点前 N 只；排序 = 买点等级(三买1>一买2>二买3) → 买点年龄 → 质量分 → 涨幅
+  - `--grid` / `--per-page`：出网格图，每只一个子图（K线+缠论分型版+VWAP六轨+量）
+- 新增 `run_multi()` / `render_multi()` / `resolve_one()` / `_sector_parts()` / `board_metrics()` / `row_align_state()` / `pick_sort_key()`
+- `buypoint_chart.py` 新增 `draw_stock_grid()`：多标的一页网格图
+- SKILL.md 新增 §3.15 用法说明
+
+### 为什么
+- 大佬 2026-11-11：「技术分析汇总本来就是传参数的事，不该另写脚本」
+- 原脚本只能单板块、且出图只给单只三面板；多板块合并 / Top N / 网格图属于缺参能力，补在库里而不是复制一份
+
+### 影响文件
+- bin/tech_buypoint.py
+- bin/buypoint_chart.py
+- skills/tech-summary/SKILL.md
+
 ## 2026-11-11 20:52
 
 **feat: 新增 sector_buypoint_top20.py —— 指定行业→有买点个股 Top20 + 分页出图**
