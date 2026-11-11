@@ -1,5 +1,9 @@
 """
 技术指标计算模块（回测系统）
+
+⚠️ 旧简版：MA20/40/160 + MACD(12,26,9)，仅保留给历史因子回测。
+「缠论·均线版」已改用新版：见 chanlun_backtest/ma_trend.py
+（笔=MA5/10双穿MA20、线段=MA20/40双穿MA80、大级别=价格vsMA160、MACD 10/20/5）。
 """
 import pandas as pd
 import numpy as np

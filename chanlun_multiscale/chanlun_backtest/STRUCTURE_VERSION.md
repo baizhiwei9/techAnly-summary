@@ -1,5 +1,12 @@
 # 缠论结构版（定版）集成规格
 
+> **2026-11-11 更新：均线版已换新版。**
+> 旧简版（MA20/40/160 + MACD 12/26/9 + 资金面因子）仅保留在 `indicators.py`/`signals.py`
+> 供历史回测，不再代表「缠论·均线版」。新均线版见 `chanlun_backtest/ma_trend.py`：
+> 直接复用远程 `bin/chan_ma_trend_v2.py` 原文口径——笔 = MA5/MA10 双穿 MA20、
+> 线段 = MA20/40 双穿 MA80、大级别 = 价格 vs MA160、MACD 10/20/5。
+> 命令行：`python -m chanlun_backtest.run_ma_scan [--level week]`。
+
 ## 背景
 现有 chanlun_backtest/ 框架使用均线版(MA20/MA40/MA160 + 资金面因子)。
 用户要求改为结构版(MACD(20,40,5) + 纯结构缠论笔/中枢/买卖点)。

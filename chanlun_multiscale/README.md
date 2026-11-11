@@ -20,6 +20,8 @@ techAnly_合并多尺度交易/
     │   ├── structure_signals.py      # v1 信号（实盘在用）
     │   ├── structure_signals_v2.py   # v2 候选（仅对比，未接实盘）
     │   ├── signal_gates.py           # 15m/1h/日线/周线 四级交易闸门
+    │   ├── ma_trend.py               # 缠论·均线版（新版，复用远程 chan_ma_trend_v2）
+    │   ├── run_ma_scan.py            # 均线版扫描（日线/周线）
     │   └── compare_v2_batch2.py      # 第二批旧/新对比出图
     ├── Strategy/
     │   └── chanlun_fractal_Strategy.py  # 生产监控：期货+股指期货+ETF，四级周期
@@ -38,6 +40,9 @@ techAnly_合并多尺度交易/
   - 日线：一/二/三买 + 卖点，年龄/距买点距离/MA20 方向/结构未破
   - 周线：只认一买/二买（卖点对称），闸门放宽
 - 周线由日线 `resample("W-FRI")` 合成，不单独取数
+- 均线版 = 远程原文口径（`bin/chan_ma_trend_v2.py`）：笔 = MA5/MA10 双穿 MA20、
+  线段 = MA20/40 双穿 MA80、大级别 = 价格 vs MA160、MACD 10/20/5；
+  本地通过 `chanlun_backtest/ma_trend.py` 直接加载，不复制公式
 
 ## 运行
 
@@ -49,6 +54,10 @@ python strategies/run_level.py --symbol 510300 --level day
 # 本地结构版每日扫描
 cd chanlun_multiscale
 python -m chanlun_backtest.run_daily_scan
+
+# 本地均线版（新版）扫描
+python -m chanlun_backtest.run_ma_scan --level day
+python -m chanlun_backtest.run_ma_scan --level week --symbol sh510300
 
 # 第二批新旧信号对比（只读，不写实盘状态）
 python -m chanlun_backtest.compare_v2_batch2

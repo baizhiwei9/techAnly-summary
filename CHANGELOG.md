@@ -6,6 +6,38 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 00:05
+
+**feat(ma): 均线版改用远程原文口径 chan_ma_trend_v2（弃用旧简版 MA20/40/160）**
+
+### 改了什么
+1. `chanlun_multiscale/chanlun_backtest/ma_trend.py`（新增）：直接加载 `bin/chan_ma_trend_v2.py`，不复制公式；提供 `normalize / prepare / analyze / recent_signals / format_report`，支持日线、周线（`resample_week` 合成）
+2. `chanlun_multiscale/chanlun_backtest/run_ma_scan.py`（新增）：CLI 扫描（默认宽基 ETF，日线；`--level week` 周线；`--json` 机器可读）
+3. `chanlun_multiscale/chanlun_backtest/indicators.py`：加旧简版警示，标明仅保留历史回测
+4. `chanlun_multiscale/chanlun_backtest/STRUCTURE_VERSION.md`：顶部加「均线版已换新版」说明
+5. `chanlun_multiscale/README.md`、`MERGE_STATUS.md`：补目录、口径与运行命令
+
+### 为什么
+- 大佬 2026-11-11：「然后缠论均线版也是用新版的。你们那边太简单了。」
+- 旧简版只有 MA20/40/160 + MACD 12/26/9，没有双穿笔、三组均线、级别定位，判定过粗
+
+### 新口径
+- 笔 = MA5、MA10 同时位于 MA20 同侧（双穿），线段 = MA20/40 双穿 MA80，大级别 = 价格 vs MA160
+- MACD `(10,20,5)`，另有均线排列、走势模式、级别定位、笔/段/大级别背驰、可交易性
+- 周线由日线合成，不单独取数
+
+### 校验
+- `ma_trend.analyze` 与远程 `tech_summary.ma_layer` 在 sh510300、sz159915 的日线 + 周线逐字段一致（dt/close/sigs/align/mode/loc/walk/beichi/tradeable），`FAILS 0`
+- 全库 `py_compile` 通过；仓库内 `python -m chanlun_backtest.run_ma_scan` 端到端跑通
+
+### 影响文件
+- `chanlun_multiscale/chanlun_backtest/ma_trend.py`（新增）
+- `chanlun_multiscale/chanlun_backtest/run_ma_scan.py`（新增）
+- `chanlun_multiscale/chanlun_backtest/indicators.py`
+- `chanlun_multiscale/chanlun_backtest/STRUCTURE_VERSION.md`
+- `chanlun_multiscale/README.md`
+- `chanlun_multiscale/MERGE_STATUS.md`
+
 ## 2026-11-11 23:59
 
 **feat: 新增结构引擎对比脚本（远程 chan_smc_index vs 本地多尺度）**

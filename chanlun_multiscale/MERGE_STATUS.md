@@ -11,6 +11,7 @@
 | 第一批 | 四级交易闸门（15m/1h/日线/周线）对齐远程 | `chanlun_backtest/signal_gates.py` | ✅ 已接入 |
 | 第二批 | 三买中枢递进校验（修「巨人网络」假三买）；二买锚定一买后首个回踩 | `chanlun_backtest/structure_signals_v2.py` | 🟡 仅对比，未接实盘 |
 | 第三批 | MACD `(20,40,5)` → `(10,20,5)` 全库统一 | `chanlun_backtest/structure_indicators.py` | ✅ 已接入 |
+| 均线版 | 弃用旧简版 MA20/40/160，改用远程原文口径 `chan_ma_trend_v2` | `chanlun_backtest/ma_trend.py`、`run_ma_scan.py` | ✅ 已接入 |
 
 对齐依据：远程 `techAnly-summary` main `5d72f91` + 2026-11-08 / 11-10 / 11-11 定稿。
 本地备份：`structure_indicators.py.bak_20261111_macd`、`Strategy/chanlun_fractal_Strategy.py.bak_20261111_batch13`。
@@ -38,6 +39,14 @@
 | 5 | 一卖改用远程段背驰口径 | 沪深300ETF 日线 | v2a 0 → v2b 2（新增 757/772） |
 
 汇总：`reports/batch2_rules/diff_summary.csv`
+
+### 均线版升级校验（2026-11-11）
+
+- `ma_trend.analyze` 直接加载远程 `bin/chan_ma_trend_v2.py`，与 `tech_summary.ma_layer`
+  在 sh510300 / sz159915 的日线 + 周线上逐字段一致（dt/close/sigs/align/mode/loc/walk/beichi/tradeable）
+- 旧 `indicators.py`（MA20/40/160 + MACD 12/26/9）与 `signals.py` 仅保留历史回测，
+  不再作为「缠论·均线版」口径
+- 运行：`python -m chanlun_backtest.run_ma_scan [--level week] [--symbol sh510300]`
 
 ## 结构引擎口径差异（2026-11-11 对比）
 
