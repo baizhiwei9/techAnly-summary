@@ -4,6 +4,23 @@
 
 > 2026-11-11：`tech-summary`（私有）已合并进本库（`techAnly-summary`，公开），**历史条目全部保留**，共 27 条。
 
+## 2026-11-11 13:48
+
+**fix: 补 xq_portfolio.py（xq_ind_monitor 硬依赖，漏了会崩）**
+
+### 改了什么
+- 新增 `bin/xq_portfolio.py`（2592B）：`xq_ind_monitor.py` 第56行 **硬 import**（不是 try/except）
+- 用 AST 做依赖闭包扫描：清单里每个 bin/*.py 的本地 import 递归展开，
+  直到不再有新模块为止（这个方法比肉眼看靠谱）
+
+### 为什么
+上一轮补了 `xq_ind_monitor.py`，但它自己又 import `xq_portfolio`，
+而后者从未入库 → clone 后跑 `weekly_zs.py` 的邮件分支依然 ImportError。
+这一轮把整条依赖链补齐，实测远程 tarball 拉下来 AST 扫描已无本地缺失。
+
+### 影响文件
+- bin/xq_portfolio.py（新增）
+
 ## 2026-11-11 13:41
 
 **fix: 补齐 3 个隐式依赖模块（clone 后跑不通的真缺口）**
