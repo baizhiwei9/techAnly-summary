@@ -6,34 +6,17 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
-## 2026-11-11 23:18
+## 2026-11-11 23:52
 
-**feat(multiscale): 并入本地缠论多尺度交易工程（四级闸门 + v2 候选 + MACD 10/20/5）**
+**chore(skill): 发布布局硬规则 + 出图重叠自检（SKILL.md §三·5）**
 
-### 改了什么
-1. **新增 `chanlun_multiscale/`**
-   - `chanlun_backtest/`：结构版核心（包含→分型→笔→中枢→背驰→买卖点）、四级闸门
-     `signal_gates.py`、v2 候选 `structure_signals_v2.py`、第二批对比脚本
-     `compare_v2_batch2.py`
-   - `Strategy/chanlun_fractal_Strategy.py`：生产监控（期货 + 股指期货 + ETF，四级周期）
-   - `data_fetcher.py`：数据采集（akshare）
-   - `README.md` / `MERGE_STATUS.md`：口径、合并进度与待办
-2. **口径对齐远程定稿**
-   - MACD `(20,40,5)` → `(10,20,5)`，与 `bin/chan_smc_index.py` 一致
-   - 三买遍历所有中枢 + 中枢递进校验 + 现价 > ZG；二买锚定一买后首个回踩
-   - 15m 不发信号；1h 只认三买（一买须 MA10>MA20）；日线一/二/三买；周线只认一/二买
-3. **公开库适配**：去掉本机绝对路径，持仓状态文件改 `FRACTAL_STATE_FILE` 环境变量；
-   内网编排脚本 `run_unified_monitor.py`（含飞书 chat_id）不并入公开库
+SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit_text 量宽自适应、价格轴留白、边缘锚点切换、标签间距、x轴跳过第0根、ZG/ZD 贴左端；新增 TECH_GRID_DEBUG 自检与验收标准(overlaps=0 oob=0)。同步 buypoint_chart.py 最新版。
 
-### 为什么
-- 大佬 2026-11-11：把本地缠论多尺度交易工程与远程 `techAnly-summary` 合并落盘并推分支
+## 2026-11-11 23:49
 
-### 影响文件
-- `chanlun_multiscale/**`（新增）
-- `README.md`
-- `CHANGELOG.md`
+**fix(chart): 网格图/三面板文字重叠 —— 改绝对英寸布局 + 文字量宽自适应 + 重叠自检**
 
-> 注：`structure_signals_v2.py` 仅用于对比评估，**未接实盘**；实盘仍为 v1 信号。
+根因：标题/副标题/表脚用 transAxes 固定偏移，字号一大就互压，长文字还会顶出画布。改法：add_axes 绝对定位（表头0.62+面板2.78+表脚0.96英寸）；新增 _fit_text 先量宽再缩字号/截断；价格轴上下留白；边缘标注自动换锚点；多买卖点标签间距加大；x轴跳过第0根；ZG/ZD 改贴中枢框左端内侧；新增 _debug_overlaps 自检（TECH_GRID_DEBUG=1 → [OVERLAP]/[OOB]，验收 overlaps=0 oob=0）；三面板 hspace 0.10→0.46、标题说明改量宽、均线版说明移到底部、结论框左右分置。实测 15 只网格 overlays=0 oob=0，三面板 0/0
 
 ## 2026-11-11 23:30
 
@@ -68,6 +51,94 @@
 - `strategies/wavelet/**`（新增，含去敏）
 - `README.md`
 - `CHANGELOG.md`
+
+## 2026-11-11 23:18
+
+**feat(multiscale): 并入本地缠论多尺度交易工程（四级闸门 + v2 候选 + MACD 10/20/5）**
+
+### 改了什么
+1. **新增 `chanlun_multiscale/`**
+   - `chanlun_backtest/`：结构版核心（包含→分型→笔→中枢→背驰→买卖点）、四级闸门
+     `signal_gates.py`、v2 候选 `structure_signals_v2.py`、第二批对比脚本
+     `compare_v2_batch2.py`
+   - `Strategy/chanlun_fractal_Strategy.py`：生产监控（期货 + 股指期货 + ETF，四级周期）
+   - `data_fetcher.py`：数据采集（akshare）
+   - `README.md` / `MERGE_STATUS.md`：口径、合并进度与待办
+2. **口径对齐远程定稿**
+   - MACD `(20,40,5)` → `(10,20,5)`，与 `bin/chan_smc_index.py` 一致
+   - 三买遍历所有中枢 + 中枢递进校验 + 现价 > ZG；二买锚定一买后首个回踩
+   - 15m 不发信号；1h 只认三买（一买须 MA10>MA20）；日线一/二/三买；周线只认一/二买
+3. **公开库适配**：去掉本机绝对路径，持仓状态文件改 `FRACTAL_STATE_FILE` 环境变量；
+   内网编排脚本 `run_unified_monitor.py`（含飞书 chat_id）不并入公开库
+
+### 为什么
+- 大佬 2026-11-11：把本地缠论多尺度交易工程与远程 `techAnly-summary` 合并落盘并推分支
+
+### 影响文件
+- `chanlun_multiscale/**`（新增）
+- `README.md`
+- `CHANGELOG.md`
+
+> 注：`structure_signals_v2.py` 仅用于对比评估，**未接实盘**；实盘仍为 v1 信号。
+
+## 2026-11-11 23:01
+
+**feat(chart): 一张图最多20个子图不分页 + 每个子图下方标注买卖点**
+
+### 改了什么
+1. **`draw_stock_grid()` 重写**
+   - 不再分页：新增 `max_items=20`，**一张图最多 20 个子图**（2 列 × N/2 行），超出自动截断
+   - **每个子图下方固定标注块**（大佬 2026-11-11：「每个子图后边标识买卖点」）：
+     - 左下：`买点：三买 11.29、一买 5.21`（绿色加粗；无买点显示灰色「无」）
+     - 右下：`卖点：三卖 11.69 ｜ VWAP +1.41σ +1σ警戒`（红色；含 VWAP 分区提示）
+   - 图内买点标 `买 11.29`（下方绿框）、卖点标 `卖 11.69`（上方红框），不再只画图形不写价
+   - 每个子图都跑全中枢卖点扫描 `find_sells`，过闸门的才画
+   - 布局行距加大（`h_pad=2.6`）给标注留空间
+2. `tech_buypoint.run_multi()`：去掉分页逻辑，一次只出 1 张图；给每个 item 传 `buys` / `sells`
+3. `--per-page` 标记废弃（保留参数不报错）
+4. 图内注释去掉 emoji（字体缺字形会出豆腐块），改纯文字
+5. SKILL.md §三·5 / §3.15 写清这条硬规矩
+
+### 为什么
+- 大佬 2026-11-11：「我不明白为什么不出图的时候不凑一张图。你记一下，一个图最多有 20 个子图就可以了。
+  每个图后边，每个子图后边标识买卖点」
+- 之前 4 只/页拆 5 张，翻起来麻烦；而且图上只有月牙/星形符号，没写买卖点价格
+
+### 影响文件
+- bin/buypoint_chart.py
+- bin/tech_buypoint.py
+- skills/tech-summary/SKILL.md
+
+## 2026-11-11 22:36
+
+**feat(chart): 出图清晰度大幅提升（字号/画布比 + 折行标题 + ZG/ZD 标注 + RGB 输出 + QQ 文件形式不压缩）**
+
+### 改了什么
+1. **网格图（draw_stock_grid）**
+   - 画布 11.0in→6.6in/列（每子图 6.6×3.8in），字号 17→19/15/14/12.5pt，笔线宽 2.8→3.0
+   - DPI 200→220（环境变量 `TECH_CHART_DPI`）
+   - 标题**强制折两行**：第一行 名称(代码) 涨幅 / 第二行 买点+VWAP+板块
+     → 修复「分辨率高但看着糊」的真因：单行长标题被 bbox_inches=tight 撑宽画布，等于把相对字号缩小
+   - 中枢右侧直接标 `ZG x.xx` / `ZD x.xx` 数值
+   - 月牙 s=430、买点标签 18pt
+2. **单只三面板（draw_buypoint_chart）**：画布 16in→11in，字号整体 ×1.45（上限 18pt），DPI 170→200
+3. **tech_summary 四面板**：画布 17in→13.5in，DPI 125→180（`CHART_DPI`）
+4. **新增 `_finalize_png()`**：存完统一转 RGB（去 alpha）——RGBA 在部分 IM 里发灰且体积大一倍
+5. **push_image.py 新增 `--document`**：QQ 用 `--force-document` 以文件形式发，平台不压缩
+   （直接发图片会被压到 1000px 宽，源图再高清也白搭）
+6. `tech_buypoint.py` 新增 `--dpi` / `--bars`，`--per-page` 默认 8→4（2×2 布局最清晰）
+7. SKILL.md 新增 §三·5 出图清晰度，写清「清晰度=字号÷画布宽度」这条关键认知
+
+### 为什么
+- 大佬 2026-11-11：「图还是不清楚，能不能清晰度再高清点？然后把这个技能修正一下」
+- 根因不是 DPI 不够，是字号/画布比太小 + 长标题撑宽画布 + QQ 通道压缩
+
+### 影响文件
+- bin/buypoint_chart.py
+- bin/tech_buypoint.py
+- bin/tech_summary.py
+- bin/push_image.py
+- skills/tech-summary/SKILL.md
 
 ## 2026-11-11 22:00
 
@@ -859,30 +930,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 ### 私密信息拦截（自动，命中即拒绝上传）
 tushare 代理/直连 token、飞书私聊/群 chat_id、飞书 webhook、GitHub token、
 OpenAI 风格 key、QQ openid、本机工作区绝对路径（前缀在名单文件里配置）。
-
-### 新增文件
-- `bin/gh_commit.py`
-- `bin/gh_publish.py`
-- `bin/gh_publish_techsummary.py`
-
-## 2026-11-10 00:21
-
-
-**chore(release): 发布脚本改用 Git Data API，全部文件合成单个 commit**
-
-### 发布链路改造（避免历史被同名 commit 刷屏）
-
-- **问题**：GitHub contents API 每次 PUT 只改一个文件 = 一条 commit。
-  一次改 10 个文件就产生 10 条**同名** commit，`git log` 完全没法读，
-  也无法回答「这次到底改了什么」。
-- **改法**：新增 `bin/gh_commit.py` —— blobs → tree → commit → 更新 ref，
-  **所有文件合成 1 个 commit**；未变更的文件按 git blob sha 自动跳过，不造空 commit。
-- `bin/gh_publish.py` 保留为单文件/兜底工具（同样带私密串拦截）。
-- `bin/gh_publish_techsummary.py` 增加：dry-run **不再污染 CHANGELOG**（试跑写出假条目已清理）。
-
-### 私密信息拦截（自动，命中即拒绝上传）
-tushare 代理/直连 token、飞书私聊/群 chat_id、飞书 webhook、GitHub token、
-OpenAI 风格 key、QQ openid、本机工作区绝对路径。
 
 ### 新增文件
 - `bin/gh_commit.py`

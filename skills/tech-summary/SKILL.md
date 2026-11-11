@@ -226,7 +226,7 @@ python3 bin/tech_summary.py --target 600519
 python3 bin/tech_buypoint.py --target 传媒                 # 行业：过闸后下钻个股
 
 # ⭐ 多个行业合并 → 有买点个股 Top20 + 网格图（大佬 2026-11-11）
-python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per-page 8 --out x.md
+python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out x.md
 #   --targets 逗号分隔多个行业/概念/指数，成分股按代码去重（影视院线 ⊂ 传媒）
 #   --top N     只取有买点的前 N 只（排序：三买1>一买2>二买3 → 买点新鲜度 → 质量分）
 #   --grid      出网格图（每只一个子图：K线+缠论分型版+VWAP六轨+量），--per-page 控制每页几只
@@ -310,13 +310,15 @@ python3 bin/tech_intraday_buypoint.py --with-concept --limit 20
 |---|---|
 | `--targets a,b` | 多个行业/概念/指数合并（逗号分隔，中文逗号也认）；成分股按 **代码去重** |
 | `--top N` | 只取**有买点**的前 N 只（0=全部） |
-| `--grid` / `--per-page` | 出网格图，每只一个子图（K线+缠论分型版+VWAP六轨+量），默认每页 8 只 |
+| `--grid` | 出**一张**网格图（每只一个子图：K线+缠论分型版+VWAP六轨），**最多 20 个子图，不分页** |
+| `--dpi N` / `--bars N` | 出图 DPI（默认 220）/ 每图 K 线根数（默认 120），见 §三·5 |
 
 ```bash
-python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per-page 8 --out x.md
+python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out x.md
 ```
 
 行为要点：
+- **出图只出 1 张**（最多 20 个子图，不分页）；**每个子图下方标注本票买点/卖点/VWAP 位置**
 - **板块没买点不阻断**（多行业模式看的是个股自身结构），但报告首节会标「板块效应偏弱」+ 列出被否原因 + 板块卖点
 - 排序 `pick_sort_key`：`买点等级(三买1>一买2>二买3) → 买点年龄 → 质量分 → 涨幅`
 - 个股附加展示：VWAP 偏离 σ（≥+3σ 全平区 / ≥+2σ 减半区 / ≤−0.8σ 贴近止损）、站上 MA20/MA160、多头排列、h1 买点
@@ -348,6 +350,60 @@ python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per
 成分股 `ths_member`；个股 K 线走东财 `stock_kline`（4 线程并发，全流程约 200s）。
 
 ⚠️ `ths_member` 偶发返回空表（不是真没成分，是限流）→ 必须重试 4 次，否则整片行业会「无成分股」。
+
+## 三·5、出图清晰度（大佬 2026-11-11：「图还是不清楚，要再高清点」）
+
+> **关键认知：清晰度不是「像素数」，是「字号(pt) ÷ 画布宽度(in)」之比。**
+> 之前网格图 14.8in 宽配 17pt（1.15pt/in），QQ/微信缩到 1000px 宽时标题只剩 11px → 糊。
+> 现在 6.6in/列 配 19pt（1.44pt/in）+ DPI 220，同缩放下 ≈20px，点开更清。
+
+| 参数 | 位置 | 默认 | 说明 |
+|---|---|---|---|
+| `TECH_CHART_DPI` | 环境变量 | 220 | 网格图 DPI（`--dpi` 可临时覆盖） |
+| `CHART_DPI` | 环境变量 | 200 | 单只三面板 / `tech_summary` 四面板 DPI |
+| `--dpi N` | `tech_buypoint.py` | 0=用默认 | 本次出图 DPI |
+| `--per-page N` | `tech_buypoint.py` | **已废弃** | 现在固定「一张图 ≤20 子图，不分页」（大佬 2026-11-11 定） |
+| `--bars N` | `tech_buypoint.py` | 120 | 每张子图显示多少根 K 线 |
+
+### ⚠️ 布局硬规则（2026-11-11 23:xx 大佬：「图里边的这个字都重叠了」）
+
+**根因**：标题/副标题/底部标注全用 `transAxes` 相对坐标固定偏移（`1.012` / `-0.085`），
+行距靠 `tight_layout(h_pad=…)` 猜；字号一大就互相压，长文字还会捅出画布 / 压到隔壁列。
+`bbox_inches="tight"` 更坏：它只保证不出画布，不保证不重叠。
+
+**改法（`buypoint_chart.draw_stock_grid` 已重写）**：
+1. **按英寸绝对布局**，每个子图固定占 表头 0.62″ + K线面板 2.78″ + 表脚 0.96″，用
+   `fig.add_axes([x/fig_w, y/fig_h, w/fig_w, h/fig_h])` 定位，不用 `subplots` + `tight_layout`
+2. 所有文字走 `_fit_text(fig, text, fs, max_w_in)`：**先量宽**（`get_window_extent`），
+   超宽按比例缩字号（下限 8.5pt），仍超宽就截断加 `…` —— 绝不靠猜
+3. 价格轴上下留白 `set_ylim(y0-17%range, y1+10%range)`，给「买/卖 xx.xx」气泡腾地方
+4. 边缘标注自动换锚点：`xi > 87%` 改右对齐、`xi < 10%` 改左对齐；价格贴近底部时气泡改挂上方
+5. 多买点/多卖点标签纵向间距 27pt / 25pt，不 21pt（会叠）
+6. x 轴刻度**跳过第 0 根**（最左日期会撞 y 轴数字）
+7. ZG/ZD 标签贴中枢框**左端内侧**带白底，不贴右边缘（右边缘常被买卖点气泡占）
+
+**自检**：`TECH_GRID_DEBUG=1 python3 bin/tech_buypoint.py ...` 会打印
+`[OVERLAP]` / `[OOB]` / `[dbg:grid] texts=N overlaps=M oob=K`。
+**验收标准：overlaps=0 且 oob=0**。改任何图都要先跑这个再交付。
+
+出图硬规则：
+1. 网格图子图 **6.6×3.8 英寸**、字号 19/15/14/12.5pt、笔线宽 3.0、月牙 s=430
+2. 标题**必须折两行**（名称+涨幅一行，买点+VWAP+板块一行）——单行长标题会把
+   `bbox_inches="tight"` 画布撑宽，等于把相对字号缩小，这正是「分辨率高但看着糊」的真因
+3. 中枢右侧标 `ZG/ZD` 数值，不用读图猜
+4. 存完统一转 **RGB**（`_finalize_png`）：RGBA 在部分 IM 里发灰，且体积大一倍
+5. **QQ 发图用文件形式**（`--document` / `push_image.py --document`）→ 平台不压缩；
+   直接发图片会被压到 1000px 宽，再高清的源图也白搭
+6. **一张图最多 20 个子图，不分页**（大佬 2026-11-11 定）→ 20 只 = 2 列 × 10 行一张到底；
+   **每个子图下方必须标本票买卖点**：左边绿色「买点：三买 11.29」，右边红色「卖点：三卖 11.69 ｜ VWAP +1.41σ +1σ警戒」
+
+```bash
+# 高清出图（每页 4 只 + 220dpi，20 只 → 5 页）
+python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --dpi 220
+
+# 以文件形式推 QQ（不压缩，最清晰）
+CHAN_QQ_ACCOUNT="" python3 bin/push_image.py 图.png --qq-only --document
+```
 
 ## 四、图（一张图四面板）
 
