@@ -41,12 +41,18 @@ def _to_media_dir(img):
     return dst
 
 
-def send_qq(img, text=""):
-    """>= 返回 True 表示真的发出去了（校验 messageId 非空）"""
+def send_qq(img, text="", doc=False):
+    """返回 True 表示真的发出去了（校验 messageId 非空）
+
+    doc=True → --force-document：以「文件」形式发送，**平台不再压缩**，图最清晰
+                （代价：聊天里显示成文件卡片，需要点开看；大佬 2026-11-11 要求"再高清点"）
+    """
     p = _to_media_dir(img)
     try:
         cmd = ["openclaw", "message", "send", "--channel", "qqbot",
                "--target", QQ_TARGET, "--media", p, "-m", text or " ", "--json"]
+        if doc:
+            cmd.append("--force-document")
         if QQ_ACCOUNT:
             cmd += ["--account", QQ_ACCOUNT]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
@@ -118,15 +124,18 @@ def send_feishu(img, text=""):
         return False
 
 
-def push(imgs, text="", qq=True, fs=True):
-    """imgs: 路径 或 路径列表。任一通道成功即返回 True"""
+def push(imgs, text="", qq=True, fs=True, doc=False):
+    """imgs: 路径 或 路径列表。任一通道成功即返回 True
+
+    doc=True → QQ 用文件形式发（不压缩，最清晰）
+    """
     if isinstance(imgs, str):
         imgs = [imgs]
     ok = False
     for i, img in enumerate(imgs):
         t = text if (i == 0 or not text) else (text + " (%d/%d)" % (i + 1, len(imgs)))
         if qq:
-            ok = send_qq(img, t) or ok
+            ok = send_qq(img, t, doc=doc) or ok
         if fs:
             ok = send_feishu(img, t) or ok
     return ok
@@ -140,5 +149,6 @@ if __name__ == "__main__":
         args = [a for a in args if a != text]
     ok = push(args, text,
               qq=("--feishu-only" not in sys.argv),
-              fs=("--qq-only" not in sys.argv))
+              fs=("--qq-only" not in sys.argv),
+              doc=("--document" in sys.argv))
     sys.exit(0 if ok else 1)

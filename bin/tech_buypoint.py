@@ -1668,7 +1668,7 @@ def render_sector(sec, rows, title, gate_override=False):
     return "\n".join(L)
 
 
-def chart_one(code, nm, d, h1=None, n_day=120, n_h1=110, n_ma=260):
+def chart_one(code, nm, d, h1=None, n_day=120, n_h1=110, n_ma=260, dpi=None):
     """给单只股票出买点图（日线 / 小时线 / 均线版 三面板）→ 路径 或 None
 
     ⚠️ h1 必须是 **DataFrame**（分钟线原始数据），不能传 h1_buys() 的判定 dict
@@ -1678,7 +1678,7 @@ def chart_one(code, nm, d, h1=None, n_day=120, n_h1=110, n_ma=260):
         if h1 is None or not hasattr(h1, "columns") or len(h1) < 60:
             h1 = load_h1(code, "index" if is_index_code(code) else "stock")
         disp = ("%s %s" % (nm or "", code)).strip()
-        return BC.draw_buypoint_chart(disp, d, h1, None, n_day, n_h1, n_ma)
+        return BC.draw_buypoint_chart(disp, d, h1, None, n_day, n_h1, n_ma, dpi=dpi)
     except Exception as e:
         log("[图] %s 出图失败 %s" % (code, str(e)[:90]))
         return None
@@ -2059,10 +2059,12 @@ def run_multi(a):
                                    "buypoint_grid_%s_p%d_%s.png"
                                    % (tag or "multi", pi,
                                       datetime.now().strftime("%Y%m%d")))
-                p = BC.draw_stock_grid(items, out,
-                                       title="有买点个股 Top%d（第 %d/%d 页）· %s ｜缠论分型版 + VWAP 六轨"
-                                             % (len(picks), pi, len(pages),
-                                                datetime.now().strftime("%Y-%m-%d %H:%M")))
+                p = BC.draw_stock_grid(
+                    items, out, n_show=a.bars,
+                    title="有买点个股 Top%d（第 %d/%d 页）· %s ｜缠论分型版 + VWAP 六轨"
+                          % (len(picks), pi, len(pages),
+                             datetime.now().strftime("%Y-%m-%d %H:%M")),
+                    dpi=(a.dpi or None))
                 if p:
                     imgs.append(p)
                     log("[图] 网格 p%d → %s" % (pi, p))
@@ -2198,8 +2200,12 @@ def main():
                     help="--targets 模式下：只取有买点的前 N 只（0=全部）")
     ap.add_argument("--grid", action="store_true",
                     help="--targets 模式下：出一张多标的网格图（每只一个子图）+ 板块指数图")
-    ap.add_argument("--per-page", type=int, default=8,
-                    help="网格图每页几只（默认 8，2 列）")
+    ap.add_argument("--per-page", type=int, default=4,
+                    help="网格图每页几只（默认 4，2 列 × 2 行；越大越挤，图就越糊）")
+    ap.add_argument("--dpi", type=int, default=0,
+                    help="出图 DPI（默认 0=用 TECH_CHART_DPI=220；调大更清晰但文件更大）")
+    ap.add_argument("--bars", type=int, default=120,
+                    help="每张子图显示多少根 K 线（默认 120）")
     ap.add_argument("--push", action="store_true")
     ap.add_argument("--chat", default=None)
     ap.add_argument("--out", default=None)

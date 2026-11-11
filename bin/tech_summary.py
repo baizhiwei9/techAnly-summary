@@ -989,7 +989,8 @@ def draw_chart(disp, level, df, fx, smc, vw, out, n_show=120, ma=None):
     nvA = len(viewA)
     xA = np.arange(nvA)
 
-    fig = plt.figure(figsize=(17, 14.5), facecolor="white")
+    # 清晰度：字号相对画布要够大（1pt/in 以上），否则手机上看不清
+    fig = plt.figure(figsize=(13.5, 15.5), facecolor="white")
     gs = fig.add_gridspec(4, 1, height_ratios=[4.2, 3.6, 1.0, 1.6], hspace=0.09)
     axP = fig.add_subplot(gs[0])
     axA = fig.add_subplot(gs[1])      # 独立 x 轴（窗口更长，才能看到结构）
@@ -1394,7 +1395,8 @@ def draw_chart(disp, level, df, fx, smc, vw, out, n_show=120, ma=None):
              ha="center", fontsize=9, color="#555555")
 
     os.makedirs(os.path.dirname(out) or OUT_DIR, exist_ok=True)
-    fig.savefig(out, dpi=125, bbox_inches="tight", facecolor="white")
+    fig.savefig(out, dpi=int(os.environ.get("CHART_DPI", "180")),
+                bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return out
 

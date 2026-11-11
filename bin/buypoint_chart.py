@@ -32,6 +32,28 @@ from matplotlib.patches import Rectangle  # noqa: E402
 WS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(WS, "bin"))
 
+# ── 出图清晰度（大佬 2026-11-11：图不清楚，要更高清）──
+#   TECH_CHART_DPI     画布 DPI（默认 200；单张三面板用 CHART_DPI 默认 170）
+#   放大字号的同时按 DPI 缩放线宽，保证 3000px 宽时线条不发虚
+CHART_DPI = int(os.environ.get("CHART_DPI", "200"))
+GRID_DPI = int(os.environ.get("TECH_CHART_DPI", "220"))
+
+
+def _finalize_png(path):
+    """存完转成 RGB（去 alpha）：体积更小、各端显示更稳（RGBA 在部分 IM 里会发灰）"""
+    try:
+        from PIL import Image
+        im = Image.open(path)
+        if im.mode in ("RGBA", "LA", "P"):
+            bg = Image.new("RGB", im.size, (255, 255, 255))
+            im2 = im.convert("RGBA")
+            bg.paste(im2, mask=im2.split()[-1])
+            bg.save(path, "PNG", optimize=True)
+        return path
+    except Exception:
+        return path
+
+
 import chan_ma_trend_v2 as M          # noqa: E402
 import tech_summary as TS            # noqa: E402
 from tech_summary import (            # noqa: E402
@@ -339,7 +361,7 @@ def _draw_ma_panel(ax, df, n_ma=400):
     return st
 
 
-def draw_buypoint_chart(disp, day, h1=None, out=None, n_day=120, n_h1=110, n_ma=400):
+def draw_buypoint_chart(disp, day, h1=None, out=None, n_day=120, n_h1=110, n_ma=400, dpi=None):
     """三面板买点图：日线 / 小时线 / 缠论均线版 → 出 PNG 路径"""
     d = day.copy()
     if "volume" not in d.columns:
@@ -353,7 +375,8 @@ def draw_buypoint_chart(disp, day, h1=None, out=None, n_day=120, n_h1=110, n_ma=
         heights = [2.8, 1.1, 1.0, 2.4, 1.0, 0.9]
     heights.append(2.6)
     nrows = len(heights)
-    fig = plt.figure(figsize=(16, 17.5 if has_h1 else 12.0), facecolor="white")
+    # 清晰度：画布从 16in 收到 11in（字号不变 → 相对字号大 1.45 倍），dpi 170→200
+    fig = plt.figure(figsize=(11.0, 13.0 if has_h1 else 9.0), facecolor="white")
     gs = fig.add_gridspec(nrows, 1, height_ratios=heights, hspace=0.10)
 
     axP = fig.add_subplot(gs[0])
@@ -377,18 +400,19 @@ def draw_buypoint_chart(disp, day, h1=None, out=None, n_day=120, n_h1=110, n_ma=
     st = _draw_ma_panel(axA, d, n_ma)
 
     fig.suptitle("%s ｜ 买点图（日线优先 · 小时线次级 · 均线版结构）｜ 买点=绿月牙 卖点=红星"
-                 % disp, fontsize=13, y=0.995, color="#111111")
+                 % disp, fontsize=18.0, y=0.997, color="#111111")
     fig.text(0.5, 0.002,
              "K线上色 = 收盘 vs 前收（涨跌口径）　｜　日线/小时线画缠论分型版：笔(蓝) 中枢(黄) 买卖点(月牙/星)　"
              "｜　均线版画：笔(深橙) 线段(深蓝) 走势类型底色(红涨/绿跌/灰盘整)",
-             ha="center", fontsize=8.6, color="#666666")
+             ha="center", fontsize=12.8, color="#666666")
 
     if out is None:
         out = os.path.join(CHART_DIR, "buypoint_%s_%s.png"
                            % (disp.replace("/", "_"),
                               pd.Timestamp(d["dt"].iloc[-1]).strftime("%Y%m%d")))
-    fig.savefig(out, dpi=125, bbox_inches="tight", facecolor="white")
+    fig.savefig(out, dpi=(dpi or CHART_DPI), bbox_inches="tight", facecolor="white")
     plt.close(fig)
+    _finalize_png(out)
     return out
 
 
@@ -396,7 +420,7 @@ def draw_buypoint_chart(disp, day, h1=None, out=None, n_day=120, n_h1=110, n_ma=
 #  多标的网格图：每只一个子图（日线 K 线 + 缠论分型版 + VWAP 六轨 + 量）
 #  用于「多个行业合并后，选出有买点的前 N 只」一次性出图
 # ══════════════════════════════════════════════════════════════════════
-def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2):
+def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2, dpi=None):
     """picks: [{'name','code','df',...}]；df 为 [dt,open,high,low,close,volume] 日线
 
     图里画：K线（涨跌上色）+ 缠论分型版（笔/中枢/买卖点）+ VWAP 六轨 + 量。
@@ -410,8 +434,16 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2):
     n = len(picks)
     ncol = 2 if (n > 1 and ncol >= 2) else 1
     nrow = (n + ncol - 1) // ncol
-    fig, axes = plt.subplots(nrow, ncol, figsize=(9.4 * ncol, 4.3 * nrow), squeeze=False)
+    # ── 清晰度的关键是「字号(pt) / 画布宽度(in)」之比，不是像素总数 ──
+    #   旧：14.8in 宽配 17pt = 1.15pt/in → QQ 缩到 1000px 宽时标题只有 11px，糊成一团
+    #   新：13.2in 宽配 19pt = 1.44pt/in → 同缩放下 ≈20px，手机上能直接读；点开更清
+    #   （单页 4 只 = 2 列 × 2 行；每列 6.6in × 每行 3.8in）
+    fig, axes = plt.subplots(nrow, ncol, figsize=(6.6 * ncol, 3.8 * nrow), squeeze=False)
     axes = axes.ravel()
+    FS_TITLE, FS_SUB, FS_TICK, FS_LEG, FS_NOTE = 19.0, 15.0, 14.0, 12.5, 12.0
+    FS_BUY = 18.0
+    FS_ZG = 14.0
+    LW_K, LW_BI = 1.5, 3.0
 
     for k, s in enumerate(picks):
         ax = axes[k]
@@ -435,21 +467,21 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2):
         cols = [RED if (np.isfinite(prev_c[i]) and c[i] >= prev_c[i]) else GRN for i in range(nv)]
         bw = 0.62
         for i in range(nv):
-            ax.vlines(x[i], lo[i], h[i], color=cols[i], lw=0.7, zorder=3)
+            ax.vlines(x[i], lo[i], h[i], color=cols[i], lw=LW_K, zorder=3)
             b0, b1 = min(o[i], c[i]), max(o[i], c[i])
             if abs(b1 - b0) < 1e-9:
                 b1 = b0 + max((h[i] - lo[i]) * 1e-3, 1e-6)
             ax.add_patch(Rectangle((x[i] - bw / 2, b0), bw, b1 - b0,
-                                   facecolor=cols[i], edgecolor=cols[i], lw=0.35, zorder=4))
+                                   facecolor=cols[i], edgecolor=cols[i], lw=0.6, zorder=4))
         # VWAP 六轨（窗口 60）
         try:
             vw = S.vwap_tracks(d)
-            for key, col, lw_, ls, lab in (("up3", "#8e0000", 0.9, "-", "+3σ"),
-                                           ("up2", "#c0392b", 0.85, "--", "+2σ"),
-                                           ("up1", "#e08b7a", 0.7, ":", "+1σ"),
-                                           ("vwap", "#222222", 1.5, "-", "VWAP"),
-                                           ("dn1", "#1e8449", 0.85, "--", "−1σ"),
-                                           ("dn2", "#0b4f2c", 0.9, "-", "−2σ")):
+            for key, col, lw_, ls, lab in (("up3", "#8e0000", 1.5, "-", "+3σ"),
+                                           ("up2", "#c0392b", 1.4, "--", "+2σ"),
+                                           ("up1", "#e08b7a", 1.2, ":", "+1σ"),
+                                           ("vwap", "#111111", 2.5, "-", "VWAP"),
+                                           ("dn1", "#1e8449", 1.4, "--", "−1σ"),
+                                           ("dn2", "#0b4f2c", 1.5, "-", "−2σ")):
                 v_ = vw[key][start:]
                 if not np.all(np.isnan(v_)):
                     ax.plot(x, v_, color=col, lw=lw_, ls=ls, zorder=5,
@@ -466,17 +498,23 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2):
                     bx.append(xi)
                     by.append(p["price"])
             if len(bx) >= 2:
-                ax.plot(bx, by, color=BLUE, lw=1.3, zorder=6, label="缠论笔" if k == 0 else None)
+                ax.plot(bx, by, color=BLUE, lw=LW_BI, zorder=6, label="缠论笔" if k == 0 else None)
             if geo["zs"] and geo["zs_x"]:
                 zs0, zs1 = geo["zs"]
                 x0 = max(geo["zs_x"][0] - start, -0.5)
                 x1 = min(geo["zs_x"][1] - start, nv)
                 if x1 > x0:
                     ax.add_patch(Rectangle((x0, zs0), x1 - x0, zs1 - zs0,
-                                           facecolor="#ffd24d", alpha=0.25,
-                                           edgecolor="#b8860b", lw=1.1, zorder=3))
-                    ax.axhline(zs1, color="#b8860b", lw=0.6, ls="--", alpha=0.7, zorder=4)
-                    ax.axhline(zs0, color="#b8860b", lw=0.6, ls="--", alpha=0.7, zorder=4)
+                                           facecolor="#ffd24d", alpha=0.3,
+                                           edgecolor="#c8961a", lw=1.6, zorder=3))
+                    ax.axhline(zs1, color="#c8961a", lw=1.3, ls="--", alpha=0.9, zorder=4)
+                    ax.axhline(zs0, color="#c8961a", lw=1.3, ls="--", alpha=0.9, zorder=4)
+                    ax.annotate("ZG %.2f" % zs1, xy=(x1, zs1), xytext=(3, 2),
+                                textcoords="offset points", fontsize=FS_ZG,
+                                color="#8b6508", fontweight="bold", va="bottom", zorder=9)
+                    ax.annotate("ZD %.2f" % zs0, xy=(x1, zs0), xytext=(3, -2),
+                                textcoords="offset points", fontsize=FS_ZG,
+                                color="#8b6508", fontweight="bold", va="top", zorder=9)
         except Exception:
             geo = None
         # 买点：只画**过闸门**的（与报告同口径，别把几百根前的老买点画出来）
@@ -493,47 +531,52 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=2):
                 xi = pt["orig"] - start
                 if not (-1 <= xi <= nv):
                     continue
-                ax.scatter([xi], [pt["price"]], s=200, marker=MOON, color="#0b6e0b",
-                           edgecolor="#0b6e0b", lw=1.5, zorder=10)
+                ax.scatter([xi], [pt["price"]], s=430, marker=MOON, color="#0b6e0b",
+                           edgecolor="#0b6e0b", lw=2.0, zorder=10)
                 # 标签必须写清「分型版」+ 级别（大佬 2026-11-11：不能只写「三买」让人猜）
                 ax.annotate("%s·分型版 %.2f" % (b["tag"], b["level"]),
                             xy=(xi, pt["price"]),
-                            xytext=(0, -20), textcoords="offset points", ha="center",
-                            fontsize=7, color="#0b6e0b", fontweight="bold", zorder=11,
-                            bbox=dict(boxstyle="round,pad=0.18", fc="white",
-                                      ec="#0b6e0b", alpha=0.92, lw=0.7))
+                            xytext=(0, -32), textcoords="offset points", ha="center",
+                            fontsize=FS_BUY, color="#0b6e0b", fontweight="bold", zorder=11,
+                            bbox=dict(boxstyle="round,pad=0.3", fc="white",
+                                      ec="#0b6e0b", alpha=0.95, lw=1.2))
         except Exception:
             pass
         # 标题：名称 代码 涨幅 ｜ 买点摘要 ｜ VWAP 偏离
         pct = s.get("pct")
         if pct is None:
             pct = (c[-1] / prev_c[-1] - 1) * 100 if np.isfinite(prev_c[-1]) else 0.0
-        ax.set_title("%s(%s) %+.2f%% ｜ %s ｜ VWAP %+.2fσ ｜ %s"
-                     % (s.get("name", ""), s.get("code", ""), pct,
-                        s.get("fx_txt") or "-", s.get("vw_z", 0) or 0, s.get("ind", "")),
-                     fontsize=9, loc="left", pad=4)
-        ax.grid(True, ls=":", color="#dddddd", alpha=0.6)
-        ax.tick_params(labelsize=6.5)
+        # ⚠️ 标题必须折两行：单行太长会把 bbox_inches="tight" 的画布撑宽，
+        #    等于把字号相对缩小 → 这正是之前「分辨率高但看着糊」的真因
+        ax.set_title("%s(%s)  %+.2f%%" % (s.get("name", ""), s.get("code", ""), pct),
+                     fontsize=FS_TITLE, loc="left", pad=8, fontweight="bold")
+        ax.text(0.0, 1.012,
+                "%s ｜ VWAP %+.2fσ ｜ %s"
+                % (s.get("fx_txt") or "-", s.get("vw_z", 0) or 0, s.get("ind", "")),
+                transform=ax.transAxes, fontsize=FS_SUB, color="#333333",
+                ha="left", va="bottom")
+        ax.grid(True, ls=":", color="#dddddd", alpha=0.75)
+        ax.tick_params(labelsize=FS_TICK)
         if nv > 12:
             step = max(1, nv // 8)
             tks = list(range(0, nv, step))
             ax.set_xticks(tks)
             ax.set_xticklabels([pd.Timestamp(view["dt"].iloc[i]).strftime("%m-%d") for i in tks],
-                               fontsize=6.5, rotation=0)
+                               fontsize=FS_TICK, rotation=0)
         if k == 0:
-            ax.legend(loc="upper left", fontsize=6.5, ncol=4, framealpha=0.85)
+            ax.legend(loc="upper left", fontsize=FS_LEG, ncol=4, framealpha=0.9)
 
     for j in range(n, len(axes)):
         axes[j].axis("off")
     fig.suptitle(title or ("买点个股结构图（缠论分型版 + VWAP 六轨）· %s"
                            % pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")),
-                 fontsize=13, y=0.998)
+                 fontsize=18, y=0.999)
     fig.text(0.5, 0.0015,
-             "月牙🌙 = 缠论·分型版买点（三买/一买/二买，已过年龄·距离·结构·ZG 四道闸门）"
-             "　｜　黄框 = 中枢（虚线 ZG/ZD）　｜　黑/红/绿线 = VWAP ±1σ/±2σ/±3σ　"
-             "　｜　均线版买点（MA5/10穿MA20）只在文字报告里，图上不画月牙",
-             ha="center", fontsize=7.6, color="#555555")
+             "月牙=缠论·分型版买点（三买/一买/二买，已过年龄·距离·结构·ZG 闸门）  ｜  "
+             "黄框=中枢(ZG/ZD)  ｜  黑/红/绿=VWAP 中线/±1σ/±2σ  ｜  均线版买点只在文字报告，图上不画月牙",
+             ha="center", fontsize=FS_NOTE, color="#444444")
     fig.tight_layout(rect=(0, 0, 1, 0.985))
-    fig.savefig(out_path, dpi=115, facecolor="white", bbox_inches="tight")
+    fig.savefig(out_path, dpi=(dpi or GRID_DPI), facecolor="white", bbox_inches="tight")
     plt.close(fig)
+    _finalize_png(out_path)
     return out_path

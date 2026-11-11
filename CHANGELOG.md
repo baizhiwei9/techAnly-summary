@@ -6,6 +6,37 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-11 22:36
+
+**feat(chart): 出图清晰度大幅提升（字号/画布比 + 折行标题 + ZG/ZD 标注 + RGB 输出 + QQ 文件形式不压缩）**
+
+### 改了什么
+1. **网格图（draw_stock_grid）**
+   - 画布 11.0in→6.6in/列（每子图 6.6×3.8in），字号 17→19/15/14/12.5pt，笔线宽 2.8→3.0
+   - DPI 200→220（环境变量 `TECH_CHART_DPI`）
+   - 标题**强制折两行**：第一行 名称(代码) 涨幅 / 第二行 买点+VWAP+板块
+     → 修复「分辨率高但看着糊」的真因：单行长标题被 bbox_inches=tight 撑宽画布，等于把相对字号缩小
+   - 中枢右侧直接标 `ZG x.xx` / `ZD x.xx` 数值
+   - 月牙 s=430、买点标签 18pt
+2. **单只三面板（draw_buypoint_chart）**：画布 16in→11in，字号整体 ×1.45（上限 18pt），DPI 170→200
+3. **tech_summary 四面板**：画布 17in→13.5in，DPI 125→180（`CHART_DPI`）
+4. **新增 `_finalize_png()`**：存完统一转 RGB（去 alpha）——RGBA 在部分 IM 里发灰且体积大一倍
+5. **push_image.py 新增 `--document`**：QQ 用 `--force-document` 以文件形式发，平台不压缩
+   （直接发图片会被压到 1000px 宽，源图再高清也白搭）
+6. `tech_buypoint.py` 新增 `--dpi` / `--bars`，`--per-page` 默认 8→4（2×2 布局最清晰）
+7. SKILL.md 新增 §三·5 出图清晰度，写清「清晰度=字号÷画布宽度」这条关键认知
+
+### 为什么
+- 大佬 2026-11-11：「图还是不清楚，能不能清晰度再高清点？然后把这个技能修正一下」
+- 根因不是 DPI 不够，是字号/画布比太小 + 长标题撑宽画布 + QQ 通道压缩
+
+### 影响文件
+- bin/buypoint_chart.py
+- bin/tech_buypoint.py
+- bin/tech_summary.py
+- bin/push_image.py
+- skills/tech-summary/SKILL.md
+
 ## 2026-11-11 22:00
 
 **fix(tech_buypoint): 修假三买（中枢递进校验）+ 买点标签必须写清分型版/均线版与级别**

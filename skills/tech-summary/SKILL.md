@@ -226,7 +226,7 @@ python3 bin/tech_summary.py --target 600519
 python3 bin/tech_buypoint.py --target 传媒                 # 行业：过闸后下钻个股
 
 # ⭐ 多个行业合并 → 有买点个股 Top20 + 网格图（大佬 2026-11-11）
-python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per-page 8 --out x.md
+python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per-page 4 --out x.md
 #   --targets 逗号分隔多个行业/概念/指数，成分股按代码去重（影视院线 ⊂ 传媒）
 #   --top N     只取有买点的前 N 只（排序：三买1>一买2>二买3 → 买点新鲜度 → 质量分）
 #   --grid      出网格图（每只一个子图：K线+缠论分型版+VWAP六轨+量），--per-page 控制每页几只
@@ -310,10 +310,11 @@ python3 bin/tech_intraday_buypoint.py --with-concept --limit 20
 |---|---|
 | `--targets a,b` | 多个行业/概念/指数合并（逗号分隔，中文逗号也认）；成分股按 **代码去重** |
 | `--top N` | 只取**有买点**的前 N 只（0=全部） |
-| `--grid` / `--per-page` | 出网格图，每只一个子图（K线+缠论分型版+VWAP六轨+量），默认每页 8 只 |
+| `--grid` / `--per-page` | 出网格图，每只一个子图（K线+缠论分型版+VWAP六轨+量），**默认每页 4 只**（2×2，最清晰） |
+| `--dpi N` / `--bars N` | 出图 DPI（默认 220）/ 每图 K 线根数（默认 120），见 §三·5 |
 
 ```bash
-python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per-page 8 --out x.md
+python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per-page 4 --out x.md
 ```
 
 行为要点：
@@ -348,6 +349,37 @@ python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per
 成分股 `ths_member`；个股 K 线走东财 `stock_kline`（4 线程并发，全流程约 200s）。
 
 ⚠️ `ths_member` 偶发返回空表（不是真没成分，是限流）→ 必须重试 4 次，否则整片行业会「无成分股」。
+
+## 三·5、出图清晰度（大佬 2026-11-11：「图还是不清楚，要再高清点」）
+
+> **关键认知：清晰度不是「像素数」，是「字号(pt) ÷ 画布宽度(in)」之比。**
+> 之前网格图 14.8in 宽配 17pt（1.15pt/in），QQ/微信缩到 1000px 宽时标题只剩 11px → 糊。
+> 现在 6.6in/列 配 19pt（1.44pt/in）+ DPI 220，同缩放下 ≈20px，点开更清。
+
+| 参数 | 位置 | 默认 | 说明 |
+|---|---|---|---|
+| `TECH_CHART_DPI` | 环境变量 | 220 | 网格图 DPI（`--dpi` 可临时覆盖） |
+| `CHART_DPI` | 环境变量 | 200 | 单只三面板 / `tech_summary` 四面板 DPI |
+| `--dpi N` | `tech_buypoint.py` | 0=用默认 | 本次出图 DPI |
+| `--per-page N` | `tech_buypoint.py` | **4** | 每页几只（2 列 × N/2 行）。**越大越挤越糊**，20 只 → 5 页 |
+| `--bars N` | `tech_buypoint.py` | 120 | 每张子图显示多少根 K 线 |
+
+出图硬规则：
+1. 网格图子图 **6.6×3.8 英寸**、字号 19/15/14/12.5pt、笔线宽 3.0、月牙 s=430
+2. 标题**必须折两行**（名称+涨幅一行，买点+VWAP+板块一行）——单行长标题会把
+   `bbox_inches="tight"` 画布撑宽，等于把相对字号缩小，这正是「分辨率高但看着糊」的真因
+3. 中枢右侧标 `ZG/ZD` 数值，不用读图猜
+4. 存完统一转 **RGB**（`_finalize_png`）：RGBA 在部分 IM 里发灰，且体积大一倍
+5. **QQ 发图用文件形式**（`--document` / `push_image.py --document`）→ 平台不压缩；
+   直接发图片会被压到 1000px 宽，再高清的源图也白搭
+
+```bash
+# 高清出图（每页 4 只 + 220dpi，20 只 → 5 页）
+python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --per-page 4 --dpi 220
+
+# 以文件形式推 QQ（不压缩，最清晰）
+CHAN_QQ_ACCOUNT="" python3 bin/push_image.py 图.png --qq-only --document
+```
 
 ## 四、图（一张图四面板）
 
