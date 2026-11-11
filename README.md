@@ -18,6 +18,40 @@
 | `bin/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
 | `bin/chan_ma_chart.py` | **缠论·均线版单标的出图**（只画均线版一层，图大结构清楚） |
 
+### 按级别跑 + 策略索引（2026-11-11 新增）
+
+`strategies/` 目录把五套口径按策略归档，并提供统一的级别入口：
+
+```bash
+python3 strategies/run_level.py --target 中证500 --level m15   # 15分钟
+python3 strategies/run_level.py --target 600519 --level h1     # 小时线
+python3 strategies/run_level.py --target 600519 --level day    # 日线
+python3 strategies/run_level.py --target 600519 --level week   # 周线（日线合成）
+```
+
+| 策略 | 15分钟 | 小时线 | 日线 | 周线 | 入口 |
+|---|:---:|:---:|:---:|:---:|---|
+| 缠论·分型版 | ✅ | ✅ | ✅ | ✅ | `bin/chan_smc_index.py` / `strategies/run_level.py` |
+| 缠论·均线版 | ✅ | ✅ | ✅ | ✅ | `bin/chan_ma_trend_v2.py` / `strategies/run_level.py` |
+| SMC | ✅ | ✅ | ✅ | ✅ | `smc/smc_core.py` / `strategies/run_level.py` |
+| VWAP 六轨 | ✅ | ✅ | ✅ | ✅ | `smc/smc_core.py` / `strategies/run_level.py` |
+| 小波·多尺度 | ❌ | ⚠️停用 | ✅ | ✅（过滤） | `strategies/wavelet/` |
+| 威科夫吸筹 | 盘中（过滤层周/日） | — | ✅ | ✅（过滤） | `bin/wyckoff_buypoint_v2.py` |
+
+> 完整说明与「为什么小波不套 15 分钟」见 **[strategies/README.md](strategies/README.md)**。
+
+### 本地缠论多尺度交易工程并入（2026-11-11）
+
+本地结构版工程已并入 **[chanlun_multiscale/](chanlun_multiscale/README.md)**，与 `bin/` 口径对齐：
+
+- MACD `(10,20,5)`；包含 → 分型 → 笔 → 中枢 → 背驰 → B1/S1/B2/S2/B3/S3
+- **几何只有一套实现**：`chanlun_multiscale/chanlun_backtest/structure_indicators.py`
+  （包含处理 / 分型 / 笔 / 逐笔链式中枢），`bin/chan_smc_index.py` 只是包装并附加 MACD/买卖点；
+  `chan_chart.py`、`tech_buypoint.py` 的三买/三卖扫描也全部复用这套中枢，不再各自维护「最近3段」
+- 15m/1h/日线/周线四级交易闸门（15m 只做结构参考，1h 只认三买，周线只认一/二买）
+- `structure_signals_v2.py` 为第二批候选（三买中枢递进校验 + 二买锚定一买），**仅对比、未接实盘**
+- 实盘仍走 `chanlun_multiscale/Strategy/chanlun_fractal_Strategy.py`（v1 信号 + 四级闸门）
+
 ---
 
 ## 目录
@@ -106,7 +140,7 @@
 |---|---|---|
 | ① 缠论·分型版 | 包含处理 → 顶底分型 → 笔 → 中枢 ZG/ZD → 背驰 | 日线认一/二/三买 + 二/三卖；**小时线只认三买，及一买 + MA10 金叉** |
 | ② 缠论·均线版 | 笔 = MA5/MA10 双穿 MA20；线段 = MA20/MA40 双穿 MA80；大级别 = 价格 vs MA160 | 只问「当前级别能不能支撑交易」，不递归、不用 MA320 |
-| ③ SMC | 摆动点 → 结构突破 → FVG / OB → 方向确认 | 日线 k=3，小时线 k=1；**只作机会/风险提示，不参与入场** |
+| ③ SMC | 摆动点 → FVG / OB → 不破 + 回踩 + 方向确认 + 不走远 | **单一口径 `smc/smc_core.py`**（`chan_smc_index`、`tech_summary` 都调它）；日线 k=3，小时线 k=1 |
 | ④ VWAP 六轨 | 量加权 VWAP ± 1σ/2σ/3σ（窗口 60 根）+ MA40 方向 | +3σ 全平 / +2σ 减半 / −1σ 全止损；右侧标正态分位 |
 | ⑤ 买点/卖点分析 | 买点：①三买 > ②一买（须 MA20 向上）> ③二买（**胜率最低·仅作参考**）；卖点：①三卖 > ②一卖（须 MA20 向下）> ③二卖 | 行业先过闸才下钻个股（详见第一章） |
 
@@ -367,9 +401,9 @@ bin/
   tech_summary.py        五层分析主脚本（报告 + 双图 + 推送）
   tech_buypoint.py       买点分析（指数/行业/概念/个股）
   buypoint_chart.py      买点分析三联图
-  chan_smc_index.py      缠论分型版核心 + 日线取数 + 标的表
+  chan_smc_index.py      缠论分型版包装（几何委托 structure_indicators）+ 本地 SMC 日/周摘要 + 日线取数 + 标的表
   chan_ma_trend_v2.py    缠论均线版核心（笔/线段/走势类型/verdict）
-  chan_chart.py          缠论几何（保证图与判定同口径）
+  chan_chart.py          缠论画图（几何全部复用 chan_smc_index / structure_indicators）
   datahub.py             日线三级灾备（akshare → tushare → 网页）
   minute_hub.py          60m 分钟线（index / stock 两种 kind）
   weekly_zs.py           申万行业指数日线

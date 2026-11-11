@@ -719,15 +719,13 @@ def find_third_buys(d, cl, max_age=None, near=None):
     nmb = len(mb)
     seen = set()
     out = []
-    for i in range(n - 3, -1, -1):
-        w = segs[i:i + 3]
-        if len(w) < 3:
-            continue
-        zg = min(x["hi"] for x in w)
-        zd = max(x["lo"] for x in w)
-        if not zg > zd:
-            continue
-        for k in range(n - 2, i + 2, -1):        # ← 反向：先找最近一次离开+回踩
+    zlist = C.zhongshu_from_segs(segs)          # 本地逐笔链式中枢（唯一口径）
+    for zi in range(len(zlist) - 1, -1, -1):
+        z = zlist[zi]
+        zg, zd, i = z["zg"], z["zd"], z["i"]
+        # 本地中枢互不重叠：离开点限制在本中枢之后、下一中枢之前
+        k_hi = min(n - 2, zlist[zi + 1]["i"] - 1) if zi + 1 < len(zlist) else n - 2
+        for k in range(k_hi, max(i + 2, z["end"] - 1), -1):   # ← 反向：先找最近一次离开+回踩
             if not (segs[k]["up"] and segs[k]["hi"] > zg):
                 continue
             r = segs[k + 1]
@@ -744,17 +742,8 @@ def find_third_buys(d, cl, max_age=None, near=None):
             #   实测巨人网络 002558：中枢 [11.63~17.58]，离开后中间又出现
             #   [34.55~47.66] / [30.76~34.29] / [30.76~31.31] / [23.15~26.99] 四个中枢，
             #   价格从 47.66 一路跌到 18.74 却被判成周线三买，现价其实在最新中枢下方。
-            mid_zs = []
-            for j in range(i + 3, k - 1):
-                w2 = segs[j:j + 3]
-                if len(w2) < 3:
-                    continue
-                z2 = min(x["hi"] for x in w2)
-                d2 = max(x["lo"] for x in w2)
-                if z2 > d2:
-                    mid_zs.append((round(float(d2), 2), round(float(z2), 2)))
-            if mid_zs:
-                continue                      # 中间已有新中枢 → 该中枢失效，换更近的离开点
+            # 中枢递进：本地中枢链已保证 zlist[zi+1] 起为后续中枢，
+            # k_hi 已把离开点限制在下一中枢之前，无需再逐段重算。
             lvl = round(float(r["lo"]), 2)
             age = nmb - 1 - r["i1"]
             # ② 结构未破：回踩低点之后**再未跌破**（用合并K线的低点，索引与 segs 同空间）
@@ -931,15 +920,12 @@ def find_third_sells(d, cl, max_age=None, near=None):
     nmb = len(mb)
     seen = set()
     out = []
-    for i in range(n - 3, -1, -1):
-        w = segs[i:i + 3]
-        if len(w) < 3:
-            continue
-        zg = min(x["hi"] for x in w)
-        zd = max(x["lo"] for x in w)
-        if not zg > zd:
-            continue
-        for k in range(n - 2, i + 2, -1):        # ← 反向：先找最近一次离开+反抽（同三买修复）
+    zlist = C.zhongshu_from_segs(segs)          # 本地逐笔链式中枢（唯一口径）
+    for zi in range(len(zlist) - 1, -1, -1):
+        z = zlist[zi]
+        zg, zd, i = z["zg"], z["zd"], z["i"]
+        k_hi = min(n - 2, zlist[zi + 1]["i"] - 1) if zi + 1 < len(zlist) else n - 2
+        for k in range(k_hi, max(i + 2, z["end"] - 1), -1):   # ← 反向：先找最近一次离开+反抽
             if segs[k]["up"] or not (segs[k]["lo"] < zd):      # 必须向下离开中枢
                 continue
             r = segs[k + 1]

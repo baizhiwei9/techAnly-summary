@@ -497,6 +497,25 @@ def pick_signals(fvgs, obs, df, end=None, max_n=4, win=None, need=None,
 _pick_signals_win = pick_signals   # 内部别名（Frame.signals 用）
 
 
+def smc_layer(df, k, atr_n=14, max_n=4):
+    """单级别 SMC 层：摆动点 + FVG + OB + 方向确认信号（统一入口）。
+
+    四层汇总（tech_summary）与缠论日报（chan_smc_index）都从这里取数，
+    避免各自复制一遍组装逻辑。返回 dict 字段：
+      hi/lo  摆动点索引；fvgs/obs  候选区（含 fresh/age/strength）；
+      sigs   confirm_zone 后的确认信号（最多 max_n 条）；atr  ATR 序列；k 摆动点参数。
+    """
+    at = atr(df, n=atr_n)
+    hi, lo = pivots(df, k)
+    fvgs = find_fvgs(df, at.values, lookback=FVG_LOOKBACK_FAR, end=len(df) - 1)
+    obs = find_order_blocks(df, hi, lo, at.values, k=k, end=len(df) - 1,
+                            lookback_far=OB_LOOKBACK_FAR)
+    av = float(at.iloc[-1]) if np.isfinite(at.iloc[-1]) else None
+    sigs = pick_signals(fvgs, obs, df, atr_val=av, max_n=max_n)
+    return {"hi": hi, "lo": lo, "fvgs": fvgs, "obs": obs, "sigs": sigs,
+            "atr": at, "k": k}
+
+
 def _last_opposite(o, c, j, lookback, bull):
     """从 j-1 往前找第一根「反向」K线：bull=True 找阴线(close<open)，False 找阳线。
     仅用 j 之前的数据 → 无 look-ahead。"""

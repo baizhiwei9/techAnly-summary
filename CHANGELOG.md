@@ -6,6 +6,180 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 02:20
+
+**feat(chanlun): 分型版笔/中枢全部切到本地引擎（技术分析单一库收口）**
+
+### 改了什么
+1. `bin/chan_smc_index.py`
+   - `merge_bars()`：改为直接调用 `structure_indicators.merge_klines`（本地栈式包含处理），
+     输出仍为 `[high, low, last_i, hi_i, lo_i]`，所有下游无感
+   - `fractals()`：改为本地宽松分型（顶只看高点、底只看低点）
+   - `build_bi()`：改为本地成笔（同类取极值、异类间隔 ≥5 根合并K线，`MIN_BI_GAP=4`）
+   - 新增 `zhongshu_from_segs()`：直接调用本地 `detect_zhongshu`，逐笔链式延伸
+   - `chan_read()`：中枢由「最近 3 段重叠」改为「本地最近一个链式中枢」；
+     三买/三卖扫描从该中枢延伸结束位置开始，避免把中枢内部震荡当离开段
+2. `bin/chan_chart.py`：删除自带的包含/分型/成笔副本，`chan_geometry()` 全部复用
+   `chan_smc_index.merge_bars/build_bi/segs_from_bi/zhongshu_from_segs`
+3. `bin/tech_buypoint.py`：三买/三卖扫描的外层由「遍历所有 3 段窗口」改为
+   「遍历本地中枢链」；离开点限制在下一中枢之前，替代原逐段重算的「中枢递进校验」
+4. `reports/plot_pen_pivot_compare.py`：远程侧改为加载 `vendor/chan_smc_index.py` 快照，
+   本地侧为现行引擎；改完仍可复现「统一前」的笔/中枢差异
+
+### 为什么
+- 大佬定稿：「分型版也用本地的」「刚才说那两个不一致的（笔、中枢）也用本地的」
+- 此前只有 SMC/MACD/背驰统一，笔与中枢仍是远程简化实现（≥3 根成笔、只看最近 3 段）；
+  同一份 K 线在两套引擎下笔数 99 vs 67、中枢 1 vs 5，报告和实盘判定容易互相矛盾
+
+### 验证
+- `bin/chan_smc_index.build_bi` 与 `structure_indicators.build_bi` 在 sh510300 日线（1023 根）
+  与 60m（400 根）上逐端点一致；中枢列表逐项一致
+- sh510300 日线 `chan_read`：正常返回，中枢 4.61~4.84，周线底背驰 + 一买 4.03
+- 全库 `compileall` 通过；`tech_buypoint.find_third_buys/find_third_sells` 正常执行
+- 对比图统计（统一前）：远程 99 笔 / 1 个中枢，本地 67 笔 / 5 个中枢
+
+### 影响
+- 笔、中枢、三买/三卖的数量与位置会变化（这是本次目的）；一买/二买仍基于本地背驰口径
+- 远程快照仅保留在 `chanlun_multiscale/chanlun_backtest/vendor/`，不参与线上判定
+
+## 2026-11-12 01:40
+
+**feat(lib): SMC 统一本地口径；分型版 MACD/背驰改用真实收盘价与本地规则**
+
+### 改了什么
+1. `smc/smc_core.py`：新增 `smc_layer(df, k, atr_n=14)` 单一组装入口（摆动点 + FVG/OB + `confirm_zone`）
+2. `bin/tech_summary.py`：`smc_layer()` 改为直接委托 `smc_core.smc_layer`，删除重复组装
+3. `bin/chan_smc_index.py`：
+   - 删除远程 `smc_read` / `pivots`，新增 `smc_local(df, k, tag)`，日/周 SMC 全部走本地
+   - `smc_line()` 改为渲染本地确认信号（结构上下文 + FVG/OB 新鲜数 + `confirm_zone` 文案）
+   - `merge_bars()` 记录每条合并K线的原始索引 / 最高点 / 最低点索引，前两列口径不变
+   - `bars_of()` 返回 `(high, low, close)`；`chan_read()` 的 MACD(10/20/5) 改用**真实收盘价**
+   - 背驰改为本地规则：同向笔端点比较，`MACD 面积 < 前段 × 0.9` 且创新低/新高
+   - `segs_from_bi()` 保留合并索引 `i0/i1`（年龄/中枢逻辑不变），新增原始索引 `i0o/i1o` 供背驰切片
+4. `bin/tech_summary.py::chan_fx`、`bin/chan_chart.py::chan_geometry`：K线参数补传 close
+5. `reports/plot_pen_pivot_compare.py`（新增）：笔 / 中枢差异对比图生成脚本
+
+### 为什么
+- 大佬定稿：「SMC 用本地的，不用远程那套」「缠论分型版背驰以本地为准」「MACD 用本地真实收盘价」
+- 远程 `smc_read` 只是「价格 > 旧摆动高」的结构播报，不是买点算法；本地 `confirm_zone` 才有 A/B/C/D 状态机与回测能力
+
+### 兼容性
+- 远程原文仍保留在 `chanlun_multiscale/chanlun_backtest/vendor/`，仅用于历史对比，不参与任何线上判定
+- `merge_bars` 仍接受 `(high, low)` 二元组；无 close 的旧调用自动退回合成分K线中值
+
+## 2026-11-12 01:00
+
+**docs(smc): 远程/本地 SMC 买点口径对比 + 小波归档验收**
+
+### 改了什么
+1. `reports/smc_buypoint_compare.md`（新增）：能力矩阵、400 根日线实测重叠率、远程 6 个问题、本地 4 个注意点
+2. 小波归档（`strategies/wavelet/`，commit 51f3bea）重新验收：编译通过、`wavelet_portfolio_v4` / `wavelet_futures_v5` 导入通过、无真实 chat_id / 本机绝对路径
+
+### 为什么
+- 大佬要求「对比两者 SMC 买点，是不是有差异、是不是有 bug」，并确认小波已并入库
+- 结论：远程 `smc_read` 不是买点算法，只是结构摘要；执行口径继续用本地 `smc_core.confirm_zone`
+
+## 2026-11-12 00:30
+
+**refactor(lib): 远程单源模块内置到 vendor/，库自包含不再依赖外部目录**
+
+### 改了什么
+1. `chanlun_multiscale/chanlun_backtest/vendor/`（新增）：内置远程原文 `chan_ma_trend_v2.py`、`chan_smc_index.py`（逐字节拷贝，md5 记录在同步脚本输出中）
+2. `chanlun_multiscale/chanlun_backtest/ma_trend.py`：查找顺序改为 `$CHAN_MA_BIN → vendor/ → 仓库 bin/ → 合并目录`，默认走库内单源
+3. `chanlun_multiscale/chanlun_backtest/sync_vendor.py`（新增）：上游更新后一条命令同步；`--check` 只比对 md5，漂移时退出码 1
+
+### 为什么
+- 目标：所有技术分析收敛到一个库、一套代码；部署环境（agent workspace）没有 `bin/`，原先 `import ma_trend` 直接报 `ImportError`
+- 内置后同一份 `chanlun_backtest` 在仓库、合并目录、agent workspace 都能独立运行
+
+### 同步方式
+```bash
+python -m chanlun_backtest.sync_vendor          # 同步
+python -m chanlun_backtest.sync_vendor --check  # CI/上线前校验漂移
+```
+
+## 2026-11-12 00:05
+
+**feat(ma): 均线版改用远程原文口径 chan_ma_trend_v2（弃用旧简版 MA20/40/160）**
+
+### 改了什么
+1. `chanlun_multiscale/chanlun_backtest/ma_trend.py`（新增）：直接加载 `bin/chan_ma_trend_v2.py`，不复制公式；提供 `normalize / prepare / analyze / recent_signals / format_report`，支持日线、周线（`resample_week` 合成）
+2. `chanlun_multiscale/chanlun_backtest/run_ma_scan.py`（新增）：CLI 扫描（默认宽基 ETF，日线；`--level week` 周线；`--json` 机器可读）
+3. `chanlun_multiscale/chanlun_backtest/indicators.py`：加旧简版警示，标明仅保留历史回测
+4. `chanlun_multiscale/chanlun_backtest/STRUCTURE_VERSION.md`：顶部加「均线版已换新版」说明
+5. `chanlun_multiscale/README.md`、`MERGE_STATUS.md`：补目录、口径与运行命令
+
+### 为什么
+- 大佬 2026-11-11：「然后缠论均线版也是用新版的。你们那边太简单了。」
+- 旧简版只有 MA20/40/160 + MACD 12/26/9，没有双穿笔、三组均线、级别定位，判定过粗
+
+### 新口径
+- 笔 = MA5、MA10 同时位于 MA20 同侧（双穿），线段 = MA20/40 双穿 MA80，大级别 = 价格 vs MA160
+- MACD `(10,20,5)`，另有均线排列、走势模式、级别定位、笔/段/大级别背驰、可交易性
+- 周线由日线合成，不单独取数
+
+### 校验
+- `ma_trend.analyze` 与远程 `tech_summary.ma_layer` 在 sh510300、sz159915 的日线 + 周线逐字段一致（dt/close/sigs/align/mode/loc/walk/beichi/tradeable），`FAILS 0`
+- 全库 `py_compile` 通过；仓库内 `python -m chanlun_backtest.run_ma_scan` 端到端跑通
+
+### 影响文件
+- `chanlun_multiscale/chanlun_backtest/ma_trend.py`（新增）
+- `chanlun_multiscale/chanlun_backtest/run_ma_scan.py`（新增）
+- `chanlun_multiscale/chanlun_backtest/indicators.py`
+- `chanlun_multiscale/chanlun_backtest/STRUCTURE_VERSION.md`
+- `chanlun_multiscale/README.md`
+- `chanlun_multiscale/MERGE_STATUS.md`
+
+## 2026-11-11 23:59
+
+**feat: 新增结构引擎对比脚本（远程 chan_smc_index vs 本地多尺度）**
+
+### 改了什么
+1. `chanlun_multiscale/chanlun_backtest/compare_structure_engines.py`：同一标的/周期并排画两套引擎的笔、中枢、买卖点（上=远程分型版，下=本地结构引擎 v2a）
+2. `chanlun_multiscale/MERGE_STATUS.md`：补「结构引擎口径差异」一节
+
+### 为什么
+- 大佬 2026-11-11：「另外你说结构引擎不一样，这是咋回事？你对比一下画图。」
+
+### 对比结论
+- 包含处理一致（三组样本合并K线数完全相同）
+- 笔：远程间隔≥3且不校验端点价差；本地间隔≥5且校验顶>前底/底<前顶 → 远程笔更碎（100/98/21 vs 68/60/15）
+- 中枢：远程只报最近 3 段重叠（恒 1 个）；本地链式构造+延伸规则（5/7/2 个）
+- MACD 均为 10/20/5，但远程用合并K线 `(H+L)/2`、本地用收盘价
+- 背驰：远程「新低 + (振幅更小 或 MACD峰值更小)」较松；本地「MACD面积<前段×0.9」较严
+- 信号：创业板ETF 日线窗口内远程 4 个、本地 0 个；沪深300ETF 日线本地多出 1 个三卖（远程当前中枢不含该段）
+
+### 影响文件
+- `chanlun_multiscale/chanlun_backtest/compare_structure_engines.py`（新增，只读对比）
+- `chanlun_multiscale/MERGE_STATUS.md`
+
+## 2026-11-11 23:54
+
+**merge: main 出图改进合入 wavelet_day（e226aba..357b0ca）**
+
+### 改了什么
+1. `bin/buypoint_chart.py`、`bin/tech_buypoint.py`、`bin/tech_summary.py`、`bin/push_image.py`：取 `main` 最新版（一张图最多 20 子图不分页、布局重叠自检、出图清晰度提升）
+2. `skills/tech-summary/SKILL.md`：取 `main` 最新版（§三·5 布局硬规则）
+3. `CHANGELOG`：两边条目按时间合并，44 条一条不丢
+4. `chanlun_multiscale/MERGE_STATUS.md`：分支状态改为已回合
+
+### 为什么
+- 大佬 2026-11-11：「肯定用新版的。如果新版是我这边的，你要合并，把这个更改合并了。合并之后你检查一下。」
+
+### 校验
+- 规则文件（v1/v2/闸门/指标）md5 与工作区全同，合并未改动规则逻辑
+- 五条差异信号数复算全部一致：B2 4→1、S2 4→0、B3 0→1、B1 0→2、S1 0→2
+- 全库 `py_compile` 通过；出图模块 import 通过；敏感信息（chat_id / 本机绝对路径）扫描无命中
+
+### 影响文件
+- `bin/buypoint_chart.py`
+- `bin/tech_buypoint.py`
+- `bin/tech_summary.py`
+- `bin/push_image.py`
+- `skills/tech-summary/SKILL.md`
+- `CHANGELOG.md`
+- `chanlun_multiscale/MERGE_STATUS.md`
+
 ## 2026-11-11 23:52
 
 **chore(skill): 发布布局硬规则 + 出图重叠自检（SKILL.md §三·5）**
@@ -17,6 +191,69 @@ SKILL.md 新增「布局硬规则」小节：绝对英寸布局(add_axes)、_fit
 **fix(chart): 网格图/三面板文字重叠 —— 改绝对英寸布局 + 文字量宽自适应 + 重叠自检**
 
 根因：标题/副标题/表脚用 transAxes 固定偏移，字号一大就互压，长文字还会顶出画布。改法：add_axes 绝对定位（表头0.62+面板2.78+表脚0.96英寸）；新增 _fit_text 先量宽再缩字号/截断；价格轴上下留白；边缘标注自动换锚点；多买卖点标签间距加大；x轴跳过第0根；ZG/ZD 改贴中枢框左端内侧；新增 _debug_overlaps 自检（TECH_GRID_DEBUG=1 → [OVERLAP]/[OOB]，验收 overlaps=0 oob=0）；三面板 hspace 0.10→0.46、标题说明改量宽、均线版说明移到底部、结论框左右分置。实测 15 只网格 overlays=0 oob=0，三面板 0/0
+
+## 2026-11-11 23:30
+
+**feat(strategies): 新增 `wavelet_day` 分支 —— 小波策略归档 + 五套口径统一级别入口**
+
+### 改了什么
+1. **新增 `strategies/` 策略索引层**
+   - `strategies/levels.py`：`m15 / h1 / day / week` 统一取数；周线由日线
+     `resample("W-FRI")` 合成（保留 volume）；15m/60m 走 `minute_hub`，日线走 `datahub`
+   - `strategies/run_level.py`：一条命令按级别跑 ①分型版 ②均线版 ③SMC ④VWAP
+   - `strategies/README.md`：五套策略 + 级别支持矩阵（实测口径）
+2. **归档小波策略 `strategies/wavelet/`**（公式未改，仅去敏）
+   - `signal_monitor.py`、9 个 `strategies/wavelet_*.py`、`run_monitor.sh`
+   - 飞书 chat_id 改为 `WAVELET_FEISHU_CHAT_ID` 环境变量；本机绝对路径改为相对路径
+   - `trading_day_check` 改为可选依赖（公开库 clone 后不会 import 崩）
+3. **README 增补「按级别跑 + 策略索引」表**
+
+### 为什么
+- 大佬 2026-11-11：把分钟级交易监控（小波）提到 techAnly-summary 主库，单开
+  `wavelet_day` 分支；并把缠论/分型版/均线版/小波/SMC 统一整理，确认各口径能按
+  参数切 日线/周线/小时线/15分钟。
+
+### 级别支持实测（2026-11-11）
+- 分型版 / 均线版 / SMC / VWAP：**15m、h1、day、week 全部跑通**（同一份公式，换 K 线）
+- 小波：**日线/周线**；1h 模块存在但监控里已停用；**不支持 15 分钟**（参数按日线尺度定）
+- 威科夫：盘中策略，过滤层为周线/日线，不是任意级别重采样
+
+### 影响文件
+- `strategies/levels.py`（新增）
+- `strategies/run_level.py`（新增）
+- `strategies/README.md`（新增）
+- `strategies/wavelet/**`（新增，含去敏）
+- `README.md`
+- `CHANGELOG.md`
+
+## 2026-11-11 23:18
+
+**feat(multiscale): 并入本地缠论多尺度交易工程（四级闸门 + v2 候选 + MACD 10/20/5）**
+
+### 改了什么
+1. **新增 `chanlun_multiscale/`**
+   - `chanlun_backtest/`：结构版核心（包含→分型→笔→中枢→背驰→买卖点）、四级闸门
+     `signal_gates.py`、v2 候选 `structure_signals_v2.py`、第二批对比脚本
+     `compare_v2_batch2.py`
+   - `Strategy/chanlun_fractal_Strategy.py`：生产监控（期货 + 股指期货 + ETF，四级周期）
+   - `data_fetcher.py`：数据采集（akshare）
+   - `README.md` / `MERGE_STATUS.md`：口径、合并进度与待办
+2. **口径对齐远程定稿**
+   - MACD `(20,40,5)` → `(10,20,5)`，与 `bin/chan_smc_index.py` 一致
+   - 三买遍历所有中枢 + 中枢递进校验 + 现价 > ZG；二买锚定一买后首个回踩
+   - 15m 不发信号；1h 只认三买（一买须 MA10>MA20）；日线一/二/三买；周线只认一/二买
+3. **公开库适配**：去掉本机绝对路径，持仓状态文件改 `FRACTAL_STATE_FILE` 环境变量；
+   内网编排脚本 `run_unified_monitor.py`（含飞书 chat_id）不并入公开库
+
+### 为什么
+- 大佬 2026-11-11：把本地缠论多尺度交易工程与远程 `techAnly-summary` 合并落盘并推分支
+
+### 影响文件
+- `chanlun_multiscale/**`（新增）
+- `README.md`
+- `CHANGELOG.md`
+
+> 注：`structure_signals_v2.py` 仅用于对比评估，**未接实盘**；实盘仍为 v1 信号。
 
 ## 2026-11-11 23:01
 
@@ -867,30 +1104,6 @@ bootstrap_cache 现在会生成三个缓存，README 的安装章节同步补上
 ### 私密信息拦截（自动，命中即拒绝上传）
 tushare 代理/直连 token、飞书私聊/群 chat_id、飞书 webhook、GitHub token、
 OpenAI 风格 key、QQ openid、本机工作区绝对路径（前缀在名单文件里配置）。
-
-### 新增文件
-- `bin/gh_commit.py`
-- `bin/gh_publish.py`
-- `bin/gh_publish_techsummary.py`
-
-## 2026-11-10 00:21
-
-
-**chore(release): 发布脚本改用 Git Data API，全部文件合成单个 commit**
-
-### 发布链路改造（避免历史被同名 commit 刷屏）
-
-- **问题**：GitHub contents API 每次 PUT 只改一个文件 = 一条 commit。
-  一次改 10 个文件就产生 10 条**同名** commit，`git log` 完全没法读，
-  也无法回答「这次到底改了什么」。
-- **改法**：新增 `bin/gh_commit.py` —— blobs → tree → commit → 更新 ref，
-  **所有文件合成 1 个 commit**；未变更的文件按 git blob sha 自动跳过，不造空 commit。
-- `bin/gh_publish.py` 保留为单文件/兜底工具（同样带私密串拦截）。
-- `bin/gh_publish_techsummary.py` 增加：dry-run **不再污染 CHANGELOG**（试跑写出假条目已清理）。
-
-### 私密信息拦截（自动，命中即拒绝上传）
-tushare 代理/直连 token、飞书私聊/群 chat_id、飞书 webhook、GitHub token、
-OpenAI 风格 key、QQ openid、本机工作区绝对路径。
 
 ### 新增文件
 - `bin/gh_commit.py`

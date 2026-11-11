@@ -6,3 +6,4 @@ config.local.*
 *.log
 .ipynb_checkpoints/
 .DS_Store
+chanlun_multiscale/reports/
