@@ -30,14 +30,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "bin"))
-sys.path.insert(0, os.path.join(REPO, "chanlun_multiscale"))
+sys.path.insert(0, os.path.join(REPO, "chanlun", "multiscale"))
 
 import chan_smc_index as C                       # noqa: E402
 import chanlun_backtest.structure_indicators as LI  # noqa: E402
 
 # 远程引擎快照（vendor 逐字节副本，仅用于历史对比）；现行 chan_smc_index 已是本地口径
 import importlib.util as _ilu
-_vp = os.path.join(REPO, "chanlun_multiscale", "chanlun_backtest", "vendor",
+_vp = os.path.join(REPO, "chanlun", "multiscale", "chanlun_backtest", "vendor",
                    "chan_smc_index.py")
 _spec = _ilu.spec_from_file_location("vendor_chan_smc_index", _vp)
 R = _ilu.module_from_spec(_spec)

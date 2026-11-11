@@ -11,7 +11,7 @@
 | ② | **缠论·均线版** | 笔 = MA5/10 双穿 MA20；线段 = MA20/40 双穿 MA80；大级别 = 价格 vs MA160 | `bin/chan_ma_trend_v2.py` | 只看当前级别能否支撑交易 |
 | ③ | **SMC** | 摆动点 → 结构突破 → FVG/OB → 方向确认 | `smc/smc_core.py` | 只作提示，不单独入场 |
 | ④ | **VWAP 六轨** | VWAP ±1σ/±2σ/±3σ（窗口 60）+ MA40 方向 | `smc/smc_core.py` | ±3σ 全平 / +2σ 减半 / −1σ 全止损 |
-| ⑤ | **小波·多尺度** | 因果小波(db4, level=4) + 周线过滤 + 分型底 | `strategies/wavelet/` | **日线/周线策略**，见本目录 wavelet/README |
+| ⑤ | **小波·多尺度** | 因果小波(db4, level=4) + 周线过滤 + 分型底 | `wavelet/` | **日线/周线策略**，见 wavelet/README.md |
 | ⑥ | **威科夫吸筹** | 吸筹判定 → 四层过滤 → Top10 行业 → Top20 个股 | `bin/wyckoff_buypoint_v2.py` | 盘中用，过滤层是周线/日线 |
 
 > 用户常说的「缠论的、分型版、均线版、小波、SMC」= ① ② ⑤ ③；
@@ -39,7 +39,7 @@
    一买须 MA10>MA20 金叉，二买一律不认（`bin/tech_summary.py` 的口径）。
    周线在 `bin/tech_intraday_buypoint.py` 里只认一买/二买，与日线三买是两套闸门。
 4. **小波的级别**：ETF 组合 = 日线，周线只做趋势过滤；期货日线 v5 = 日线；
-   期货 1h 模块（`strategies/wavelet/strategies/wavelet_futures_1h.py`）存在，
+   期货 1h 模块（`wavelet/strategies/wavelet_futures_1h.py`）存在，
    但 `signal_monitor.py` 里已整体注释停用。**没有 15 分钟小波**。
 
 ## 三、用法

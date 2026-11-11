@@ -10,7 +10,7 @@
   python3 strategies/run_level.py --target 000905.SH --level day --strategy fractal
   python3 strategies/run_level.py --target 中证500 --level all      # 四个级别各跑一遍
 
-小波策略不在此入口：见 strategies/wavelet/（日线/周线口径）。
+小波策略不在此入口：见 wavelet/（日线/周线口径）。
 """
 from __future__ import annotations
 

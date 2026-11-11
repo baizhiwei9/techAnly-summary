@@ -17,6 +17,9 @@
 | `strategies/wavelet_futures_1h.py` | 期货 1 小时：**模块存在，当前停用** |
 | `strategies/wavelet_structure*.py` | 早期结构版（v1/v2/v3），保留作对照 |
 | `strategies/wavelet_futures_stop.py` / `_v3` / `_v4` | 期货止损与历史版本 |
+| `acvmd_layer.py` | **AC1-VMD 趋势层**（独立模块，不挂主报告）：小波包分解 + VMD 重构，按 vol20 阈值判 regime |
+
+> 目录：`wavelet/strategies/` 下是各版本策略模块；`acvmd_layer.py` 在 `wavelet/` 根下。
 
 ## 二、级别：日线 / 周线，不是 15 分钟
 
@@ -34,11 +37,11 @@
 
 ```bash
 # 手动跑一次
-cd strategies/wavelet
+cd wavelet
 python3 signal_monitor.py
 
 # crontab（工作日 5 次：10:15 / 11:35 / 14:15 / 15:10 / 22:15）
-15 10 * * 1-5 /path/to/strategies/wavelet/run_monitor.sh >> /var/log/wavelet_signal_monitor.log 2>&1
+15 10 * * 1-5 /path/to/wavelet/run_monitor.sh >> /var/log/wavelet_signal_monitor.log 2>&1
 ```
 
 依赖：`numpy pandas pywt akshare requests`，推送另需 `lark-cli`（可选）。

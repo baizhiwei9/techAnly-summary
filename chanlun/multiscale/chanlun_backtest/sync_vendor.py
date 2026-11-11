@@ -32,7 +32,9 @@ def _candidates():
     return [
         os.environ.get("TECHANLY_BIN"),
         os.path.join(repo, "bin"),
-        os.path.join(repo, "..", "bin"),          # 仓库布局：<repo>/chanlun_multiscale/../bin
+        os.path.join(repo, "chanlun", "fractal"),  # 2026-11-12 新布局
+        os.path.join(repo, "chanlun", "ma"),
+        os.path.join(repo, "..", "bin"),
         os.path.join(repo, "techAnly_合并多尺度交易", "techAnly-summary", "bin"),
         os.path.join(repo, "..", "techAnly-summary", "bin"),
         os.path.join(repo, "..", "..", "techAnly-summary", "bin"),

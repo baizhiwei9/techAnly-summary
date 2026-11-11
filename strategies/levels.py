@@ -9,9 +9,9 @@
   2) 周线：由日线 resample(W-FRI) 合成（多级别分析不单独取周线数据）；
   3) 标签：级别名、新鲜度阈值、报告标题随之切换。
 
-  小波（strategies/wavelet）是**日线/周线策略**，不在这条统一适配层里：
+  小波（wavelet/）是**日线/周线策略**，不在这条统一适配层里：
   它的参数（weekly_w=30 / db4 / level=4）是按日线尺度定的，不能直接套 15 分钟。
-  期货 1h 模块存在但当前停用，详见 strategies/wavelet/README.md。
+  期货 1h 模块存在但当前停用，详见 wavelet/README.md。
 
 用法：
   python3 strategies/run_level.py --target 中证500 --level m15

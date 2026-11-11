@@ -29,14 +29,15 @@ _BIN_CANDIDATES = []
 
 def _find_bin():
     here = os.path.dirname(os.path.abspath(__file__))
-    up1 = os.path.dirname(here)                 # chanlun_multiscale
-    up2 = os.path.dirname(up1)                  # 合并根目录 / workspace
+    up1 = os.path.dirname(here)                 # chanlun/multiscale/chanlun_backtest
+    up2 = os.path.dirname(up1)                  # chanlun/multiscale
+    root = os.path.dirname(os.path.dirname(up2))  # 仓库根
     cands = [
         os.environ.get("CHAN_MA_BIN"),
-        os.path.join(here, "vendor"),           # 库内单源（优先）
-        os.path.join(up1, "..", "bin"),         # 仓库布局：<repo>/chanlun_multiscale/../bin
-        os.path.join(up1, "..", "..", "bin"),   # 兜底再往上一层
-        os.path.join(up2, "techAnly-summary", "bin"),   # 合并目录布局
+        os.path.join(here, "vendor"),                          # 库内单源（优先）
+        os.path.join(root, "chanlun", "ma"),                   # 2026-11-12 新布局
+        os.path.join(root, "bin"),                             # 兼容 shim
+        os.path.join(up2, "..", "..", "bin"),                  # 兜底
         os.path.join(up1, "bin"),
     ]
     for p in cands:

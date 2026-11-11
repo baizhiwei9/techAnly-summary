@@ -21,7 +21,27 @@ import subprocess
 import sys
 from datetime import datetime
 
-WS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _repo_root(start):
+    """向上探测仓库根：同时含 bin/ 与 core/ 的那一层（2026-11-12 目录整理后可任意层级）。"""
+    d = os.path.dirname(os.path.abspath(start))
+    for _ in range(6):
+        if os.path.isdir(os.path.join(d, "bin")) and os.path.isdir(os.path.join(d, "core")):
+            return d
+        nd = os.path.dirname(d)
+        if nd == d:
+            break
+        d = nd
+    return os.path.dirname(os.path.dirname(os.path.abspath(start)))
+
+
+WS = os.environ.get("TECH_WS") or _repo_root(__file__)
+# 顺序有讲究：最后插入的优先级最高 → bin/ 放最前 = 最低优先级，
+# 保证 import 命中真实目录，而不是 bin/ 里的兼容 shim。
+for _sd in ("bin", "", "core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
+            "chanlun/multiscale/vendor", "report", "misc", "wavelet", "smc"):
+    _p = os.path.join(WS, _sd)
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
 REPO = "baizhiwei9/techAnly-summary"
 BRANCH = "main"
 STAGE = "/tmp/techanly_publish"
@@ -29,17 +49,17 @@ ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "publish_asset
 
 # 需要同步的文件：本地路径（相对 WS） → 仓库路径
 FILES = [
-    "bin/tech_summary.py",
-    "bin/tech_buypoint.py",
-    "bin/buypoint_chart.py",
-    "bin/chan_chart.py",
-    "bin/chan_ma_trend_v2.py",
-    "bin/chan_smc_index.py",
-    "bin/datahub.py",
-    "bin/feishu_card.py",
-    "bin/minute_hub.py",
-    "bin/tushare_init.py",
-    "bin/weekly_zs.py",
+    "report/tech_summary.py",
+    "report/tech_buypoint.py",
+    "report/buypoint_chart.py",
+    "chanlun/fractal/chan_chart.py",
+    "chanlun/ma/chan_ma_trend_v2.py",
+    "chanlun/fractal/chan_smc_index.py",
+    "core/datahub.py",
+    "core/feishu_card.py",
+    "core/minute_hub.py",
+    "core/tushare_init.py",
+    "misc/weekly_zs.py",
     "smc/smc_core.py",
     "skills/tech-summary/SKILL.md",
     "skills/chan-ma-trend/SKILL.md",
@@ -102,12 +122,12 @@ def sanitize(rel, text):
     for pat, rep, *fl in STRIP:
         flags = fl[0] if fl else 0
         text = re.sub(pat, rep, text, flags=flags)
-    if rel == "bin/feishu_card.py":
+    if rel == "core/feishu_card.py":
         # 本机版 _cfg() 只读 openclaw.json → 公开版允许环境变量优先
         text = re.sub(
             r'def _cfg\(\):\n(?:.*\n)*?    return c\["appId"\], c\["appSecret"\]',
             FEISHU_CFG_PUBLIC, text, count=1)
-    if rel == "bin/chan_smc_index.py":
+    if rel == "chanlun/fractal/chan_smc_index.py":
         text = re.sub(
             r'    c = json\.load\(open\(os\.path\.join\(os\.path\.dirname\(WS\), "openclaw\.json"\), encoding="utf-8"\)\)\["channels"\]\["feishu"\]\n'
             r'    b = json\.dumps\(\{"app_id": c\["appId"\], "app_secret": c\["appSecret"\]\}\)\.encode\(\)',
@@ -116,7 +136,7 @@ def sanitize(rel, text):
             '        c = json.load(open(os.path.join(os.path.dirname(WS), "openclaw.json"), encoding="utf-8"))["channels"]["feishu"]\n'
             '        aid, sec = c["appId"], c["appSecret"]\n'
             '    b = json.dumps({"app_id": aid, "app_secret": sec}).encode()', text, count=1)
-    if rel == "bin/tushare_init.py":
+    if rel == "core/tushare_init.py":
         # 公开版要保留「未配置 token」的提示（本机版有内置 token 所以没这段）
         text = text.replace(
             "    except Exception:\n        pass\n    return _DEFAULT_PROXY_TOKEN",

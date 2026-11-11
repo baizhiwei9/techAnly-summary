@@ -13,10 +13,10 @@
 
 | 脚本 | 作用 |
 |---|---|
-| `bin/tech_summary.py` | 单标的四层完整分析（缠论分型版 + 缠论均线版 + SMC + VWAP 六轨） |
-| `bin/tech_buypoint.py` | 买点分析（行业/指数/概念先过闸，再下钻成分股；个股直连四层分析） |
-| `bin/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
-| `bin/chan_ma_chart.py` | **缠论·均线版单标的出图**（只画均线版一层，图大结构清楚） |
+| `report/tech_summary.py` | 单标的四层完整分析（缠论分型版 + 缠论均线版 + SMC + VWAP 六轨） |
+| `report/tech_buypoint.py` | 买点分析（行业/指数/概念先过闸，再下钻成分股；个股直连四层分析） |
+| `report/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
+| `chanlun/ma/chan_ma_chart.py` | **缠论·均线版单标的出图**（只画均线版一层，图大结构清楚） |
 
 ### 按级别跑 + 策略索引（2026-11-11 新增）
 
@@ -31,26 +31,26 @@ python3 strategies/run_level.py --target 600519 --level week   # 周线（日线
 
 | 策略 | 15分钟 | 小时线 | 日线 | 周线 | 入口 |
 |---|:---:|:---:|:---:|:---:|---|
-| 缠论·分型版 | ✅ | ✅ | ✅ | ✅ | `bin/chan_smc_index.py` / `strategies/run_level.py` |
-| 缠论·均线版 | ✅ | ✅ | ✅ | ✅ | `bin/chan_ma_trend_v2.py` / `strategies/run_level.py` |
+| 缠论·分型版 | ✅ | ✅ | ✅ | ✅ | `chanlun/fractal/chan_smc_index.py` / `strategies/run_level.py` |
+| 缠论·均线版 | ✅ | ✅ | ✅ | ✅ | `chanlun/ma/chan_ma_trend_v2.py` / `strategies/run_level.py` |
 | SMC | ✅ | ✅ | ✅ | ✅ | `smc/smc_core.py` / `strategies/run_level.py` |
 | VWAP 六轨 | ✅ | ✅ | ✅ | ✅ | `smc/smc_core.py` / `strategies/run_level.py` |
-| 小波·多尺度 | ❌ | ⚠️停用 | ✅ | ✅（过滤） | `strategies/wavelet/` |
-| 威科夫吸筹 | 盘中（过滤层周/日） | — | ✅ | ✅（过滤） | `bin/wyckoff_buypoint_v2.py` |
+| 小波·多尺度 | ❌ | ⚠️停用 | ✅ | ✅（过滤） | `wavelet/` |
+| 威科夫吸筹 | 盘中（过滤层周/日） | — | ✅ | ✅（过滤） | `report/wyckoff_buypoint_v2.py` |
 
 > 完整说明与「为什么小波不套 15 分钟」见 **[strategies/README.md](strategies/README.md)**。
 
 ### 本地缠论多尺度交易工程并入（2026-11-11）
 
-本地结构版工程已并入 **[chanlun_multiscale/](chanlun_multiscale/README.md)**，与 `bin/` 口径对齐：
+本地结构版工程已并入 **[chanlun/multiscale/](chanlun/multiscale/README.md)**，与 `bin/` 口径对齐：
 
 - MACD `(10,20,5)`；包含 → 分型 → 笔 → 中枢 → 背驰 → B1/S1/B2/S2/B3/S3
-- **几何只有一套实现**：`chanlun_multiscale/chanlun_backtest/structure_indicators.py`
-  （包含处理 / 分型 / 笔 / 逐笔链式中枢），`bin/chan_smc_index.py` 只是包装并附加 MACD/买卖点；
+- **几何只有一套实现**：`chanlun/multiscale/chanlun_backtest/structure_indicators.py`
+  （包含处理 / 分型 / 笔 / 逐笔链式中枢），`chanlun/fractal/chan_smc_index.py` 只是包装并附加 MACD/买卖点；
   `chan_chart.py`、`tech_buypoint.py` 的三买/三卖扫描也全部复用这套中枢，不再各自维护「最近3段」
 - 15m/1h/日线/周线四级交易闸门（15m 只做结构参考，1h 只认三买，周线只认一/二买）
 - `structure_signals_v2.py` 为第二批候选（三买中枢递进校验 + 二买锚定一买），**仅对比、未接实盘**
-- 实盘仍走 `chanlun_multiscale/Strategy/chanlun_fractal_Strategy.py`（v1 信号 + 四级闸门）
+- 实盘仍走 `chanlun/multiscale/Strategy/chanlun_fractal_Strategy.py`（v1 信号 + 四级闸门）
 
 ---
 
@@ -425,38 +425,79 @@ python3 bin/mad_layer.py --pool 沪深300,中证500,科创50,创业板
 
 ## 八、目录结构
 
+> **2026-11-12 目录整理**：按「缠论 / 小波 / 报告 / 杂项」分目录，一个口径一个目录，不再全堆 `bin/`。
+> 旧 `bin/xxx.py` 路径**全部保留兼容 shim**，cron、shell 脚本、外部 `python3 bin/xxx.py` 调用照旧可用。
+
 ```
-bin/
-  tech_summary.py        五层分析主脚本（报告 + 双图 + 推送）
-  tech_buypoint.py       买点分析（指数/行业/概念/个股）
-  buypoint_chart.py      买点分析三联图
-  chan_smc_index.py      缠论分型版包装（几何委托 structure_indicators）+ 本地 SMC 日/周摘要 + 日线取数 + 标的表
-  chan_ma_trend_v2.py    缠论均线版核心（笔/线段/走势类型/verdict）
-  chan_chart.py          缠论画图（几何全部复用 chan_smc_index / structure_indicators）
-  datahub.py             日线三级灾备（akshare → tushare → 网页）
-  minute_hub.py          60m 分钟线（index / stock 两种 kind）
-  weekly_zs.py           申万行业指数日线
-  acvmd_layer.py         **AC1-VMD 趋势层**（独立模块，不挂主报告）
-  mad_layer.py           **MAD 均线层**（独立模块，不挂主报告）
-  chan_ma_chart.py       **缠论均线版单标的出图**（只画均线版一层，图大看得清）
-  push_image.py          统一图片推送（QQ + 飞书，程序生图用）
-  feishu_card.py         飞书图文合成卡片
-  tushare_init.py        Tushare 统一初始化（代理 token + 硬超时 + 直连兜底）
-tools/
-  bootstrap_cache.py     首次运行初始化缓存（申万行业分类 / 行业指数映射）
-  gh_commit.py           发布：Git Data API，多文件合成**单个 commit**
-  gh_publish.py          发布：单文件 PUT（兜底）+ 私密串拦截
-  publish_techanly.py    发布：本项目专用封装（自动剥私 + 写 CHANGELOG）
-smc/
-  smc_core.py            FVG / OB / 摆动点 / VWAP 六轨
-  smc_config.py          级别映射（精简版）
-skills/tech-summary/
-  SKILL.md               技能说明（口径细则、踩坑清单、校验方法）
-skills/chan-ma-trend/
-  SKILL.md               缠论·均线版技能（笔/线段/走势类型/绘图规范）
-examples/
-  sample_report_中证500.txt / sample_day_600519.png / sample_h1_600519.png   真实样板产物
+core/                       共享底层（谁都用）
+  datahub.py                日线三级灾备（akshare → tushare → 网页）
+  minute_hub.py             60m 分钟线（index / stock 两种 kind）
+  tushare_init.py           Tushare 统一初始化（代理 token + 硬超时 + 直连兜底）
+  feishu_card.py            飞书图文合成卡片
+  push_image.py             统一图片推送（QQ + 飞书）
+
+chanlun/                    缠论（一套几何，三个口径分目录）
+  fractal/                  ── 缠论·分型版（包含→分型→笔→中枢→背驰）
+    chan_smc_index.py       分型版包装（几何委托 multiscale/structure_indicators）+ SMC 日/周摘要
+    chan_chart.py           分型版画图（几何全部复用上面那个）
+    y1_watch.py             一买预备观察
+  ma/                       ── 缠论·均线版（MA5/10 双穿 MA20）
+    chan_ma_trend_v2.py     均线版核心（笔/线段/走势类型/verdict）
+    chan_ma_chart.py        均线版单标的出图
+    mad_layer.py            MAD 均线层（独立模块，后复权口径）
+  multiscale/               ── 缠论·多尺度回测工程
+    chanlun_backtest/structure_indicators.py   **几何唯一实现**（包含/分型/笔/链式中枢）
+    Strategy/chanlun_fractal_Strategy.py       实盘策略（v1 信号 + 四级闸门）
+    data_fetcher.py, run_*.py, structure_signals*.py 回测/扫描/对比
+
+report/                     报告与买点（对外主入口都在这）
+  tech_summary.py           五层分析主脚本（报告 + 双图 + 推送）
+  tech_buypoint.py          买点分析（指数/行业/概念/个股）
+  tech_intraday_buypoint.py 盘中行业买点 Top10 + 个股下钻
+  buypoint_chart.py         买点分析三联图
+  wyckoff_buypoint_v2.py    威科夫吸筹买点
+  sector_buypoint_top20.py  板块买点 Top20
+  simple_chart.py           单图速览
+  wyckoff_today_fetch.py    今日快照抓取
+  intraday_buypoint_daily.sh / wyckoff_buypoint_daily.sh   每日包装脚本
+
+wavelet/                    小波
+  acvmd_layer.py            AC1-VMD 趋势层（独立模块，不挂主报告）
+  signal_monitor.py         实盘信号监控（ETF + 期货）
+  strategies/               各版本策略（portfolio_v4 / futures_v5 / structure v1-v3 …）
+  run_monitor.sh            crontab 包装脚本
+
+misc/                       杂项
+  weekly_zs.py              申万行业指数日线
+  xq_ind_monitor.py         雪球组合监控
+  xq_portfolio.py           雪球多组合档案
+
+smc/                        SMC + VWAP 六轨
+  smc_core.py               FVG / OB / 摆动点 / VWAP 六轨
+  smc_config.py             级别映射
+
+strategies/                 五套口径的统一级别入口（15m/1h/日/周）
+  run_level.py              统一入口
+  levels.py                 级别适配层
+
+bin/                        ⚠️ 兼容层：全是 shim，指向上面各真实文件
+tools/                      发布工具（gh_commit / gh_publish / publish_techanly / bootstrap_cache）
+skills/                     技能文档（tech-summary / chan-ma-trend）
+examples/                   真实样板产物
+reports/                    对比图与对比报告
 ```
+
+### 兼容性说明（重要）
+
+`bin/` 下每个文件现在都是一段 **shim**：既支持 `python3 bin/xxx.py`（转发执行），
+也支持 `import xxx`（`sys.modules` 替换成真实模块）。所以：
+
+- ✅ cron 里 `python3 bin/tech_summary.py` 不用改
+- ✅ shell 脚本里 `bash bin/wyckoff_buypoint_daily.sh` 不用改
+- ✅ 外部脚本 `import chan_smc_index` 拿到的仍是真实实现
+
+**新代码请直接 import 真实模块**，并依赖脚本自带的 `_repo_root()` + `sys.path` 引导
+（向上找同时含 `bin/` 与 `core/` 的那层）。
 
 ---
 
