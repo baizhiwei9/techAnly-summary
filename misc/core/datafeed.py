@@ -44,6 +44,10 @@ except Exception as _e:      # pragma: no cover
     print("[datafeed] ths_hub 不可用: %s" % _e, file=sys.stderr)
 
 # 东财（只用于成分股）
+# ⭐ 2026-11-12 大佬定：「不要用东财了，获取其他的」
+#    东财只作为「同花顺彻底拿不到时」的最后手段，默认关闭。
+#    需要时：DF_EASTMONEY=1
+USE_EASTMONEY = os.environ.get("DF_EASTMONEY", "0") not in ("0", "", "false", "no")
 DG_MIN_GAP = float(os.environ.get("DG_MIN_GAP", "0.35"))   # 东财请求最小间隔（秒）
 DG_BREAK = int(os.environ.get("DG_BREAK", "4"))            # 连续失败几次就熔断
 _dg_last = [0.0]
@@ -77,7 +81,7 @@ def _dg_bad():
 
 
 # ══════════════════════ 板块列表 ══════════════════════
-def board_list(kind="行业", eastmoney_fallback=True):
+def board_list(kind="行业", eastmoney_fallback=None):
     """板块列表，优先同花顺；失败才退回东财
 
     返回 [{"code","name","src"}, ...]
@@ -89,8 +93,12 @@ def board_list(kind="行业", eastmoney_fallback=True):
             return [{"code": b["code"], "name": b["name"], "src": "ths"} for b in bs]
         except Exception as e:
             log("[datafeed] 同花顺%s列表失败 %s，退回东财" % (kind, str(e)[:60]))
+    # 东财兜底默认关闭（2026-11-12 大佬：「不要用东财了」）
+    # 需要临时启用：DF_EASTMONEY=1
+    if eastmoney_fallback is None:
+        eastmoney_fallback = os.environ.get("DF_EASTMONEY", "0") not in ("0", "", "false", "no")
     if not eastmoney_fallback:
-        raise RuntimeError("板块列表全部来源失败")
+        raise RuntimeError("板块列表全部来源失败（东财兜底已关闭）")
     # 东财兜底
     import wyckoff_today_fetch as F
     fs = "m:90 t:2" if kind == "行业" else "m:90 t:3"
@@ -115,7 +123,9 @@ def board_kline(code, src="ths", years_back=6):
         if THS is None:
             raise RuntimeError("同花顺模块不可用")
         return THS.board_kline(code, years_back=years_back)
-    # 东财兜底（仅当同花顺拿不到）
+    # 东财兜底（仅当同花顺拿不到，且显式开启）
+    if not USE_EASTMONEY:
+        raise RuntimeError("板块 K 线取不到（东财兜底已关闭）")
     import wyckoff_today_fetch as F
     _dg_throttle()
     try:
@@ -136,6 +146,8 @@ def stock_kline(code, years_back=6):
             return THS.stock_kline(code6, years_back=years_back)
         except Exception as e:
             log("[datafeed] 同花顺个股 %s 失败 %s，退东财" % (code6, str(e)[:50]))
+    if not USE_EASTMONEY:
+        raise RuntimeError("个股 K 线取不到（东财兜底已关闭）")
     import wyckoff_today_fetch as F
     _dg_throttle()
     try:
@@ -195,6 +207,9 @@ def board_members(board_code, src="dg", cap=60, name=None, kind="行业"):
         except Exception as e:
             log("[datafeed] 同花顺成分股 %s 失败 %s" % (board_code, str(e)[:50]))
 
+    if not USE_EASTMONEY:
+        return []     # 东财关闭时，概念板块成分股拿不到（同花顺概念页是 ajax）
+
     # 同花顺 8xxxxx 码不能直接给东财用 → 按名称查 BK 码
     if src == "ths" or not str(board_code).upper().startswith("BK"):
         if name:
@@ -230,8 +245,10 @@ def board_members(board_code, src="dg", cap=60, name=None, kind="行业"):
 
 
 def status():
-    return {"eastmoney_broken": _dg_broken[0], "eastmoney_fail_streak": _dg_fail[0],
-            "ths_available": THS is not None}
+    return {"ths_available": THS is not None,
+            "eastmoney_enabled": USE_EASTMONEY,
+            "eastmoney_broken": _dg_broken[0],
+            "eastmoney_fail_streak": _dg_fail[0]}
 
 
 if __name__ == "__main__":
