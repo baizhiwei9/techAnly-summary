@@ -8,6 +8,26 @@
 
 ## 2026-11-12 10:52
 
+**chore(layout): 目录整理后首次全量对齐（补登完整记录）**
+
+### 改了什么
+1. 发布工具改「目录级同步」：core/ report/ chanlun/ misc/ wavelet/ smc/ strategies/ tools/ + skills/tech-summary + skills/chan-ma-trend；bin/ 只收 2026-11-12 目录整理生成的兼容 shim。
+2. 剥离规则加强：本机绝对路径的全形态（WS=、BASE=、return 兜底、sys.path 硬编、文档残留）→ 一律改环境变量/仓库根自适应。
+3. 补齐一直没入库的实现：smc/smc_data.py · smc_db · smc_engine · smc_notify · smc_feishu · smc_poll · smc_backtest · smc_fvg_selftest · smc_stop_compare（原来只有 smc_core/smc_config）。
+4. vendor 副本（chanlun/multiscale/chanlun_backtest/vendor）与主实现同步。
+5. 技能文档：tech-summary 补「调用路径 → 真实文件」映射表；chan-ma-trend 标注真实文件位置。
+
+### 为什么
+目录整理后远端仍是整理前的 bin/ 单一布局，本地/远端结构不一致；且部分实现（smc 引擎）根本没上库。老工具写死文件清单，整理后会漏传。
+
+### 影响文件
+- bin/gh_publish_techanly.py
+- core/minute_hub.py、report/wyckoff_today_fetch.py、chanlun/fractal/chan_smc_index.py（路径兜底自适应，行为不变）
+- smc/*（新增 9 个）
+- skills/tech-summary/SKILL.md、skills/chan-ma-trend/SKILL.md
+
+## 2026-11-12 10:52
+
 **docs(changelog): 补登「目录整理后全量对齐」记录**
 
 ### 改了什么
