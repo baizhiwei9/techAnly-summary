@@ -42,7 +42,7 @@ python3 strategies/run_level.py --target 600519 --level week   # 周线（日线
 
 ### 本地缠论多尺度交易工程并入（2026-11-11）
 
-本地结构版工程已并入 **[chanlun/multiscale/](chanlun/multiscale/README.md)**，与 `bin/` 口径对齐：
+本地结构版工程已并入 **[chanlun/multiscale/](chanlun/multiscale/README.md)**，与本仓库口径对齐：
 
 - MACD `(10,20,5)`；包含 → 分型 → 笔 → 中枢 → 背驰 → B1/S1/B2/S2/B3/S3
 - **几何只有一套实现**：`chanlun/multiscale/chanlun_backtest/structure_indicators.py`
@@ -205,40 +205,40 @@ export TECH_FEISHU_CHAT=oc_xxxxxxxx      # 目标群 chat_id
 
 ```bash
 # ① 五层完整分析（宽基中文名 / ts_code / 6 位股票代码都行）
-python3 bin/tech_summary.py --target 中证500
-python3 bin/tech_summary.py --target 600519            # 贵州茅台
-python3 bin/tech_summary.py --target 000016.SH         # 上证50
+python3 misc/engine/tech_summary.py --target 中证500
+python3 misc/engine/tech_summary.py --target 600519            # 贵州茅台
+python3 misc/engine/tech_summary.py --target 000016.SH         # 上证50
 
 # ② 生成 + 推飞书卡片（文字报告 + 两张图，同一条消息）
-python3 bin/tech_summary.py --target 中证500 --push
+python3 misc/engine/tech_summary.py --target 中证500 --push
 
 # ③ 只出报告不出图 / 改窗口 / 存档
-python3 bin/tech_summary.py --target 中证500 --no-chart
-python3 bin/tech_summary.py --target 中证500 --n-day 120 --n-h1 150
-python3 bin/tech_summary.py --target 中证500 --out memory/tech_reports/x.txt
+python3 misc/engine/tech_summary.py --target 中证500 --no-chart
+python3 misc/engine/tech_summary.py --target 中证500 --n-day 120 --n-h1 150
+python3 misc/engine/tech_summary.py --target 中证500 --out memory/tech_reports/x.txt
 
 # ④ 买点分析：行业先过闸 → 才下钻成分股
-python3 bin/tech_buypoint.py --target 传媒
-python3 bin/tech_buypoint.py --target 文化传媒概念 --push
-python3 bin/tech_buypoint.py --target 中证500           # 扫 500 只成分
-python3 bin/tech_buypoint.py --target 600519            # 个股→四层分析
-python3 bin/tech_buypoint.py --target 传媒 --no-scan    # 只看板块不扫成分
-python3 bin/tech_buypoint.py --target 医药生物 --force-scan  # 行业无买点也强制扫
-python3 bin/tech_buypoint.py --list-concepts 游戏        # 列同名概念
+python3 misc/engine/tech_buypoint.py --target 传媒
+python3 misc/engine/tech_buypoint.py --target 文化传媒概念 --push
+python3 misc/engine/tech_buypoint.py --target 中证500           # 扫 500 只成分
+python3 misc/engine/tech_buypoint.py --target 600519            # 个股→四层分析
+python3 misc/engine/tech_buypoint.py --target 传媒 --no-scan    # 只看板块不扫成分
+python3 misc/engine/tech_buypoint.py --target 医药生物 --force-scan  # 行业无买点也强制扫
+python3 misc/engine/tech_buypoint.py --list-concepts 游戏        # 列同名概念
 
 # ⑤ 盘中行业买点 Top10（东财实时板块，含当日盘中那根K线）
-python3 bin/tech_intraday_buypoint.py                    # 行业 + 每行业3只个股
-python3 bin/tech_intraday_buypoint.py --top 10 --push    # 推飞书卡片
-python3 bin/tech_intraday_buypoint.py --push --qq        # 同时推 QQ（需 IBP_QQ_TARGET）
-python3 bin/tech_intraday_buypoint.py --with-concept     # 行业 + 概念一起排
-python3 bin/tech_intraday_buypoint.py --no-stock         # 只看行业，不扫个股
-python3 bin/tech_intraday_buypoint.py --stock-per 2 --stock-cap 30
-python3 bin/tech_intraday_buypoint.py --limit 20 --dry    # 调试：只扫前 20 个
+python3 misc/engine/tech_intraday_buypoint.py                    # 行业 + 每行业3只个股
+python3 misc/engine/tech_intraday_buypoint.py --top 10 --push    # 推飞书卡片
+python3 misc/engine/tech_intraday_buypoint.py --push --qq        # 同时推 QQ（需 IBP_QQ_TARGET）
+python3 misc/engine/tech_intraday_buypoint.py --with-concept     # 行业 + 概念一起排
+python3 misc/engine/tech_intraday_buypoint.py --no-stock         # 只看行业，不扫个股
+python3 misc/engine/tech_intraday_buypoint.py --stock-per 2 --stock-cap 30
+python3 misc/engine/tech_intraday_buypoint.py --limit 20 --dry    # 调试：只扫前 20 个
 
 # ⑥ 缠论·均线版**单标的出图**（只画均线版一层，图大、结构清楚）
-python3 bin/chan_ma_chart.py --target 中证500              # 指数
-python3 bin/chan_ma_chart.py --target 600519 --n 300       # 个股，看最近 300 根
-python3 bin/chan_ma_chart.py --target 沪深300 --push       # 出图 + 推 QQ/飞书
+python3 chanlun/ma/chan_ma_chart.py --target 中证500              # 指数
+python3 chanlun/ma/chan_ma_chart.py --target 600519 --n 300       # 个股，看最近 300 根
+python3 chanlun/ma/chan_ma_chart.py --target 沪深300 --push       # 出图 + 推 QQ/飞书
 ```
 
 > 均线版单图画的是：K线 + MA10/MA20/MA160 + **笔**（橙，MA5/10 双穿 MA20）
@@ -372,12 +372,12 @@ python3 bin/chan_ma_chart.py --target 沪深300 --push       # 出图 + 推 QQ/�
 
 ```bash
 # AC1-VMD（需 vmdpy）
-python3 bin/acvmd_layer.py --target 中证500
-python3 bin/acvmd_layer.py --target 科创50 --json
+python3 wavelet/acvmd_layer.py --target 中证500
+python3 wavelet/acvmd_layer.py --target 科创50 --json
 
 # MAD 均线（单标的 / 批量）
-python3 bin/mad_layer.py --target 600519
-python3 bin/mad_layer.py --pool 沪深300,中证500,科创50,创业板
+python3 chanlun/ma/mad_layer.py --target 600519
+python3 chanlun/ma/mad_layer.py --pool 沪深300,中证500,科创50,创业板
 ```
 
 **口径注意**
@@ -425,8 +425,9 @@ python3 bin/mad_layer.py --pool 沪深300,中证500,科创50,创业板
 
 ## 八、目录结构
 
-> **2026-11-12 目录定稿**：顶层只留 4 类代码目录 —— **缠论一个、SMC 一个、小波一个、其余全部归杂项**。
-> 旧 `bin/xxx.py` 路径**全部保留兼容 shim**，cron、shell 脚本、外部 `python3 bin/xxx.py` 调用照旧可用。
+> **2026-11-12 目录定稿**：仓库顶层只留 4 类代码目录 ——
+> **`chanlun/`（缠论）+ `smc/` + `wavelet/`（小波）+ `misc/`（其余全部）**，外加 `skills/` 技能文档。
+> 没有 `bin/`：那是本机 cron 用的兼容壳，属部署环境，不进仓库。
 
 ```
 chanlun/                    ① 缠论（一套几何，三个口径分目录）
@@ -483,21 +484,28 @@ misc/                       ④ 其余全部（杂项）
   examples/                 真实样板产物（报告 txt + 两张样板图）
   compare/                  笔/中枢引擎对比图与说明（仅 4 个文件）
 
-bin/                        ⚠️ 兼容层：全是 shim，指向上面各真实文件（cron 依赖，别删）
 skills/                     技能文档（OpenClaw 技能发现要求放顶层）
+                            tech-summary/ · chan-ma-trend/
 ```
 
-### 兼容性说明（重要）
+### 本机部署的可选兼容层（不属于本仓库）
 
-`bin/` 下每个文件现在都是一段 **shim**：既支持 `python3 bin/xxx.py`（转发执行），
-也支持 `import xxx`（`sys.modules` 替换成真实模块）。所以：
+旧版仓库曾在顶层放一个 `bin/`，里面 25 个文件全是转发壳（shim）。2026-11-12 起**仓库不再收**，
+因为那是「本机 cron 依赖旧路径」的部署问题，不是库的内容。
 
-- ✅ cron 里 `python3 bin/tech_summary.py` 不用改
-- ✅ shell 脚本里 `bash bin/wyckoff_buypoint_daily.sh` 不用改
-- ✅ 外部脚本 `import chan_smc_index` 拿到的仍是真实实现
+如果你的环境有大量历史脚本写着 `python3 bin/tech_summary.py`，可以自己在那台机器上建一层软链：
 
-**新代码请直接 import 真实模块**，并依赖脚本自带的 `_repo_root()` + `sys.path` 引导
-（向上找同时含 `bin/` 与 `core/` 的那层）。
+```bash
+mkdir -p bin
+ln -sf ../misc/engine/tech_summary.py            bin/tech_summary.py
+ln -sf ../misc/engine/tech_buypoint.py           bin/tech_buypoint.py
+ln -sf ../chanlun/fractal/chan_smc_index.py      bin/chan_smc_index.py
+ln -sf ../misc/core/datahub.py                   bin/datahub.py
+# …按需补齐
+```
+
+**新代码请直接调用真实路径**，并依赖脚本自带的 `_repo_root()` + `sys.path` 引导
+（向上找同时含 `chanlun/` 与 `misc/` 的那层）。
 
 ---
 
@@ -553,10 +561,10 @@ skills/                     技能文档（OpenClaw 技能发现要求放顶层�
 
 ```bash
 # 六节齐全（应输出 6）
-python3 bin/tech_summary.py --target 中证500 --no-chart | grep -c "═══"
+python3 misc/engine/tech_summary.py --target 中证500 --no-chart | grep -c "═══"
 
 # 股票也通
-python3 bin/tech_summary.py --target 600519 --no-chart | head -3
+python3 misc/engine/tech_summary.py --target 600519 --no-chart | head -3
 
 # 最后一根 K 线颜色与涨跌幅同号
 python3 - <<'PY'
@@ -596,7 +604,7 @@ print("✅ 图与技能口径一致：笔%d 线段%d 走势类型%d段" % (
 PY
 
 # 推送成功标志
-python3 bin/tech_summary.py --target 中证500 --push 2>&1 | grep "\[card\]"
+python3 misc/engine/tech_summary.py --target 中证500 --push 2>&1 | grep "\[card\]"
 ```
 
 ---
@@ -619,7 +627,7 @@ python3 bin/tech_summary.py --target 中证500 --push 2>&1 | grep "\[card\]"
 - **0 token 是硬约束**：所有判定、绘图、推送都是纯 Python 程序，不调用任何 LLM API。
   唯一的"智能"来自规则化的结构判定，结果可复现、可回测。
 - 与 `chan-fractal` / `chan-ma-trend` / `smc-structure` 三个技能同口径：
-  `bin/` 下的 `chan_smc_index.py` / `chan_ma_trend_v2.py` 就是那两个技能的权威实现，此处直接复用，**不另写一套**。
+  `chanlun/fractal/chan_smc_index.py` / `chanlun/ma/chan_ma_trend_v2.py` 就是那两个技能的权威实现，此处直接复用，**不另写一套**。
 
 ⚠️ 本工具输出为技术结构解读，**不构成投资建议**。
 
@@ -632,12 +640,12 @@ python3 bin/tech_summary.py --target 中证500 --push 2>&1 | grep "\[card\]"
 
 ```bash
 # 1) 先看差异（dry-run 不会写 CHANGELOG、不会产生 commit）
-python3 bin/gh_publish_techanly.py --msg "fix: xxx" --dry-run
+python3 misc/tools/publish_techanly.py --msg "fix: xxx" --dry-run
 
 # 2) 正式发布（--notes 会写进 CHANGELOG.md）
-python3 bin/gh_publish_techanly.py \
+python3 misc/tools/publish_techanly.py \
   --msg "fix(chart): 均线版端点改取区间极值" \
-  --notes "### 改了什么\n- ...\n\n### 为什么\n- ...\n\n### 影响文件\n- bin/tech_summary.py"
+  --notes "### 改了什么\n- ...\n\n### 为什么\n- ...\n\n### 影响文件\n- misc/engine/tech_summary.py"
 ```
 
 **约定（重要）**

@@ -34,15 +34,17 @@ ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "publish_asset
 # 大佬 2026-11-12 定稿：「就缠论一个目录，SMC 一个目录，其他的杂项一个目录，小波一个目录」
 #   顶层只有四类：chanlun/（缠论） smc/ wavelet/（小波） misc/（其余全部）
 #   外加 bin/（兼容 shim，cron 依赖）与 skills/（OpenClaw 技能发现要求放顶层）
+# ⚠️ 2026-11-12 v3：库里不要 bin/ 兼容壳。
+#   大佬：「缠论一个、SMC 一个、其他的我不管，把目录整理整理」→ 顶层只留四类代码目录。
+#   本机 bin/ 的 25 个 shim 只是转发壳（19% 的仓库体积），仓库里不再收；
+#   换机器部署时按 README 用 `misc/engine/xxx.py` 直接调用。
 TREES = [
-    "chanlun",
-    "smc",
-    "wavelet",
-    "misc",             # 杂项：core/engine/strategies/tools/examples/compare
-    "bin",              # 兼容层 shim（只挑 shim，见 _is_shim）
-    "skills/tech-summary",
-    "skills/chan-ma-trend",
+    "chanlun",          # ① 缠论（fractal 分型版 / ma 均线版 / multiscale 回测工程）
+    "smc",              # ② SMC + VWAP 六轨 + 模拟交易引擎
+    "wavelet",          # ③ 小波
+    "misc",             # ④ 其余全部：core/engine/strategies/tools/examples/compare
 ]
+# skills/ 两个技能文档：OpenClaw 技能发现要求放顶层，仓库里也一起带上（不进 TREES 遍历，单独走 FILES）
 # 目录里明确不要的（别的项目 / 大文件 / 缓存）
 TREE_SKIP_DIRS = {"__pycache__", "cache", "kc50_dynamics", "vendor"}
 # 产出型目录（跑出来的图/日志，不入库）
@@ -61,7 +63,8 @@ TREE_SKIP_EXT = (".db", ".sqlite", ".log", ".pyc", ".zip", ".parquet", ".csv",
 TREE_SKIP_NAME = ("stats_h1.json", "stats_day.json", "smc_sim.db")
 
 # 仓库里已废弃的顶层路径（本地整理后不存在了）→ 上传时顺带删除
-REMOTE_DELETE_PREFIX = ("core/", "report/", "strategies/", "tools/", "examples/", "reports/",
+REMOTE_DELETE_PREFIX = ("bin/",   # 2026-11-12 v3：仓库不再收兼容壳（本机 bin/ 照旧用）
+                        "core/", "report/", "strategies/", "tools/", "examples/", "reports/",
                         "misc/reports/",   # misc/reports → misc/compare（2026-11-12）
                         "misc/report/",    # misc/report → misc/engine（2026-11-12 v2）
                         "misc/weekly_zs.py", "misc/xq_ind_monitor.py", "misc/xq_portfolio.py")
@@ -73,6 +76,8 @@ FILES = [
     ".gitignore",
     "smc/smc_config.py",
     "misc/examples/sample_report_中证500.txt",
+    "skills/tech-summary/SKILL.md",
+    "skills/chan-ma-trend/SKILL.md",
 ]
 # 发布工具自身（已剥掉本机路径的公开版）
 PUBLISH_TOOLS = {

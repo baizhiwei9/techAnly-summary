@@ -6,6 +6,25 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 16:18
+
+**refactor(目录): 仓库不再收 bin/ 兼容壳，顶层只留四类代码目录**
+
+### 改了什么
+- 仓库不再收 bin/ 目录（25 个文件全是转发壳，占仓库 19% 体积）
+- 仓库顶层只剩四类代码目录：chanlun/ smc/ wavelet/ misc/ + skills/ 两个技能文档
+- README 命令示例全部从 bin/xxx.py 改成真实路径（misc/engine/、chanlun/、wavelet/）
+- README 新增「本机部署可选兼容层」章节，给出建软链的方法
+
+### 为什么
+大佬 2026-11-12 13:26：「我是让你把这个技术分析汇总里边按照目录整理，缠论一个、SMC 一个，其他的我不管，
+把这个目录整理整理，然后上传到主干」——bin/ 是部署环境的兼容壳，不是库内容，不该占仓库顶层。
+
+### 影响文件
+- bin/gh_publish_techanly.py（TREES 去掉 bin；FILES 补 skills；REMOTE_DELETE_PREFIX 加 bin/）
+- README.md（34 处命令示例路径 + 目录树 + 兼容层说明）
+- 远端删除 bin/ 25 个文件
+
 ## 2026-11-12 16:11
 
 **fix(docs): README 目录树 + bootstrap_cache 路径同步 v2 结构**
