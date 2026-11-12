@@ -24,6 +24,11 @@ def _repo_root(start):
 WS = os.environ.get("TECH_WS") or _repo_root(__file__)
 CACHE = os.path.join(WS, '.cache', 'wyckoff_today')
 KCACHE = os.path.join(CACHE, 'k')
+# ⚠️ 2026-11-12 大佬定：「不要用东财了」
+#   本文件是**唯一**还直连东财的模块，已降级为「最后手段」：
+#   · 正常调用链（tech_intraday_buypoint → datafeed）默认**不会**走到这里
+#   · 只有设 DF_EASTMONEY=1 时才启用（见 misc/core/datafeed.py 的 USE_EASTMONEY）
+#   · 纯 K 线需求请改用 misc/core/ths_hub.py（同花顺）或 datahub.daily()（腾讯→新浪→同花顺）
 HOSTS = ['push2his.eastmoney.com', '7.push2.eastmoney.com']
 H = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://quote.eastmoney.com/'}
 FIELDS = 'f2,f3,f5,f6,f12,f14,f15,f16,f17,f62,f104,f105,f106'

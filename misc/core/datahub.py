@@ -369,8 +369,6 @@ WEB_SPECS = {
     "tencent": {"date": 0, "open": 1, "close": 2, "high": 3, "low": 4, "vol": 5},
     # 新浪 hq 日线（非常用，备胎）
     "sina": {"date": 0, "open": 1, "high": 2, "low": 3, "close": 4, "vol": 5},
-    # 东财 push2his kline：klines 是 "日期,开,收,高,低,量,额" 逗号串
-    "eastmoney": {"date": 0, "open": 1, "close": 2, "high": 3, "low": 4, "vol": 5},
 }
 
 
@@ -428,32 +426,105 @@ def _l3_tencent(sym, end, days):
     return rows[-days:] if days else rows
 
 
-def _l3_eastmoney(sym, end, days):
-    """东财 push2his kline（备胎）：klines 每行 = '日期,开,收,高,低,量,额,...'"""
-    s = norm(sym)
-    n = max(days or 260, 60)
-    url = ("https://push2his.eastmoney.com/api/qt/stock/kline/get"
-           "?secid=%s&fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57"
-           "&klt=101&fqt=1&end=20500101&lmt=%d" % (to_em(s), n))
-    for host in ("push2his.eastmoney.com", "push2his.eastmoney.com"):
+
+def _l3_sina(sym, end, days):
+    """新浪 K 线（JSON 接口，字段自带列名，最稳）
+
+    接口： money.finance.sina.com.cn/quotes_service/api/json_v2.php/
+           CN_MarketData.getKLineData?symbol=sh600519&scale=240&ma=no&datalen=N
+    返回：[{"day":"2026-11-11","open":"1445.0","high":"1445.62",
+            "low":"1402.0","close":"1402.3","volume":"3984791"}, ...]
+
+    scale=240 表示日线（分钟数）。datalen 上限约 1023。
+    ⚠️ 只覆盖 A 股 / 指数；港股不支持 → 交给腾讯。
+    """
+    s = to_sina(sym)
+    if s.startswith("hk"):
+        return []          # 新浪这个接口不给港股，交给腾讯
+    n = max(60, min(int(days) + 30, 1023))
+    url = ("https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+           "CN_MarketData.getKLineData?symbol=%s&scale=240&ma=no&datalen=%d" % (s, n))
+    try:
+        raw = _http(url, referer="https://finance.sina.com.cn/").decode("utf-8", "ignore")
+    except Exception as e:
+        log("L3 sina %s err %s" % (sym, str(e)[:80]), err=True)
+        return []
+    try:
+        arr = json.loads(raw) if raw.strip().startswith("[") else []
+    except Exception:
+        # 新浪有时返回非标准 JSON（键不带引号），兜底用正则
+        arr = []
+        for m in re.finditer(
+                r'day:"([\d-]+)",open:"([\d.]+)",high:"([\d.]+)",'
+                r'low:"([\d.]+)",close:"([\d.]+)",volume:"(\d+)"', raw):
+            arr.append({"day": m.group(1), "open": m.group(2), "high": m.group(3),
+                        "low": m.group(4), "close": m.group(5), "volume": m.group(6)})
+    out = []
+    for r in arr:
         try:
-            d = json.loads(_http(url.replace("push2his.eastmoney.com", host),
-                                 referer="https://quote.eastmoney.com/").decode())
-            kl = ((d.get("data") or {}).get("klines") or [])
-            arrs = [x.split(",") for x in kl]
-            rows = _apply_spec(arrs, WEB_SPECS["eastmoney"])
-            rows = [r for r in rows if r[0] <= end]
-            return rows[-days:] if days else rows
-        except Exception as e:
-            log("L3 eastmoney %s err %s" % (sym, str(e)[:80]), err=True)
-    return []
+            out.append([d8(r["day"]), float(r["open"]), float(r["high"]),
+                        float(r["low"]), float(r["close"]), float(r.get("volume") or 0)])
+        except Exception:
+            continue
+    out.sort(key=lambda x: x[0])
+    return out
+
+
+def _l3_ths(sym, end, days):
+    """同花顺 K 线（2026-11-12 新增，东财的正式替代）
+
+    ⚠️ 同花顺个股/板块用不同前缀：
+        个股 hs_<6位代码>   例如 hs_600519
+        板块 48_<6位代码>   例如 48_881121（申万/同花顺行业）
+    本函数只处理**个股**；指数走腾讯/新浪更省事。
+    """
+    try:
+        import ths_hub as TH
+    except Exception as e:
+        log("L3 ths %s 模块不可用 %s" % (sym, str(e)[:60]), err=True)
+        return []
+    s = to_sina(sym)
+    if s.startswith("hk") or s.startswith("sh000") or s.startswith("sz399"):
+        # 港股 / 指数：同花顺前缀不同，交给腾讯
+        return []
+    code6 = s[2:]
+    if not (len(code6) == 6 and code6.isdigit()):
+        return []
+    try:
+        ks = TH.stock_kline(code6)
+    except Exception as e:
+        log("L3 ths %s err %s" % (sym, str(e)[:80]), err=True)
+        return []
+    out = []
+    for k in ks:
+        try:
+            out.append([d8(k["date"]), float(k["open"]), float(k["high"]),
+                        float(k["low"]), float(k["close"]), float(k.get("vol") or 0)])
+        except Exception:
+            continue
+    out.sort(key=lambda x: x[0])
+    return out
 
 
 def _l3_web(sym, end, days):
+    """L3 网页层：腾讯 → 新浪 → 同花顺（**东财已移除**，2026-11-12 大佬定）
+
+    东财为什么被拿掉：
+      · K 线接口 IPv4 全废、只走 IPv6
+      · 多请求就封 IP（压测 100 次封 20 分钟以上）
+      · 盘中扫 90 板块 + 下钻个股必然触发 → 不可靠
+    替代方案（都是大厂公开接口，稳定）：
+      腾讯 fqkline  → A股/指数/港股都覆盖，最快
+      新浪 K线      → A股/指数，字段自带列名，最稳
+      同花顺        → 个股日线，全量历史（1661 根）
+    """
     rows = _l3_tencent(sym, end, days)
     if rows:
         return rows
-    return _l3_eastmoney(sym, end, days)
+    rows = _l3_sina(sym, end, days)
+    if rows:
+        return rows
+    return _l3_ths(sym, end, days)
 
 
 # ═══════════════════════════════════════════════════════════ 统一出口
@@ -750,30 +821,6 @@ def _margin_l2_akshare(day):
                          "rqyl": _num(r.get("融券余量"))}
     return out
 
-
-def _margin_l3_eastmoney(code, day=None, days=90):
-    """东财逐票历史（慢，仅兜底）：RPTA_WEB_RZRQ_GGMX → {date: {...}}"""
-    c = str(code).strip().zfill(6)
-    url = ("https://datacenter-web.eastmoney.com/api/data/v1/get?"
-           "reportName=RPTA_WEB_RZRQ_GGMX&columns=ALL&filter=" +
-           urllib.parse.quote('(scode="%s")' % c) +
-           "&pageNumber=1&pageSize=%d&sortColumns=date&sortTypes=-1&source=WEB&client=WEB"
-           % max(days, 30))
-    try:
-        txt = _http(url, timeout=35, referer="https://data.eastmoney.com/")
-        r = json.loads(txt)
-        rows = ((r.get("result") or {}).get("data") or [])
-    except Exception as e:
-        log("margin eastmoney %s err %s" % (c, str(e)[:90]), err=True)
-        return {}
-    out = {}
-    for x in rows:
-        d = d8(str(x.get("DATE") or "")[:10])
-        if len(d) != 8:
-            continue
-        out[d] = {"rzye": _num(x.get("RZYE")), "rqye": _num(x.get("RQYE")),
-                  "rzrqye": _num(x.get("RZRQYE")), "rqyl": _num(x.get("RQYL"))}
-    return out
 
 
 def margin_day(day, policy=("tushare", "akshare"), use_cache=True, write=True):

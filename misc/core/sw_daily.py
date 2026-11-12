@@ -226,23 +226,25 @@ def fetch_sw_daily(code, start="20200101", ttl_min=None):
     except Exception as e:
         log("[sw] %s L1 akshare 失败 %s" % (code, str(e)[:60]))
 
-    # ── L2 东财行业板块（按名称匹配）
+    # ── L2 同花顺行业板块（按名称匹配）
+    #   2026-11-12 大佬定：「不要用东财了」→ 原来的 akshare 东财板块接口已移除，
+    #   改用同花顺行业板块日线（ths_hub，全量 1662 根，不受封 IP 影响）。
     if df is None or not len(df):
         try:
-            import akshare as ak
+            import ths_hub as TH
             nm = _sw_name(code)
             if nm:
-                a = _ak_timeout(ak.stock_board_industry_hist_em, symbol=nm,
-                                period="日k", start_date="20200101",
-                                end_date=today8, timeout=20)
-                if a is not None and len(a):
-                    a = a.rename(columns={"日期": "dt", "收盘": "close", "开盘": "open",
-                                          "最高": "high", "最低": "low"})
-                    a["dt"] = pd.to_datetime(a["dt"])
-                    df = a[["dt", "open", "high", "low", "close"]]
-                    layer = "L2-eastmoney"
+                ths_code = TH.board_code_by_name(nm, kind="行业")
+                if ths_code:
+                    ks = TH.board_kline(ths_code)
+                    if ks:
+                        a = pd.DataFrame(ks)
+                        a["dt"] = pd.to_datetime(a["dt"] if "dt" in a else a["date"])
+                        a = a.rename(columns={"vol": "volume"})
+                        df = a[["dt", "open", "high", "low", "close"]]
+                        layer = "L2-ths"
         except Exception as e:
-            log("[sw] %s L2 东财失败 %s" % (code, str(e)[:60]))
+            log("[sw] %s L2 同花顺失败 %s" % (code, str(e)[:60]))
 
     # ── L3 tushare（垫底，8s 硬超时）
     if df is None or not len(df):

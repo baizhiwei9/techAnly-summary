@@ -248,6 +248,37 @@ def board_members(code, kind="行业", force=False):
     return out
 
 
+def board_code_by_name(name, kind="行业"):
+    """板块名 → 同花顺板块代码（885xxx/881xxx）
+
+    用于：申万行业名（如「半导体」「白酒」）转同花顺板块码取 K 线。
+    ⚠️ 名称可能有细微差异（申万叫「白酒Ⅱ」，同花顺叫「白酒」）→ 做包含匹配兜底。
+    """
+    if not name:
+        return None
+    name = name.strip()
+    try:
+        bs = board_list(kind)
+    except Exception:
+        return None
+    # 1) 精确
+    for b in bs:
+        if b["name"] == name:
+            return b["code"]
+    # 2) 去掉罗马数字后缀再比
+    import re as _re
+    base = _re.sub(r"[ⅠⅡⅢⅣⅤIV]+$", "", name).strip()
+    for b in bs:
+        if b["name"] == base:
+            return b["code"]
+    # 3) 互相包含（取最短的，避免「半导体」命中「半导体设备」）
+    cands = [b for b in bs if base and (base in b["name"] or b["name"] in base)]
+    if cands:
+        cands.sort(key=lambda x: len(x["name"]))
+        return cands[0]["code"]
+    return None
+
+
 # ────────────────────────── 自检 ──────────────────────────
 if __name__ == "__main__":
     import argparse

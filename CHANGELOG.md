@@ -6,6 +6,51 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 21:34
+
+**refactor(datahub): 三级灾备移除东财，改用「腾讯→新浪→同花顺」**
+
+### 为什么
+大佬 2026-11-12 20:03：「我建议三级体系不要东财，用至少新浪和同花顺可以替代他」
+
+### 改了什么
+misc/core/datahub.py：
+- L3 网页层：原 腾讯 → 东财  改为 **腾讯 → 新浪 → 同花顺**
+- 新增 _l3_sina()：新浪 getKLineData 接口（字段自带列名，最稳）
+- 新增 _l3_ths()：同花顺 hs_ 接口（个股全量历史 1662 根）
+- 删除 _l3_eastmoney() 与 WEB_SPECS['eastmoney'] 条目
+- 顺手删除死代码 _margin_l3_eastmoney()（全仓零引用）
+
+misc/core/sw_daily.py：
+- L2 兜底从 akshare 的东财板块接口（stock_board_industry_hist_em）改为同花顺 ths_hub
+
+misc/core/ths_hub.py：
+- 新增 board_code_by_name()：板块名 → 同花顺板块码（支持「白酒Ⅱ」→「白酒」这类后缀差异）
+
+misc/engine/wyckoff_today_fetch.py：
+- 加降级说明：这是唯一还直连东财的模块，默认不会走到（DF_EASTMONEY=1 才启用）
+
+### 实测
+**各源单独验证（A股/指数/个股）**
+- 腾讯 200 根到当日 ✅（A股+指数+港股）
+- 新浪 230 根到当日 ✅（A股+指数）
+- 同花顺 1662 根到当日 ✅（个股）；指数返回空 → 由腾讯/新浪补位
+
+**datahub.daily() 三级全通**
+- 600519.SH / 000905.SH / 002463.SZ 各 300 根，末根 20261112
+- 强制只走 L3（layers=('web',)）也全部 200 根正常
+
+**全库**
+- 458 个 py 语法 0 错误
+- 库里 eastmoney 只剩 wyckoff_today_fetch（已降级+注释）和 net_guard 白名单
+
+### 影响文件
+- misc/core/datahub.py
+- misc/core/sw_daily.py
+- misc/core/ths_hub.py
+- misc/engine/wyckoff_today_fetch.py
+- misc/README.md
+
 ## 2026-11-12 21:16
 
 **refactor(data): 东财兜底默认关闭，全面改用同花顺**
