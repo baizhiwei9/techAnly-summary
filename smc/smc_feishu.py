@@ -7,7 +7,7 @@
   2) **飞书官方应用（机器人）**（本文件）→ 应用被拉进哪个群，就能发到哪个群；
      由 `chats()` 列出应用可见的群，用 chat_id 定向发送（推荐）
 
-凭据来源：/root/.openclaw/openclaw.json → channels.feishu.appId / appSecret
+凭据来源：~/.openclaw/openclaw.json → channels.feishu.appId / appSecret（可用 OPENCLAW_JSON 覆盖）
 用法：
   python3 smc_feishu.py chats                 # 列出应用可见的群
   python3 smc_feishu.py send <chat_id> "文本"
@@ -18,7 +18,7 @@ import os
 import sys
 import urllib.request
 
-CFG_PATH = os.environ.get("OPENCLAW_JSON", "/root/.openclaw/openclaw.json")
+CFG_PATH = os.environ.get("OPENCLAW_JSON") or os.path.expanduser("~/.openclaw/openclaw.json")
 BASE = "https://open.feishu.cn/open-apis"
 
 
