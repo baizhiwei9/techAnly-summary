@@ -6,6 +6,43 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 11:44
+
+**refactor(layout): 目录定稿 —— 顶层只留 4 类：缠论 / SMC / 小波 / 杂项**
+
+### 改了什么（大佬 2026-11-12 定稿：「就缠论一个目录，SMC 一个目录，其他的杂项一个目录，小波一个目录」）
+
+顶层从 11 个目录收敛到 **4 类代码目录 + 2 个支撑目录**：
+
+- core/ report/ strategies/ tools/ examples/ reports/ 六个平级目录 → 全部收进 **misc/**（misc/core · misc/report · misc/strategies · misc/tools · misc/examples · misc/reports）
+- chanlun/ 不变（缠论：fractal 分型版 / ma 均线版 / multiscale 多尺度）
+- smc/ 不变（SMC + VWAP + 模拟交易引擎）
+- wavelet/ 不变（小波）
+- bin/ 保留（全是兼容 shim，cron 依赖，不能删）
+- skills/ 保留在顶层（OpenClaw 技能发现机制要求）
+
+### 代码改动
+1. 21 个文件的 `_repo_root()` 判据从「含 bin/ 与 core/」改为「含 bin/ 与 chanlun/」——顶层不再有 core/。
+2. 20 个文件的 sys.path 引导清单补上 misc/core、misc/report、misc/strategies、misc/tools。
+3. 16 个 bin/ 兼容 shim 的目标路径改为 misc/report/xxx.py、misc/core/xxx.py。
+4. misc/strategies/levels.py 与 run_level.py 的 WS 推导改为 `_repo_root()`（原来按两层目录硬算，搬进 misc/ 后会算错一层）。
+5. 发布工具支持 --delete-prefix，上传时顺带删除远端已废弃的顶层路径。
+6. misc/README.md 重写为「杂项目录导航」。
+
+### 为什么
+之前 core/report/strategies/tools/examples/reports 六个目录平级堆在顶层，跟缠论/SMC/小波混在一起，看不出哪个是主线。大佬要求按口径分类。
+
+### 验证
+- compileall 全通过；18 项回归全绿
+- `python3 bin/tech_summary.py --target 中证500`（shim 转发）与 `python3 misc/report/tech_summary.py`（真实文件）结果一致
+- `python3 misc/strategies/run_level.py --target 中证500 --level day` 正常出四层报告
+- smc/smc_core.py 自测正常；chanlun 各口径、wavelet、xq_* 全部 import OK
+- cron 依赖的 bin/*.sh 全部在位
+
+### 影响文件
+全部重排（本地 + 仓库路径一致）；核心是 21 个 `_repo_root` + 20 个 sys.path + 16 个 shim
+
+
 ## 2026-11-12 11:08
 
 **chore(tools): 发布工具改为目录级同步并自动落库自身**

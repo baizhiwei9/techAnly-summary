@@ -24,8 +24,24 @@ import sys
 
 import pandas as pd
 
-WS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for _p in (os.path.join(WS, "bin"), os.path.join(WS, "smc"), WS):
+def _repo_root(start):
+    """向上探测仓库根：含 chanlun/ 与 bin/ 的那一层。"""
+    d = os.path.dirname(os.path.abspath(start))
+    for _ in range(6):
+        if os.path.isdir(os.path.join(d, "bin")) and os.path.isdir(os.path.join(d, "chanlun")):
+            return d
+        nd = os.path.dirname(d)
+        if nd == d:
+            break
+        d = nd
+    return os.path.dirname(os.path.abspath(start))
+
+
+WS = os.environ.get("TECH_WS") or _repo_root(__file__)
+for _p in (os.path.join(WS, "bin"), os.path.join(WS, "smc"),
+           os.path.join(WS, "misc/core"), os.path.join(WS, "misc/report"),
+           os.path.join(WS, "chanlun/fractal"), os.path.join(WS, "chanlun/ma"),
+           os.path.join(WS, "chanlun/multiscale"), WS):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

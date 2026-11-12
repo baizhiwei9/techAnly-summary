@@ -30,20 +30,18 @@ BRANCH = "main"
 STAGE = "/tmp/techanly_publish"
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "publish_assets")
 
-# ── 需要同步的文件清单（相对 WS）──────────────────────────────────
-# 目录级：整目录递归（跳过 __pycache__ / cache / reports / *.db）
+# ── 需要同步的文件清单（相对 WS，仓库路径 == 本地路径）──────────────
+# 大佬 2026-11-12 定稿：「就缠论一个目录，SMC 一个目录，其他的杂项一个目录，小波一个目录」
+#   顶层只有四类：chanlun/（缠论） smc/ wavelet/（小波） misc/（其余全部）
+#   外加 bin/（兼容 shim，cron 依赖）与 skills/（OpenClaw 技能发现要求放顶层）
 TREES = [
-    "core",
-    "report",
     "chanlun",
-    "misc",
-    "wavelet",
     "smc",
-    "strategies",
-    "tools",
+    "wavelet",
+    "misc",             # 杂项：core/report/strategies/tools/examples/reports/weekly_zs/xq_*
+    "bin",              # 兼容层 shim（只挑 shim，见 _is_shim）
     "skills/tech-summary",
     "skills/chan-ma-trend",
-    "bin",              # 兼容层 shim（只挑 shim，见 _is_shim）
 ]
 # 目录里明确不要的（别的项目 / 大文件 / 缓存）
 TREE_SKIP_DIRS = {"__pycache__", "cache", "reports", "kc50_dynamics", "vendor"}
@@ -51,22 +49,25 @@ TREE_SKIP_EXT = (".db", ".sqlite", ".log", ".pyc", ".zip", ".parquet", ".csv",
                  ".bak", ".orig", ".rej")
 TREE_SKIP_NAME = ("stats_h1.json", "stats_day.json", "smc_sim.db")
 
+# 仓库里已废弃的顶层路径（本地整理后不存在了）→ 上传时顺带删除
+REMOTE_DELETE_PREFIX = ("core/", "report/", "strategies/", "tools/", "examples/", "reports/")
+
 # 单文件清单
 FILES = [
     "requirements.txt",
     "README.md",
     ".gitignore",
     "smc/smc_config.py",
-    "examples/sample_report_中证500.txt",
+    "misc/examples/sample_report_中证500.txt",
 ]
 # 发布工具自身（已剥掉本机路径的公开版）
 PUBLISH_TOOLS = {
-    "tools/gh_commit.py": "tools/gh_commit.py",
-    "tools/gh_publish.py": "tools/gh_publish.py",
-    "tools/publish_techsummary.py": "tools/publish_techsummary.py",
+    "misc/tools/gh_commit.py": "tools/gh_commit.py",
+    "misc/tools/gh_publish.py": "tools/gh_publish.py",
+    "misc/tools/publish_techsummary.py": "tools/publish_techsummary.py",
 }
 # 发布工具主脚本：直接从本机版消毒后落库，避免「本地改了、仓库还是旧清单」
-SELF_TOOL = "tools/publish_techanly.py"
+SELF_TOOL = "misc/tools/publish_techanly.py"
 
 # 仓库里另有「公开版」文件（本机版含私有信息，不能直接上传）→ 从 bin/publish_assets 取
 ASSET_FILES = {
@@ -74,8 +75,8 @@ ASSET_FILES = {
     "README.md": "README-techanly.md" if os.path.exists(os.path.join(ASSETS, "README-techanly.md")) else "README.md",
     "requirements.txt": "requirements.txt",
     ".gitignore": "gitignore",
-    "tools/bootstrap_cache.py": "tools/bootstrap_cache.py",
-    "examples/sample_report_中证500.txt": "examples/sample_report_中证500.txt",
+    "misc/tools/bootstrap_cache.py": "tools/bootstrap_cache.py",
+    "misc/examples/sample_report_中证500.txt": "examples/sample_report_中证500.txt",
 }
 
 WS_PUB = ('WS = os.environ.get("TECH_WS") or '
@@ -176,7 +177,7 @@ def sanitize(rel, text):
         text = re.sub(pat, rep, text, flags=flags)
     # 文档/注释里残留的本机绝对路径（README、说明文字、示例命令）统一换成仓库根
     text = text.replace("${TECH_WS:-<repo>}", "${TECH_WS:-<repo>}")
-    if rel.endswith("core/feishu_card.py"):
+    if rel.endswith("misc/core/feishu_card.py"):
         # 本机版 _cfg() 只读 openclaw.json → 公开版允许环境变量优先
         text = re.sub(
             r'def _cfg\(\):\n(?:.*\n)*?    return c\["appId"\], c\["appSecret"\]',
@@ -307,8 +308,10 @@ def main():
 
     # ⚠️ 用 gh_commit（Git Data API）把全部文件合成**一个 commit**
     #    contents API 每 PUT 一个文件就是一条 commit → 几十条同名记录，历史没法读
-    cmd = [sys.executable, os.path.join(WS, "bin/gh_commit.py"),
+    cmd = [sys.executable, os.path.join(WS, "misc/tools/gh_commit.py"),
            "--repo", REPO, "--branch", BRANCH, "--map-file", mp, "--msg", a.msg]
+    for pre in REMOTE_DELETE_PREFIX:
+        cmd += ["--delete-prefix", pre]
     if a.dry_run:
         cmd.append("--dry-run")
     print("$ " + " ".join(cmd))

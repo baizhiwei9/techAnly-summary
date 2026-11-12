@@ -44,7 +44,7 @@ def _repo_root(start):
     """向上探测仓库根：同时含 bin/ 与 core/ 的那一层（2026-11-12 目录整理后可任意层级）。"""
     d = os.path.dirname(os.path.abspath(start))
     for _ in range(6):
-        if os.path.isdir(os.path.join(d, "bin")) and os.path.isdir(os.path.join(d, "core")):
+        if os.path.isdir(os.path.join(d, "bin")) and os.path.isdir(os.path.join(d, "chanlun")):
             return d
         nd = os.path.dirname(d)
         if nd == d:
@@ -56,8 +56,9 @@ def _repo_root(start):
 WS = os.environ.get("TECH_WS") or _repo_root(__file__)
 # 顺序有讲究：最后插入的优先级最高 → bin/ 放最前 = 最低优先级，
 # 保证 import 命中真实目录，而不是 bin/ 里的兼容 shim。
-for _sd in ("bin", "", "core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
-            "chanlun/multiscale/vendor", "report", "misc", "wavelet", "smc"):
+for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
+            "chanlun/multiscale/vendor", "misc/report", "misc", "wavelet", "smc",
+            "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
     if os.path.isdir(_p) and _p not in sys.path:
         sys.path.insert(0, _p)

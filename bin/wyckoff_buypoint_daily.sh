@@ -3,6 +3,6 @@
 # 保留旧路径，cron / 外部 `bash bin/wyckoff_buypoint_daily.sh` 照旧可用。
 set -u
 WS="${TECH_WS:-$(cd "$(dirname "$0")/.." && pwd)}"
-REAL="$WS/report/wyckoff_buypoint_daily.sh"
+REAL="$WS/misc/report/wyckoff_buypoint_daily.sh"
 [ -f "$REAL" ] || { echo "[compat] 找不到真实脚本: $REAL" >&2; exit 127; }
 exec bash "$REAL" "$@"

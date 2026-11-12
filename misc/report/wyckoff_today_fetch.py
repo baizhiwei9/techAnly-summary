@@ -12,7 +12,7 @@ def _repo_root(start):
     """向上探测仓库根：同时含 bin/ 与 core/ 的那一层（2026-11-12 目录整理后可任意层级）。"""
     d = os.path.dirname(os.path.abspath(start))
     for _ in range(6):
-        if os.path.isdir(os.path.join(d, "bin")) and os.path.isdir(os.path.join(d, "core")):
+        if os.path.isdir(os.path.join(d, "bin")) and os.path.isdir(os.path.join(d, "chanlun")):
             return d
         nd = os.path.dirname(d)
         if nd == d:
