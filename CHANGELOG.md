@@ -6,6 +6,29 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 16:05
+
+**refactor(目录): misc/report→misc/engine，3 个底层脚本并入 core**
+
+### 改了什么
+- misc/report/ → misc/engine/（里面装的是分析引擎 tech_summary/tech_buypoint 等，不叫 report 更准确）
+- misc/weekly_zs.py、misc/xq_ind_monitor.py、misc/xq_portfolio.py → misc/core/
+  （它们是被到处 import 的底层模块，摆 misc 根目录不像底层）
+- 17 个文件的 sys.path 引导同步更新 misc/report → misc/engine
+- 3 个 bin/ shim 的真实路径同步更新
+- misc/README.md 重写，讲清 6 个子目录职责 + 「库是库，杂事不进库」铁律
+
+### 为什么
+大佬 2026-11-12 12:06 要求整理库目录。原 misc/ 是抽屉式杂烩：
+6 个子目录 + 3 个零散脚本，且 misc/report 名字与其内容（分析引擎）不符。
+
+### 影响文件
+- misc/engine/*（由 misc/report 改名）
+- misc/core/{weekly_zs,xq_ind_monitor,xq_portfolio}.py（新位置）
+- bin/*.py 17 个 shim 路径
+- bin/gh_publish_techanly.py（删除远端旧路径清单）
+- misc/README.md
+
 ## 2026-11-12 15:15
 
 **refactor(库隔离): 删 misc/reports，改 misc/compare；顶层 reports/ 永不入库**

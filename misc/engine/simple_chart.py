@@ -39,7 +39,7 @@ WS = os.environ.get("TECH_WS") or _repo_root(__file__)
 # 顺序有讲究：最后插入的优先级最高 → bin/ 放最前 = 最低优先级，
 # 保证 import 命中真实目录，而不是 bin/ 里的兼容 shim。
 for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
-            "chanlun/multiscale/vendor", "misc/report", "misc", "wavelet", "smc",
+            "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
     if os.path.isdir(_p) and _p not in sys.path:

@@ -38,7 +38,7 @@ TREES = [
     "chanlun",
     "smc",
     "wavelet",
-    "misc",             # 杂项：core/report/strategies/tools/examples/compare/weekly_zs/xq_*
+    "misc",             # 杂项：core/engine/strategies/tools/examples/compare
     "bin",              # 兼容层 shim（只挑 shim，见 _is_shim）
     "skills/tech-summary",
     "skills/chan-ma-trend",
@@ -62,7 +62,9 @@ TREE_SKIP_NAME = ("stats_h1.json", "stats_day.json", "smc_sim.db")
 
 # 仓库里已废弃的顶层路径（本地整理后不存在了）→ 上传时顺带删除
 REMOTE_DELETE_PREFIX = ("core/", "report/", "strategies/", "tools/", "examples/", "reports/",
-                        "misc/reports/")   # misc/reports → misc/compare（2026-11-12）
+                        "misc/reports/",   # misc/reports → misc/compare（2026-11-12）
+                        "misc/report/",    # misc/report → misc/engine（2026-11-12 v2）
+                        "misc/weekly_zs.py", "misc/xq_ind_monitor.py", "misc/xq_portfolio.py")
 
 # 单文件清单
 FILES = [

@@ -39,7 +39,7 @@ def _repo_root(start):
 
 WS = os.environ.get("TECH_WS") or _repo_root(__file__)
 for _p in (os.path.join(WS, "bin"), os.path.join(WS, "smc"),
-           os.path.join(WS, "misc/core"), os.path.join(WS, "misc/report"),
+           os.path.join(WS, "misc/core"), os.path.join(WS, "misc/engine"),
            os.path.join(WS, "chanlun/fractal"), os.path.join(WS, "chanlun/ma"),
            os.path.join(WS, "chanlun/multiscale"), WS):
     if _p not in sys.path:

@@ -9,7 +9,7 @@
 import os, sys, runpy, importlib.util
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_REAL = os.path.join(os.path.dirname(_HERE), "misc/report/tech_buypoint.py")
+_REAL = os.path.join(os.path.dirname(_HERE), "misc/engine/tech_buypoint.py")
 if not os.path.exists(_REAL):
     sys.exit("[compat] 找不到真实文件：%s（目录结构可能已变化）" % _REAL)
 

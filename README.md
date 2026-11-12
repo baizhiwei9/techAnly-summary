@@ -13,9 +13,9 @@
 
 | 脚本 | 作用 |
 |---|---|
-| `misc/report/tech_summary.py` | 单标的四层完整分析（缠论分型版 + 缠论均线版 + SMC + VWAP 六轨） |
-| `misc/report/tech_buypoint.py` | 买点分析（行业/指数/概念先过闸，再下钻成分股；个股直连四层分析） |
-| `misc/report/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
+| `misc/engine/tech_summary.py` | 单标的四层完整分析（缠论分型版 + 缠论均线版 + SMC + VWAP 六轨） |
+| `misc/engine/tech_buypoint.py` | 买点分析（行业/指数/概念先过闸，再下钻成分股；个股直连四层分析） |
+| `misc/engine/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
 | `chanlun/ma/chan_ma_chart.py` | **缠论·均线版单标的出图**（只画均线版一层，图大结构清楚） |
 
 ### 按级别跑 + 策略索引（2026-11-11 新增）
@@ -36,7 +36,7 @@ python3 strategies/run_level.py --target 600519 --level week   # 周线（日线
 | SMC | ✅ | ✅ | ✅ | ✅ | `smc/smc_core.py` / `misc/strategies/run_level.py` |
 | VWAP 六轨 | ✅ | ✅ | ✅ | ✅ | `smc/smc_core.py` / `misc/strategies/run_level.py` |
 | 小波·多尺度 | ❌ | ⚠️停用 | ✅ | ✅（过滤） | `wavelet/` |
-| 威科夫吸筹 | 盘中（过滤层周/日） | — | ✅ | ✅（过滤） | `misc/report/wyckoff_buypoint_v2.py` |
+| 威科夫吸筹 | 盘中（过滤层周/日） | — | ✅ | ✅（过滤） | `misc/engine/wyckoff_buypoint_v2.py` |
 
 > 完整说明与「为什么小波不套 15 分钟」见 **[strategies/README.md](strategies/README.md)**。
 

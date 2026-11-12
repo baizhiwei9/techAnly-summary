@@ -14,13 +14,13 @@ description: "技术分析汇总：缠论分型版+均线版+SMC+VWAP六轨四�
 >
 > | 调用路径（照旧） | 真实文件 |
 > |---|---|
-> | `bin/tech_summary.py` | `misc/report/tech_summary.py` |
-> | `bin/tech_buypoint.py` | `misc/report/tech_buypoint.py` |
-> | `bin/tech_intraday_buypoint.py` | `misc/report/tech_intraday_buypoint.py` |
-> | `bin/buypoint_chart.py` | `misc/report/buypoint_chart.py` |
-> | `bin/wyckoff_buypoint_v2.py` | `misc/report/wyckoff_buypoint_v2.py` |
-> | `bin/sector_buypoint_top20.py` | `misc/report/sector_buypoint_top20.py` |
-> | `bin/simple_chart.py` | `misc/report/simple_chart.py` |
+> | `bin/tech_summary.py` | `misc/engine/tech_summary.py` |
+> | `bin/tech_buypoint.py` | `misc/engine/tech_buypoint.py` |
+> | `bin/tech_intraday_buypoint.py` | `misc/engine/tech_intraday_buypoint.py` |
+> | `bin/buypoint_chart.py` | `misc/engine/buypoint_chart.py` |
+> | `bin/wyckoff_buypoint_v2.py` | `misc/engine/wyckoff_buypoint_v2.py` |
+> | `bin/sector_buypoint_top20.py` | `misc/engine/sector_buypoint_top20.py` |
+> | `bin/simple_chart.py` | `misc/engine/simple_chart.py` |
 > | `bin/chan_smc_index.py` | `chanlun/fractal/chan_smc_index.py` |
 > | `bin/chan_chart.py` | `chanlun/fractal/chan_chart.py` |
 > | `bin/chan_ma_trend_v2.py` | `chanlun/ma/chan_ma_trend_v2.py` |
