@@ -10,7 +10,16 @@
 | `strategies/` | **统一级别入口**：`run_level.py --level m15/h1/day/week` + `levels.py` 适配层 |
 | `tools/` | **发布工具**：`gh_commit`（Git Data API 单 commit）· `gh_publish` · `publish_techanly`（本项目发布）· `bootstrap_cache`（首次部署建缓存） |
 | `examples/` | 真实样板产物：报告 txt + 两张样板图 |
-| `reports/` | 笔/中枢引擎对比图与说明 |
+| `compare/` | 笔/中枢引擎对比图与说明（只有 4 个文件，别往里塞东西） |
+
+> ### ⭐ 库是库，别把杂事混进来（大佛 2026-11-12 定规矩）
+> 这个仓库（`techAnly-summary`）**只放技术分析代码 + 与引擎一致性直接相关的对比产物**。
+> 其他项目的日常产出（土狗收盘 / 组合复盘 / 鱼哥 L3 / 股债比值 / 各种日报图表）
+> **一律写到工作区顶层的 `reports/`**，绝不进本仓库、也绝不进本目录。
+>
+> 旧 `misc/reports/` 就是这么被浊进来的（一次混了 27 个别的项目的产出，还带 webhook）→
+> 2026-11-12 已彻底删除，改名 `compare/` 并写死白名单；发布脚本 `TREE_SKIP_PATHS` 已把
+> `reports` 加入永不入库名单。
 
 本层直接放的零散脚本：
 

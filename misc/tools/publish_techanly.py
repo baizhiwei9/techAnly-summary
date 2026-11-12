@@ -38,7 +38,7 @@ TREES = [
     "chanlun",
     "smc",
     "wavelet",
-    "misc",             # 杂项：core/report/strategies/tools/examples/reports/weekly_zs/xq_*
+    "misc",             # 杂项：core/report/strategies/tools/examples/compare/weekly_zs/xq_*
     "bin",              # 兼容层 shim（只挑 shim，见 _is_shim）
     "skills/tech-summary",
     "skills/chan-ma-trend",
@@ -46,11 +46,14 @@ TREES = [
 # 目录里明确不要的（别的项目 / 大文件 / 缓存）
 TREE_SKIP_DIRS = {"__pycache__", "cache", "kc50_dynamics", "vendor"}
 # 产出型目录（跑出来的图/日志，不入库）
-TREE_SKIP_PATHS = ("chanlun/multiscale/reports", "smc/reports")
-# misc/reports 是「日常产出」堆积区（土狗收盘/组合复盘/鱼哥报告…属于别的项目，还带 webhook）
-# 这个库只收与「笔/中枢引擎一致性」有关的那 4 个，用白名单
+TREE_SKIP_PATHS = ("chanlun/multiscale/reports", "smc/reports", "reports")
+# ↑ reports/ 是工作区根目录的「日常产出台」，任何项目的报告都不进库
+# ⚠️ 2026-11-12 大佬定规矩：「库是库，别把杂事混进库里」。
+# 库只收代码 + 与引擎一致性直接相关的对比产物；别的项目的日常产出（土狗收盘 / 组合复盘 /
+# 鱼哥 L3 / 股债比值…）一律放在工作区顶层 reports/，绝不进库、绝不入库结构。
+# misc/reports 已彻底删除，改名 misc/compare（只放笔/中枢引擎对比的 4 个文件）。
 ALLOW_ONLY = {
-    "misc/reports": {"plot_pen_pivot_compare.py", "smc_buypoint_compare.md",
+    "misc/compare": {"plot_pen_pivot_compare.py", "smc_buypoint_compare.md",
                      "pen_compare_sh510300.png", "pivot_compare_sh510300.png"},
 }
 TREE_SKIP_EXT = (".db", ".sqlite", ".log", ".pyc", ".zip", ".parquet", ".csv",
@@ -58,7 +61,8 @@ TREE_SKIP_EXT = (".db", ".sqlite", ".log", ".pyc", ".zip", ".parquet", ".csv",
 TREE_SKIP_NAME = ("stats_h1.json", "stats_day.json", "smc_sim.db")
 
 # 仓库里已废弃的顶层路径（本地整理后不存在了）→ 上传时顺带删除
-REMOTE_DELETE_PREFIX = ("core/", "report/", "strategies/", "tools/", "examples/", "reports/")
+REMOTE_DELETE_PREFIX = ("core/", "report/", "strategies/", "tools/", "examples/", "reports/",
+                        "misc/reports/")   # misc/reports → misc/compare（2026-11-12）
 
 # 单文件清单
 FILES = [

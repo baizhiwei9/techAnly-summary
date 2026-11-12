@@ -6,6 +6,28 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 15:15
+
+**refactor(库隔离): 删 misc/reports，改 misc/compare；顶层 reports/ 永不入库**
+
+### 改了什么
+- 删除 misc/reports 目录（混进 27 个别的项目的日常产出，还带 webhook）
+- 改名为 misc/compare，只保留笔/中枢引擎对比的 4 个文件（脚本+说明+两张图）
+- 别的项目产出（土狗收盘/组合复盘/鱼哥L3/股债比值）全部移到工作区顶层 reports/
+- gh_publish_techanly.py：ALLOW_ONLY 改指 misc/compare；TREE_SKIP_PATHS 加 reports；REMOTE_DELETE_PREFIX 加 misc/reports/
+- misc/README.md 写明「库是库，杂事不进库」的规矩
+
+### 为什么
+- 大佬原话：库是库，应该在外边单独成立项目引用这个库，而不是库里引别人的杂事
+- 旧的 misc/reports 是 2026-11-12 目录重构时误把顶层 reports/ 挪进来的，导致 yuge_l3_report.py / yuge_report_html.py / gsratio_daily.sh 写 WS/reports 时全落进库里
+
+### 影响文件
+- misc/compare/* (新)
+- misc/reports/* (删)
+- reports/* (工作区顶层，永久不入库)
+- bin/gh_publish_techanly.py
+- misc/README.md
+
 ## 2026-11-12 11:53
 
 **docs(skill): 技能映射表同步目录定稿后的真实路径**
