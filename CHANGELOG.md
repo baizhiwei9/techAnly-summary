@@ -6,6 +6,19 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 11:53
+
+**docs(skill): 技能映射表同步目录定稿后的真实路径**
+
+### 改了什么
+- skills/tech-summary/SKILL.md 的「调用路径 → 真实文件」映射表更新为目录定稿后的位置（report/ → misc/report/，core/ → misc/core/，strategies/ → misc/strategies/）。
+
+### 为什么
+目录归并后，技能文档里指向的真实文件路径过期了，换机器或排查时会找错地方。调用路径（bin/xxx.py）不变，因为 shim 都在。
+
+### 影响文件
+- skills/tech-summary/SKILL.md
+
 ## 2026-11-12 11:47
 
 **chore(misc): 补入对比脚本/图，产出型目录加过滤**
