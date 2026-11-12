@@ -6,6 +6,22 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 16:11
+
+**fix(docs): README 目录树 + bootstrap_cache 路径同步 v2 结构**
+
+### 改了什么
+- README.md 目录树：misc/report → misc/engine；3 个底层脚本并入 misc/core；reports/ → compare/
+- bootstrap_cache.py（公开版）的 _repo_root 探测条件从 core/ 改 chanlun/，sys.path 列表同步为 misc/* 结构
+
+### 为什么
+上一轮把 misc/report 改名 misc/engine 后，README 和首次部署工具还指着旧路径。
+bootstrap_cache 的 _repo_root 用 core/ 判断仓库根，但仓库里没有顶层 core/ 目录 → 换机器部署必失败。
+
+### 影响文件
+- README.md
+- misc/tools/bootstrap_cache.py
+
 ## 2026-11-12 16:05
 
 **refactor(目录): misc/report→misc/engine，3 个底层脚本并入 core**

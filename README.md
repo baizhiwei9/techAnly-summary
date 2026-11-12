@@ -462,8 +462,11 @@ misc/                       ④ 其余全部（杂项）
     tushare_init.py         Tushare 统一初始化（代理 token + 硬超时 + 直连兜底）
     feishu_card.py          飞书图文合成卡片
     push_image.py           统一图片推送（QQ + 飞书）
-  report/                   ── 报告与买点（对外主入口）
-    tech_summary.py         五层分析主脚本（报告 + 双图 + 推送）
+    weekly_zs.py            申万行业指数日线
+    xq_ind_monitor.py       雪球组合监控
+    xq_portfolio.py         雪球多组合档案
+  engine/                   ── 分析引擎（核心，不是"产出报告"）
+    tech_summary.py         四层分析主脚本（报告 + 双图 + 推送）
     tech_buypoint.py        买点分析（指数/行业/概念/个股）
     tech_intraday_buypoint.py  盘中行业买点 Top10 + 个股下钻
     buypoint_chart.py       买点分析三联图
@@ -478,10 +481,7 @@ misc/                       ④ 其余全部（杂项）
   tools/                    ── 发布工具
     gh_commit.py gh_publish.py publish_techanly.py publish_techsummary.py bootstrap_cache.py
   examples/                 真实样板产物（报告 txt + 两张样板图）
-  reports/                  笔/中枢引擎对比图与说明
-  weekly_zs.py              申万行业指数日线
-  xq_ind_monitor.py         雪球组合监控
-  xq_portfolio.py           雪球多组合档案
+  compare/                  笔/中枢引擎对比图与说明（仅 4 个文件）
 
 bin/                        ⚠️ 兼容层：全是 shim，指向上面各真实文件（cron 依赖，别删）
 skills/                     技能文档（OpenClaw 技能发现要求放顶层）
