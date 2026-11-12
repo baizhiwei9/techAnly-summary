@@ -4,7 +4,7 @@
 
 | 子目录 | 放什么 |
 |---|---|
-| `core/` | **共享底层**（谁都用）：`datahub` 日线三级灾备 · `minute_hub` 分钟线 · `tushare_init` 统一取数 · `feishu_card` 飞书卡片 · `push_image` 图片推送 · `sw_daily` 申万行业日线 · `net_guard` 网络出口策略 |
+| `core/` | **共享底层**（谁都用）：`datahub` 日线三级灾备 · `minute_hub` 分钟线 · `tushare_init` 统一取数 · `feishu_card` 飞书卡片 · `push_image` 图片推送 · `sw_daily` 申万行业日线 · `net_guard` 网络出口策略 · `ths_hub` 同花顺板块/个股K线 · `datafeed` 多源取数（同花顺优先，东财兜底） |
 | `engine/` | **分析引擎**（核心，不是"报告"）：`tech_summary` 四层分析 · `tech_buypoint` 买点扫描 · `tech_intraday_buypoint` 盘中 Top10 · `buypoint_chart` 三联图 · `wyckoff_buypoint_v2` 威科夫 · `sector_buypoint_top20` · `simple_chart` · `wyckoff_today_fetch` + 两个 `*_daily.sh` |
 | `strategies/` | **统一级别入口**：`run_level.py --level m15/h1/day/week` + `levels.py` |
 | `tools/` | **发布工具**：`gh_commit` · `gh_publish` · `publish_techanly` · `bootstrap_cache` |
@@ -29,6 +29,20 @@
 >   2026-11-12 实测东财 K 线 **IPv4 全部 RemoteDisconnected，只有 IPv6 可达**
 > - 额外放行：`IPV6_OK_HOSTS=域名1,域名2`
 > - ⚠️ 必须在 `sys.path` 建好之后调用，否则 import 失败会静默退回一刀切禁 IPv6
+>
+> ### 📡 取数优先级：同花顺 > 东财（2026-11-12 大佬定）
+> 「能不能不用东财？新浪同花顺不都可以吗，东财一直封」
+>
+> | 数据 | 主力源 | 备用 |
+> |---|---|---|
+> | 行业板块列表（90 个） | 同花顺 `thshy` 页面 | 东财 clist |
+> | 概念板块列表（294 个） | 同花顺 `gnSection` | 东财 clist |
+> | 板块 K 线（全量 1662 根） | **同花顺按年接口** | 东财（易封） |
+> | 个股 K 线 | **同花顺 hs_ 接口** | 东财（易封） |
+> | 板块成分股 | **同花顺板块详情页** | 东财 clist |
+>
+> 东财只保留作兜底，且带**限流保护**（请求间隔 0.35s，连续失败 4 次自动熔断）。
+> 实测：全量 90 行业板块扫描，完全零东财请求，正常出结果。
 
 > ### ⭐ 库是库，别把杂事混进来（大佬 2026-11-12 定规矩）
 > 这个仓库（`techAnly-summary`）**只放技术分析代码 + 与引擎一致性直接相关的对比产物**。

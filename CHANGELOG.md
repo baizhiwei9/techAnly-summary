@@ -6,6 +6,46 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 21:05
+
+**feat(data): 取数换同花顺，东财降为兜底 —— 盘中买点不再被封 IP**
+
+### 为什么改
+大佬 2026-11-12 19:48：「能不能不用东财？新浪同花顺不都可以吗，东财一直封」
+实测东财 push2his K 线：
+  · IPv4 全废（RemoteDisconnected）
+  · 只走 IPv6
+  · 并发 100 次后被封 IP 20 分钟以上，v4/v6 全 000
+盘中要扫 90 行业 + 下钻个股，必然触发封禁 → 必须换源。
+
+### 改了什么
+1. 新增 misc/core/ths_hub.py —— 同花顺取数（东财替代源）
+   · 行业板块列表 90 个（thshy 页面）
+   · 概念板块列表 294 个（gnSection 隐藏域里的 platecode/platename）
+   · 板块 K 线：按年接口 48_<code>/01/<YYYY>.js 拼全量（实测 1662 根，到当日）
+   · 个股 K 线：hs_<code> 接口（1661 根）
+   · 板块成分股：板块详情页解析（白酒 19 只全成功）
+2. 新增 misc/core/datafeed.py —— 多源调度层
+   · K 线/列表/成分股 **全部同花顺优先**
+   · 东财只在同花顺失败时启用，带限流（0.35s 间隔）+ 熔断（连败 4 次停）
+3. misc/engine/tech_intraday_buypoint.py 接入 datafeed
+   · board_rows / board_kline / board_members / stock_kline 全走 DF
+   · analyse 增加 src 字段，下钻时知道源
+4. misc/README.md + SKILL.md 补「取数优先级：同花顺 > 东财」说明
+
+### 实测
+- 全量 90 行业板块扫描：**零东财请求**，30 个有买点，9 只个股站上 VWAP −1σ
+- 白酒：19 只成分股 → 皇台酒业(+10.03%) / 金种子酒(+6.58%) / 迎驾贡酒(+1.19%)
+- 保险：中国平安 / 中国太保
+- 游戏：巨人网络 / 中青宝 / 凯撒文化
+- 458 个 py 语法 0 错误；tech_summary 等核心脚本不受影响
+
+### 影响文件
+- misc/core/ths_hub.py（新）
+- misc/core/datafeed.py（新）
+- misc/engine/tech_intraday_buypoint.py
+- misc/README.md / skills/tech-summary/SKILL.md
+
 ## 2026-11-12 18:50
 
 **fix(net): 东财 K 线只通 IPv6 → 新增 net_guard 白名单，盘中买点恢复可用**

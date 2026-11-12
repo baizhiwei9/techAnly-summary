@@ -9,7 +9,8 @@
             > ④ VWAP 均线向上（MA40 向上且未冲进 +1σ 以上）
   → 按这个顺序把今天有买点的行业排前 10 个输出。
 
-  数据：东财行业板块（100 个）实时日K（含当日盘中那根），所以盘中就能算。
+  数据：同花顺行业板块（90 个）/ 概念板块（294 个）日K（含当日盘中那根），所以盘中就能算。
+        东财仅作兜底（其 K 线接口易限流封 IP，2026-11-12 起不再主用）。
         ⚠️ 申万指数（akshare index_hist_sw）只有 T-1，盘中用不了，故这里不用申万。
 
 全流程纯 Python，0 token。
@@ -74,6 +75,7 @@ import chan_ma_trend_v2 as M      # noqa: E402
 import tech_summary as TS         # noqa: E402
 import tech_buypoint as TB        # noqa: E402
 import wyckoff_today_fetch as F   # noqa: E402
+import datafeed as DF             # noqa: E402  多源取数（K线走同花顺，东财只取成分股）
 import smc_core as S              # noqa: E402
 
 SIGN = "📎 来自 OpenClaw.Deepseek"
@@ -105,8 +107,8 @@ def log(*a):
 
 # ════════════════════════ 取数 ════════════════════════
 def board_rows(kind):
-    fs = "m:90 t:2" if kind == "行业" else "m:90 t:3"
-    return F.board_list(fs)
+    """板块列表：同花顺优先（90 行业 / 294 概念），失败才退东财"""
+    return DF.board_list(kind)
 
 
 def to_df(ks):
@@ -190,7 +192,7 @@ def _gate_week(b, close, ma20w, tag):
             "layer": "分型版", "level_name": "周线"}
 
 
-def analyse(name, code, kind, ks):
+def analyse(name, code, kind, ks, src="dg"):
     d = to_df(ks)
     if len(d) < 80:
         return None
@@ -248,7 +250,8 @@ def analyse(name, code, kind, ks):
     tier = min(tiers)
 
     return {
-        "kind": kind, "name": name, "code": code, "dt": str(d["dt"].iloc[-1])[:10],
+        "kind": kind, "name": name, "code": code, "src": src,
+        "dt": str(d["dt"].iloc[-1])[:10],
         "close": close, "pct": pct, "tier": tier, "tiers": tiers,
         "n_res": len(tiers),
         "fx": best_wk or best_d, "wk": best_wk, "w_any": any(x["pri"] for x in wk_acc),
@@ -304,30 +307,14 @@ def _secid(code):
     return ("1." if c[0] in "659" else "0.") + c
 
 
-def board_members(board_code, cap=60):
-    """板块成分股（东财），按成交额降序（fid=f6）——流动性优先，先扫能买的"""
-    d = F._get("/api/qt/clist/get",
-               dict(pn=1, pz=300, po=1, np=1, fltt=2, invt=2, fid="f6",
-                    fs="b:%s" % board_code, fields="f2,f3,f6,f12,f14"))
-    out = []
-    for r in (d.get("diff") or []):
-        if not isinstance(r.get("f3"), (int, float)):
-            continue
-        out.append({"code": r["f12"], "name": r["f14"], "pct": float(r["f3"]),
-                    "price": r.get("f2"), "amt": (r.get("f6") or 0) / 1e8})
-    return out[:cap]
+def board_members(board_code, cap=60, name=None, kind="行业", src="dg"):
+    """板块成分股：只有东财有（同花顺 401 反爬），走 datafeed 的限流保护"""
+    return DF.board_members(board_code, cap=cap, name=name, kind=kind, src=src)
 
 
 def stock_kline(code, lmt=420):
-    d = F._get("/api/qt/stock/kline/get",
-               dict(secid=_secid(code), klt=101, fqt=1, lmt=lmt, end="20500101",
-                    fields1="f1,f2,f3,f4,f5,f6",
-                    fields2="f51,f52,f53,f54,f55,f56,f57"), tries=3, timeout=10)
-    ks = []
-    for ln in (d.get("klines") or []):
-        a = ln.split(",")
-        ks.append(dict(date=a[0], open=float(a[1]), close=float(a[2]), high=float(a[3]),
-                       low=float(a[4]), vol=float(a[5]), amt=float(a[6])))
+    """个股日线：同花顺优先，东财兜底"""
+    return DF.stock_kline(code)
     return ks
 
 
@@ -482,7 +469,7 @@ def build_text(rows, top, kinds, bar_date, n_scan, stock_per=3):
     L.append("📊 盘中行业买点 Top%d + 个股下钻 · %s" % (top, now))
     L.append("排序：① 周线买点（三买>一买>二买）→ ② 日线三买（有>无）→ ③ 共振层数（分型/均线/SMC/VWAP 越多越前）")
     L.append("级别：**周线 一买/二买/三买 都算**；**日线只认三买** ｜ 个股：行业选出后下钻，**必须站在 VWAP −1σ 以上**（硬门槛）")
-    L.append("数据：东财%s板块 %d 个，最后一根K线 %s（当日盘中）" % ("/".join(kinds), n_scan, bar_date))
+    L.append("数据：%s板块 %d 个（同花顺），最后一根K线 %s（当日盘中）" % ("/".join(kinds), n_scan, bar_date))
     L.append("")
     if not rows:
         L.append("今日无任何行业同时满足上述买点。")
@@ -607,12 +594,15 @@ def main():
         if a.limit:
             boards = boards[:a.limit]
         for b in boards:
-            name, code = b.get("f14"), b.get("f12")
+            # 统一字段：datafeed 返回 {code,name,src}；老东财是 {f12,f14}
+            name = b.get("name") or b.get("f14")
+            code = b.get("code") or b.get("f12")
+            src = b.get("src") or "dg"
             if not name or not code:
                 continue
             n_scan += 1
             try:
-                ks = F.kline(code, lmt=WEEK_BARS)
+                ks = DF.board_kline(code, src=src, years_back=6)
             except Exception as e:
                 log("  kline fail %s %s" % (name, str(e)[:50]))
                 continue
@@ -620,7 +610,7 @@ def main():
                 continue
             bar_date = ks[-1]["date"]
             try:
-                r = analyse(name, code, kind, ks)
+                r = analyse(name, code, kind, ks, src=src)
             except Exception as e:
                 log("  analyse fail %s %s" % (name, str(e)[:60]))
                 continue
@@ -640,7 +630,9 @@ def main():
     if not a.no_stock:
         for r in head:
             try:
-                mem = board_members(r["code"], cap=a.stock_cap)
+                mem = board_members(r["code"], cap=a.stock_cap,
+                                    name=r.get("name"), kind=r.get("kind") or "行业",
+                                    src=r.get("src") or "dg")
             except Exception as e:
                 log("  members fail %s %s" % (r["name"], str(e)[:50]))
                 r["stocks"] = []

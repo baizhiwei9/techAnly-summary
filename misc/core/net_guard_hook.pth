@@ -1,0 +1,21 @@
+"""net_guard_hook.pth — 让 net_guard_hook 在所有 python3 进程启动时自动生效
+
+2026-11-12 大佬定：东财可以用 IPv6。
+工作区有 176 个脚本自己硬编码「一刀切禁 IPv6」，逐个改不现实且会漏；
+装成 .pth 后任何 python3 解释器启动都会先加载策略，
+脚本后面再怎么写都覆盖不掉（见 net_guard_hook._GuardedModule）。
+
+位置：${TECH_WS:-<repo>}/misc/core/net_guard_hook.py
+关掉：export NET_GUARD=0
+自检：python3 -c "import socket;print(socket.getaddrinfo('push2his.eastmoney.com',443)[0][0])"
+"""
+import os
+import sys
+
+_p = "${TECH_WS:-<repo>}/misc/core"
+if os.path.isdir(_p) and _p not in sys.path:
+    sys.path.insert(0, _p)
+try:
+    import net_guard_hook  # noqa: F401
+except Exception:
+    pass
