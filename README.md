@@ -463,9 +463,7 @@ misc/                       ④ 其余全部（杂项）
     tushare_init.py         Tushare 统一初始化（代理 token + 硬超时 + 直连兜底）
     feishu_card.py          飞书图文合成卡片
     push_image.py           统一图片推送（QQ + 飞书）
-    weekly_zs.py            申万行业指数日线
-    xq_ind_monitor.py       雪球组合监控
-    xq_portfolio.py         雪球多组合档案
+    sw_daily.py             申万行业指数日线取数（纯数据层）
   engine/                   ── 分析引擎（核心，不是"产出报告"）
     tech_summary.py         四层分析主脚本（报告 + 双图 + 推送）
     tech_buypoint.py        买点分析（指数/行业/概念/个股）

@@ -309,7 +309,7 @@ def sector_index_daily(kind, code, name=""):
                 d["volume"] = d.get("vol", 0.0)
             return d[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
         if kind == "industry":
-            from weekly_zs import fetch_sw_daily
+            from sw_daily import fetch_sw_daily
             d = fetch_sw_daily(code)
             if d is None or not len(d):
                 return None

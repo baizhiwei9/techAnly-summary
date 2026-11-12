@@ -12,6 +12,9 @@ description: "技术分析汇总：缠论分型版+均线版+SMC+VWAP六轨四�
 > `chanlun/`（缠论）· `smc/`（SMC + VWAP）· `wavelet/`（小波）· `misc/`（其余全部）。
 > 另有 `skills/` 放技能文档。**仓库里没有 `bin/`**（那是本机 cron 用的兼容壳，属部署环境，不进库）。
 >
+> ⚠️ **对外推送类应用不在此库**（周报 / 雪球组合监控 / 邮件提醒等）——它们在工作区 `apps/`，
+> 方向是「应用引用库」，库绝不反向引用它们。
+>
 > **怎么调用：直接写真实路径**（下表左列就是命令里的路径）。
 >
 > | 命令里写这个 | 是哪个模块 |
@@ -30,7 +33,7 @@ description: "技术分析汇总：缠论分型版+均线版+SMC+VWAP六轨四�
 > | `chanlun/ma/mad_layer.py` | MAD 均线层 |
 > | `wavelet/acvmd_layer.py` | AC1-VMD 小波层 |
 > | `misc/strategies/run_level.py` | 按级别跑（m15/h1/day/week） |
-> | `misc/core/datahub.py` `minute_hub.py` `tushare_init.py` `feishu_card.py` `push_image.py` `weekly_zs.py` `xq_ind_monitor.py` `xq_portfolio.py` | 共享底层（被 import，不单独跑） |
+> | `misc/core/datahub.py` `minute_hub.py` `tushare_init.py` `feishu_card.py` `push_image.py` `sw_daily.py` | 共享底层（被 import，不单独跑） |
 > | `misc/tools/bootstrap_cache.py` | 首次部署建缓存（换机器必跑一次） |
 >
 > ### 本机历史脚本怎么办（`bin/xxx.py` 不存在了）
@@ -544,7 +547,7 @@ CHAN_QQ_ACCOUNT="" python3 misc/core/push_image.py 图.png --qq-only --document
 | 股票日线 | `datahub.daily()`（6h CSV 缓存 `.cache/tech_daily/`）+ `.cache/holding_deep/daily/` |
 | 小时线 60m | `minute_hub.get_kline(sina, "60", kind=index/stock)` |
 | 行业成分 | `.cache/sw_member_all.json`（申万 L1/L2/L3） |
-| 行业指数 | `.cache/longxia/sw_classify_L*.json` → 801xxx.SI → `weekly_zs.fetch_sw_daily`（L1 akshare 最快 4s） |
+| 行业指数 | `.cache/longxia/sw_classify_L*.json` → 801xxx.SI → `misc/core/sw_daily.fetch_sw_daily`（L1 akshare 最快 4s） |
 | 概念 | tushare `ths_index` / `ths_member` / `ths_daily`（同花顺 885xxx.TI） |
 | 指数成分 | 中证官网 `index_stock_cons_csindex`（精确 500/300/50）→ `index_weight` → 同花顺兜底 |
 | **盘中板块** | 东财 `push2his` clist + kline（`wyckoff_today_fetch.board_list/kline`），含当日盘中那根 |

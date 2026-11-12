@@ -6,6 +6,33 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 16:53
+
+**refactor(架构): 对外推送应用移出库 → apps/，库内只留纯取数 sw_daily**
+
+### 改了什么
+- 新增 misc/core/sw_daily.py：从 weekly_zs.py 抽出的**纯取数层**（fetch_sw_daily / sw_l2_map / sw_l3_map / stock_sw，
+  三级降级 akshare→东财→tushare，mtime TTL 缓存），库内唯一保留的申万数据入口
+- misc/engine/tech_buypoint.py：from weekly_zs import fetch_sw_daily → from sw_daily import fetch_sw_daily
+- 工作区新增 apps/（不进本仓库），搬出三个对外应用：
+  · apps/weekly_zs.py        周报（推飞书私聊 + QQ）
+  · apps/xq_ind_monitor.py   雪球组合行业监控（发邮件）
+  · apps/xq_portfolio.py     雪球多组合档案
+- apps/README.md：写清依赖方向（apps → 库，单向）、为什么这三个不能进公开库（带 chat_id/webhook/邮箱）
+- bin/ 三个 shim 的 _REAL 路径同步指向 apps/
+- misc/README.md + SKILL.md + README.md：删除 weekly_zs/xq_* 的描述，改为 sw_daily；补「对外应用不在此库」说明
+
+### 为什么
+大佬 2026-11-12 15:22：「你那些个杂项，你得引用它，而不是这个库引用那些个杂项」
+原来方向是反的：库内 tech_buypoint.py 反过来 import 库外的 weekly_zs（805 行周报，带飞书/QQ 推送目标）。
+现在抽成：库提供纯取数 sw_daily.py ← 应用（apps/weekly_zs.py 等）引用库，库内零 import apps。
+
+### 影响文件
+- misc/core/sw_daily.py（新增）
+- misc/engine/tech_buypoint.py（改 import）
+- misc/README.md / skills/tech-summary/SKILL.md / README.md
+- 工作区 apps/（不进库）
+
 ## 2026-11-12 16:34
 
 **docs: 技能文档 + README 全面改成真实路径，补三分钟上手与命令速查表**

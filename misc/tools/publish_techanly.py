@@ -67,7 +67,9 @@ REMOTE_DELETE_PREFIX = ("bin/",   # 2026-11-12 v3：仓库不再收兼容壳（�
                         "core/", "report/", "strategies/", "tools/", "examples/", "reports/",
                         "misc/reports/",   # misc/reports → misc/compare（2026-11-12）
                         "misc/report/",    # misc/report → misc/engine（2026-11-12 v2）
-                        "misc/weekly_zs.py", "misc/xq_ind_monitor.py", "misc/xq_portfolio.py")
+                        "misc/weekly_zs.py", "misc/xq_ind_monitor.py", "misc/xq_portfolio.py",
+                        "misc/core/weekly_zs.py", "misc/core/xq_ind_monitor.py",
+                        "misc/core/xq_portfolio.py")
 
 # 单文件清单
 FILES = [
