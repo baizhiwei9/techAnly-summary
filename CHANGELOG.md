@@ -6,6 +6,23 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 11:47
+
+**chore(misc): 补入对比脚本/图，产出型目录加过滤**
+
+### 改了什么
+- 补上 misc/reports/ 里与「笔/中枢引擎一致性」有关的 4 个文件（plot_pen_pivot_compare.py + smc_buypoint_compare.md + 两张对比图）。
+- 发布工具加两处过滤：
+  1. TREE_SKIP_PATHS 增加 smc/reports（113 个每日产出快照，属于运行产物不入库）
+  2. ALLOW_ONLY 白名单锁定 misc/reports，只收上面那 4 个（该目录混着土狗收盘/组合复盘/鱼哥报告，属于别的项目且带 webhook）
+
+### 为什么
+misc/reports 是日常产出堆积区，直接全收会把 webhook 和别的项目文件带进公开库。
+
+### 影响文件
+- bin/gh_publish_techanly.py（发布工具过滤规则）
+- misc/reports/ 4 个文件首次入库
+
 ## 2026-11-12 11:44
 
 **refactor(layout): 目录定稿 —— 顶层只留 4 类：缠论 / SMC / 小波 / 杂项**

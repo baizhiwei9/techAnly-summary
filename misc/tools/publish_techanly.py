@@ -44,7 +44,15 @@ TREES = [
     "skills/chan-ma-trend",
 ]
 # 目录里明确不要的（别的项目 / 大文件 / 缓存）
-TREE_SKIP_DIRS = {"__pycache__", "cache", "reports", "kc50_dynamics", "vendor"}
+TREE_SKIP_DIRS = {"__pycache__", "cache", "kc50_dynamics", "vendor"}
+# 产出型目录（跑出来的图/日志，不入库）
+TREE_SKIP_PATHS = ("chanlun/multiscale/reports", "smc/reports")
+# misc/reports 是「日常产出」堆积区（土狗收盘/组合复盘/鱼哥报告…属于别的项目，还带 webhook）
+# 这个库只收与「笔/中枢引擎一致性」有关的那 4 个，用白名单
+ALLOW_ONLY = {
+    "misc/reports": {"plot_pen_pivot_compare.py", "smc_buypoint_compare.md",
+                     "pen_compare_sh510300.png", "pivot_compare_sh510300.png"},
+}
 TREE_SKIP_EXT = (".db", ".sqlite", ".log", ".pyc", ".zip", ".parquet", ".csv",
                  ".bak", ".orig", ".rej")
 TREE_SKIP_NAME = ("stats_h1.json", "stats_day.json", "smc_sim.db")
@@ -145,11 +153,17 @@ def _walk_tree(rel_dir):
     base = os.path.join(WS, rel_dir)
     for root, dirs, fs in os.walk(base):
         dirs[:] = [d for d in dirs if d not in TREE_SKIP_DIRS]
+        rel_root = os.path.relpath(root, WS)
+        dirs[:] = [d for d in dirs
+                   if os.path.join(rel_root, d).replace(os.sep, "/") not in TREE_SKIP_PATHS]
         for f in fs:
             if f.endswith(TREE_SKIP_EXT) or f in TREE_SKIP_NAME or ".bak" in f:
                 continue
             p = os.path.join(root, f)
             rel = os.path.relpath(p, WS)
+            allow = ALLOW_ONLY.get(rel_root.replace(os.sep, "/"))
+            if allow is not None and f not in allow:
+                continue
             if rel.startswith("bin" + os.sep) and not _is_shim(p):
                 continue      # bin/ 里还有别的项目的脚本，不收
             out.append(rel)
