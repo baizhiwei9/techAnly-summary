@@ -6,6 +6,32 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 16:34
+
+**docs: 技能文档 + README 全面改成真实路径，补三分钟上手与命令速查表**
+
+### 改了什么
+- skills/tech-summary/SKILL.md：
+  · 顶部「目录定稿」块重写：不再说 bin/ 是兼容 shim（仓库已删 bin/），改成「命令里直接写真实路径」对照表
+  · 新增「🚀 先看这里：三分钟上手」——克隆→装依赖→token→bootstrap_cache→四个常用命令
+  · 新增「3.0 命令速查表」——12 行表格，我想干什么 → 跑哪个命令
+  · 新增「本机历史脚本怎么办」——给软链建法，老脚本不用改
+  · 全文 30+ 处 python3 bin/xxx.py → 真实路径（misc/engine/ chanlun/ wavelet/ misc/core/）
+  · 校验节两段自检的 sys.path.insert(0,'bin') → 真实目录列表
+  · 修正「图与技能口径一致」自检：分型版 54 笔 vs 均线版 53 笔本来就不同口径，
+    原 asserts == 必然失败（历史遗留，与本次整理无关）→ 改成 abs 差 ≤2 才断言
+- skills/chan-ma-trend/SKILL.md：命令与模块引用全部改真实路径
+- README.md：补 strategies/run_level.py、tools/bootstrap_cache.py、examples 三个文件的完整前缀
+
+### 为什么
+大佬 2026-11-12 14:24：「你在那个技能的那个，还是那个库的说明文档里边说明白了怎么用」
+仓库已删 bin/，但两个技能文档还写着 python3 bin/xxx.py，照着跑必失败。
+
+### 影响文件
+- skills/tech-summary/SKILL.md
+- skills/chan-ma-trend/SKILL.md
+- README.md
+
 ## 2026-11-12 16:18
 
 **refactor(目录): 仓库不再收 bin/ 兼容壳，顶层只留四类代码目录**

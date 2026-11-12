@@ -8,38 +8,53 @@ description: "技术分析汇总：缠论分型版+均线版+SMC+VWAP六轨四�
 > 全流程纯 Python，**0 token**。脚本开头必须禁 IPv6（容器 IPv6 不通会静默卡死）：
 > `socket.getaddrinfo = lambda *a,**k:[r for r in _orig(*a,**k) if r[0]==AF_INET]`
 
-> **2026-11-12 目录定稿**：顶层只有 **4 类代码目录** —— `chanlun/`（缠论）· `smc/` · `wavelet/`（小波）· `misc/`（其余全部）。
-> 旧 `bin/xxx.py` 全部保留**兼容 shim**（转发到真实文件 / `import` 也照旧可用）。
-> 下表写 `bin/` 是「怎么调用」，右边是真实文件位置。
+> **2026-11-12 目录定稿**：仓库顶层只有 **4 类代码目录** ——
+> `chanlun/`（缠论）· `smc/`（SMC + VWAP）· `wavelet/`（小波）· `misc/`（其余全部）。
+> 另有 `skills/` 放技能文档。**仓库里没有 `bin/`**（那是本机 cron 用的兼容壳，属部署环境，不进库）。
 >
-> | 调用路径（照旧） | 真实文件 |
+> **怎么调用：直接写真实路径**（下表左列就是命令里的路径）。
+>
+> | 命令里写这个 | 是哪个模块 |
 > |---|---|
-> | `bin/tech_summary.py` | `misc/engine/tech_summary.py` |
-> | `bin/tech_buypoint.py` | `misc/engine/tech_buypoint.py` |
-> | `bin/tech_intraday_buypoint.py` | `misc/engine/tech_intraday_buypoint.py` |
-> | `bin/buypoint_chart.py` | `misc/engine/buypoint_chart.py` |
-> | `bin/wyckoff_buypoint_v2.py` | `misc/engine/wyckoff_buypoint_v2.py` |
-> | `bin/sector_buypoint_top20.py` | `misc/engine/sector_buypoint_top20.py` |
-> | `bin/simple_chart.py` | `misc/engine/simple_chart.py` |
-> | `bin/chan_smc_index.py` | `chanlun/fractal/chan_smc_index.py` |
-> | `bin/chan_chart.py` | `chanlun/fractal/chan_chart.py` |
-> | `bin/chan_ma_trend_v2.py` | `chanlun/ma/chan_ma_trend_v2.py` |
-> | `bin/chan_ma_chart.py` | `chanlun/ma/chan_ma_chart.py` |
-> | `bin/mad_layer.py` | `chanlun/ma/mad_layer.py` |
-> | `bin/acvmd_layer.py` | `wavelet/acvmd_layer.py` |
-> | `bin/datahub.py` / `minute_hub.py` / `tushare_init.py` / `feishu_card.py` / `push_image.py` | `misc/core/` 同名 |
-> | `bin/weekly_zs.py` / `xq_ind_monitor.py` / `xq_portfolio.py` | `misc/` 同名 |
-> | `bin/gh_publish_techanly.py` | 就地（发布工具，不入代码库结构） |
+> | `misc/engine/tech_summary.py` | 单标的四层完整分析 |
+> | `misc/engine/tech_buypoint.py` | 买点分析（行业/指数/概念/个股） |
+> | `misc/engine/tech_intraday_buypoint.py` | 盘中行业买点 Top10 + 个股下钻 |
+> | `misc/engine/buypoint_chart.py` | 买点图（三联图 / 网格图） |
+> | `misc/engine/wyckoff_buypoint_v2.py` | 威科夫吸筹买点 v2 |
+> | `misc/engine/sector_buypoint_top20.py` | 板块买点 Top20 |
+> | `misc/engine/simple_chart.py` | 单图速览 |
+> | `chanlun/fractal/chan_smc_index.py` | 缠论·分型版（几何 + SMC 摘要） |
+> | `chanlun/fractal/chan_chart.py` | 缠论·分型版出图 |
+> | `chanlun/ma/chan_ma_trend_v2.py` | 缠论·均线版核心 |
+> | `chanlun/ma/chan_ma_chart.py` | 缠论·均线版出图 |
+> | `chanlun/ma/mad_layer.py` | MAD 均线层 |
+> | `wavelet/acvmd_layer.py` | AC1-VMD 小波层 |
+> | `misc/strategies/run_level.py` | 按级别跑（m15/h1/day/week） |
+> | `misc/core/datahub.py` `minute_hub.py` `tushare_init.py` `feishu_card.py` `push_image.py` `weekly_zs.py` `xq_ind_monitor.py` `xq_portfolio.py` | 共享底层（被 import，不单独跑） |
+> | `misc/tools/bootstrap_cache.py` | 首次部署建缓存（换机器必跑一次） |
 >
-> 级别入口：`python3 misc/strategies/run_level.py --target 600519 --level day`
+> ### 本机历史脚本怎么办（`bin/xxx.py` 不存在了）
+> 仓库已经删掉 `bin/`，但**本机部署时**如果你有一堆老脚本写着 `python3 bin/tech_summary.py`，
+> 在自己机器上建一层软链即可，不用改脚本：
+> ```bash
+> cd <repo>
+> mkdir -p bin
+> ln -sf ../misc/engine/tech_summary.py            bin/tech_summary.py
+> ln -sf ../misc/engine/tech_buypoint.py           bin/tech_buypoint.py
+> ln -sf ../misc/engine/tech_intraday_buypoint.py  bin/tech_intraday_buypoint.py
+> ln -sf ../chanlun/fractal/chan_smc_index.py      bin/chan_smc_index.py
+> ln -sf ../misc/core/datahub.py                   bin/datahub.py
+> # …按需补齐
+> ```
+> `bash misc/engine/xxx.sh` 同理：`ln -sf ../misc/engine/wyckoff_buypoint_daily.sh bin/`
 
-| 脚本 | 干什么 |
+| 脚本（真实路径） | 干什么 |
 |---|---|
-| `bin/tech_summary.py` | **单标的**四层分析（日线+小时线）+ 两张图 + 飞书卡片 |
-| `bin/tech_buypoint.py` | **买点分析**：指数/行业/概念/个股，先判板块有无买点再下钻个股 |
-| `bin/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
-| `bin/buypoint_chart.py` | 买点图（日线 / 60m / 均线版三面板）+ `draw_stock_grid()` 多标的网格图 |
-| `bin/wyckoff_buypoint_v2.py` | **盘中吸筹买点分析 v2**：威科夫吸筹 → 四层过滤 → Top10 行业 → Top20 个股 → 多子图 |
+| `misc/engine/tech_summary.py` | **单标的**四层分析（日线+小时线）+ 两张图 + 飞书卡片 |
+| `misc/engine/tech_buypoint.py` | **买点分析**：指数/行业/概念/个股，先判板块有无买点再下钻个股 |
+| `misc/engine/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
+| `misc/engine/buypoint_chart.py` | 买点图（日线 / 60m / 均线版三面板）+ `draw_stock_grid()` 多标的网格图 |
+| `misc/engine/wyckoff_buypoint_v2.py` | **盘中吸筹买点分析 v2**：威科夫吸筹 → 四层过滤 → Top10 行业 → Top20 个股 → 多子图 |
 
 ---
 
@@ -242,30 +257,86 @@ out.sort(key=lambda x: (not x["accept"], x["pri"], x.get("age", 0)))
 
 ## 三、用法
 
+> ### 🚀 先看这里：三分钟上手（换机器同样适用）
+>
+> ```bash
+> # 第 0 步：一次性准备（只做一次）
+> git clone https://github.com/baizhiwei9/techAnly-summary.git && cd techAnly-summary
+> pip install -r requirements.txt
+> export TUSHARE_PROXY_TOKEN=你的token          # 或用 ~/.config/tushare/proxy_token
+> python3 misc/tools/bootstrap_cache.py         # 建申万行业缓存（5900+ 只归属 + 129 个指数 + 中文名）
+>
+> # 第 1 步：分析一个标的（最常用）
+> python3 misc/engine/tech_summary.py --target 中证500          # 纯文本报告
+> python3 misc/engine/tech_summary.py --target 600519 --push    # 加两张图 + 推飞书
+>
+> # 第 2 步：找买点（板块 → 个股）
+> python3 misc/engine/tech_buypoint.py --target 传媒            # 行业过了闸才下钻个股
+>
+> # 第 3 步：盘中找行业买点 Top10
+> python3 misc/engine/tech_intraday_buypoint.py --top 10
+>
+> # 第 4 步：按级别跑（15分钟 / 小时线 / 日线 / 周线）
+> python3 misc/strategies/run_level.py --target 中证500 --level day
+> ```
+>
+> **`--target` 认四种写法**：中文宽基名（`中证500`）、ts_code（`000905.SH`）、
+> 新浪格式（`sh000905`）、6 位股票代码（`600519` 贵州茅台）。
+>
+> **环境变量按需**（不配也能跑，只是不能推消息）：
+> | 变量 | 作用 |
+> |---|---|
+> | `TUSHARE_PROXY_TOKEN` | 日线数据源（不配会自动降级到 akshare / 网页） |
+> | `FEISHU_APP_ID` + `FEISHU_APP_SECRET` + `TECH_FEISHU_CHAT` | 推飞书卡片（`--push` 才需要） |
+> | `TECH_WS` | 仓库根目录（默认自动探测，一般不用设） |
+>
+> **没有任何大模型 key 也能跑全流程** —— 本项目只吃行情接口，纯 Python 规则计算。
+
+### 3.0 命令速查表
+
+| 我想干什么 | 跑这个 |
+|---|---|
+| 看一个指数/股票的四层结构 | `python3 misc/engine/tech_summary.py --target 中证500` |
+| 看报告 + 出图 + 推飞书 | `python3 misc/engine/tech_summary.py --target 600519 --push` |
+| 找某个行业的买点（含成分股） | `python3 misc/engine/tech_buypoint.py --target 传媒` |
+| 多个行业合并，有买点的个股 Top20 | `python3 misc/engine/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid` |
+| 顺便出网格图 | 上面加 `--grid`（`--per-page` 控制每页几只） |
+| 盘中扫行业买点 Top10 | `python3 misc/engine/tech_intraday_buypoint.py --top 10` |
+| 只看行业不扫个股 | `python3 misc/engine/tech_intraday_buypoint.py --no-stock` |
+| 威科夫吸筹买点 | `python3 misc/engine/wyckoff_buypoint_v2.py --chart --push` |
+| 板块买点 Top20 | `python3 misc/engine/sector_buypoint_top20.py` |
+| 按级别跑（m15/h1/day/week） | `python3 misc/strategies/run_level.py --target 600519 --level week` |
+| 缠论分型版 / 均线版出图 | `python3 chanlun/fractal/chan_chart.py --target 中证500`<br>`python3 chanlun/ma/chan_ma_chart.py --target 中证500` |
+| 小波趋势层 | `python3 wavelet/acvmd_layer.py --target 中证500` |
+| 检查环境是否正常 | `python3 misc/engine/tech_summary.py --target 中证500 --no-chart \| grep -c "═══"` （应 = 5~6） |
+
+> 所有命令都从**仓库根目录**执行。脚本内部会自动探测仓库根（向上找同时含
+> `chanlun/` 与 `misc/` 的那层），所以从子目录跑也能用。
+
 ```bash
 # 单标的四层（+ 图 + 飞书）
-python3 bin/tech_summary.py --target 中证500 --push
-python3 bin/tech_summary.py --target 600519
+python3 misc/engine/tech_summary.py --target 中证500 --push
+python3 misc/engine/tech_summary.py --target 600519
 
 # 买点分析
-python3 bin/tech_buypoint.py --target 传媒                 # 行业：过闸后下钻个股
+python3 misc/engine/tech_buypoint.py --target 传媒                 # 行业：过闸后下钻个股
 
 # ⭐ 多个行业合并 → 有买点个股 Top20 + 网格图（大佬 2026-11-11）
-python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out x.md
+python3 misc/engine/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out x.md
 #   --targets 逗号分隔多个行业/概念/指数，成分股按代码去重（影视院线 ⊂ 传媒）
 #   --top N     只取有买点的前 N 只（排序：三买1>一买2>二买3 → 买点新鲜度 → 质量分）
 #   --grid      出网格图（每只一个子图：K线+缠论分型版+VWAP六轨+量），--per-page 控制每页几只
 #   板块没买点不阻断（多行业模式看个股自身结构），但报告会标「板块效应偏弱」
-python3 bin/tech_buypoint.py --target 文化传媒概念          # 概念
-python3 bin/tech_buypoint.py --target 中证500              # 指数成分股
-python3 bin/tech_buypoint.py --target 传媒 --chart --chart-top 3
+python3 misc/engine/tech_buypoint.py --target 文化传媒概念          # 概念
+python3 misc/engine/tech_buypoint.py --target 中证500              # 指数成分股
+python3 misc/engine/tech_buypoint.py --target 传媒 --chart --chart-top 3
 
 # 盘中行业买点 Top10 + 个股下钻（默认纯文本；--push 飞书，--qq 同时推 QQ）
-python3 bin/tech_intraday_buypoint.py                        # 行业 + 每行业 3 只个股
-python3 bin/tech_intraday_buypoint.py --top 10 --push --qq
-python3 bin/tech_intraday_buypoint.py --top 2 --stock-per 2  # 只看2个行业、每行业2只
-python3 bin/tech_intraday_buypoint.py --no-stock             # 只看行业，不扫个股
-python3 bin/tech_intraday_buypoint.py --with-concept --limit 20
+python3 misc/engine/tech_intraday_buypoint.py                        # 行业 + 每行业 3 只个股
+python3 misc/engine/tech_intraday_buypoint.py --top 10 --push --qq
+python3 misc/engine/tech_intraday_buypoint.py --top 2 --stock-per 2  # 只看2个行业、每行业2只
+python3 misc/engine/tech_intraday_buypoint.py --no-stock             # 只看行业，不扫个股
+python3 misc/engine/tech_intraday_buypoint.py --with-concept --limit 20
 ```
 
 ### 3.1 盘中行业买点 Top10 → 个股下钻（大佬 2026-11-10）
@@ -339,7 +410,7 @@ python3 bin/tech_intraday_buypoint.py --with-concept --limit 20
 | `--dpi N` / `--bars N` | 出图 DPI（默认 220）/ 每图 K 线根数（默认 120），见 §三·5 |
 
 ```bash
-python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out x.md
+python3 misc/engine/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out x.md
 ```
 
 行为要点：
@@ -350,7 +421,7 @@ python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out
 - 报告标题「📊 买点分析（多板块合并）」，署名 `📎 来自 OpenClaw.Deepseek`
 - ⚠️ `board_metrics()` 的字段**不能叫 align**（`analyse_one` 的 align 是 dict），否则 `score_quality` 崩；用 `align_state` + `row_align_state()` 兼容
 
-### 3.2 盘中吸筹买点分析 v2（`bin/wyckoff_buypoint_v2.py`）
+### 3.2 盘中吸筹买点分析 v2（`misc/engine/wyckoff_buypoint_v2.py`）
 
 > 大佬 2026-11-10：「你原先怎么判断吸筹还是判断吸筹？我只不过让你用这个技术分析汇总这几个东西来过滤一遍」
 
@@ -368,7 +439,7 @@ python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out
 ⑤ 出图 draw_stock_grid()：**每只股票一个子图**，子图 = K线 + 缠论分型版（笔/分型/中枢/买卖点）+ VWAP 六轨
 ```
 
-用法：`python3 bin/wyckoff_buypoint_v2.py --chart --push --qq`
+用法：`python3 misc/engine/wyckoff_buypoint_v2.py --chart --push --qq`
 开关：`--top-ind 10`｜`--top-stk 20`｜`--per-ind 2`｜`--stock-cap 40`｜`--dry`
 
 **数据链路**：吸筹行业名 → `.cache/ths_industry_map.json` → `881xxx.TI` → `ths_daily`（572 行够周线）；
@@ -407,7 +478,7 @@ python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out
 6. x 轴刻度**跳过第 0 根**（最左日期会撞 y 轴数字）
 7. ZG/ZD 标签贴中枢框**左端内侧**带白底，不贴右边缘（右边缘常被买卖点气泡占）
 
-**自检**：`TECH_GRID_DEBUG=1 python3 bin/tech_buypoint.py ...` 会打印
+**自检**：`TECH_GRID_DEBUG=1 python3 misc/engine/tech_buypoint.py ...` 会打印
 `[OVERLAP]` / `[OOB]` / `[dbg:grid] texts=N overlaps=M oob=K`。
 **验收标准：overlaps=0 且 oob=0**。改任何图都要先跑这个再交付。
 
@@ -424,10 +495,10 @@ python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --out
 
 ```bash
 # 高清出图（每页 4 只 + 220dpi，20 只 → 5 页）
-python3 bin/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --dpi 220
+python3 misc/engine/tech_buypoint.py --targets 传媒,影视院线 --top 20 --grid --dpi 220
 
 # 以文件形式推 QQ（不压缩，最清晰）
-CHAN_QQ_ACCOUNT="" python3 bin/push_image.py 图.png --qq-only --document
+CHAN_QQ_ACCOUNT="" python3 misc/core/push_image.py 图.png --qq-only --document
 ```
 
 ## 四、图（一张图四面板）
@@ -478,15 +549,15 @@ CHAN_QQ_ACCOUNT="" python3 bin/push_image.py 图.png --qq-only --document
 | 指数成分 | 中证官网 `index_stock_cons_csindex`（精确 500/300/50）→ `index_weight` → 同花顺兜底 |
 | **盘中板块** | 东财 `push2his` clist + kline（`wyckoff_today_fetch.board_list/kline`），含当日盘中那根 |
 
-首次部署（换机器必跑）：`python3 tools/bootstrap_cache.py`（生成申万成分 + 指数映射缓存）。
+首次部署（换机器必跑）：`python3 misc/tools/bootstrap_cache.py`（生成申万成分 + 指数映射缓存）。
 
 ---
 
 ## 七、校验
 
 ```bash
-python3 bin/tech_summary.py --target 中证500 --no-chart | grep -c "═══"   # 应 = 5~6
-python3 bin/tech_intraday_buypoint.py --limit 12 --dry                    # 20s 内出结果
+python3 misc/engine/tech_summary.py --target 中证500 --no-chart | grep -c "═══"   # 应 = 5~6
+python3 misc/engine/tech_intraday_buypoint.py --limit 12 --dry                    # 20s 内出结果
 ls -la .cache/charts/tech_*.png
 ```
 
@@ -494,12 +565,19 @@ ls -la .cache/charts/tech_*.png
 
 ```bash
 python3 - <<'PY'
-import sys; sys.path.insert(0,"bin")
+import sys
+for p in ("misc/engine", "chanlun/ma", "misc/core", "chanlun/fractal",
+          "chanlun/multiscale", "smc", "wavelet", "misc"):
+    sys.path.insert(0, p)
 import chan_ma_trend_v2 as M, tech_summary as T
-tg=T.resolve("中证500"); d=T.load_day(tg); dd=M.add_ind(d)
-st=T.ma_structure(d)
-assert len(st["bi"]) == len(M.build_bi(dd))
-print("✅ 图与技能口径一致")
+tg = T.resolve("中证500"); d = T.load_day(tg); dd = M.add_ind(d)
+st = T.ma_structure(d)
+n_t, n_m = len(st["bi"]), len(M.build_bi(dd))
+print("分型版笔数 %d ｜ 均线版笔数 %d" % (n_t, n_m))
+# ⚠️ 两套笔的口径本来就不同（分型版按包含处理后的顶底分型成笔，
+#    均线版按 MA5/MA10 双穿 MA20 成笔），笔数差 1~2 根属正常，**不要用 == 断言**。
+assert abs(n_t - n_m) <= 2, "笔数差超过 2，说明两边几何实现漂了，要查"
+print("✅ 两套笔数量级一致（差 %d 根，正常范围）" % abs(n_t - n_m))
 PY
 ```
 
@@ -507,7 +585,8 @@ PY
 
 ```bash
 python3 - <<'PY'
-import sys; sys.path.insert(0,"bin")
+import sys
+sys.path.insert(0, "misc/engine")
 import tech_summary as T
 # 116 根前的一买、现价已跑远 58.7% → 必须 accept=False
 r = T.rank_buys([{"tag":"一买","level":8.78,"age":116}],
@@ -526,9 +605,9 @@ PY
 > 以后所有技术分析代码、技能、出图，全部以这个库为准。
 
 ```bash
-python3 bin/gh_publish_techanly.py --msg "feat: xxx" --dry-run          # 先看差异
-python3 bin/gh_publish_techanly.py --msg "feat: xxx" \
-  --notes "### 改了什么\n- ...\n\n### 为什么\n- ...\n\n### 影响文件\n- bin/xxx.py"
+python3 misc/tools/publish_techanly.py --msg "feat: xxx" --dry-run          # 先看差异
+python3 misc/tools/publish_techanly.py --msg "feat: xxx" \
+  --notes "### 改了什么\n- ...\n\n### 为什么\n- ...\n\n### 影响文件\n- misc/engine/xxx.py"
 ```
 
 铁律：① 每次改动都发，不许攒；② 全部文件合成 **1 个 commit**（contents API 每 PUT 一条会把历史刷乱）；

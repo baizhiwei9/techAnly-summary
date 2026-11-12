@@ -236,10 +236,10 @@ MACD     = (10, 20, 5)
 ## 十一、使用方法
 
 ```bash
-python3 bin/chan_ma_trend_v2.py                  # 5 宽基 · 日线
-python3 bin/chan_ma_trend_v2.py --level week     # 周线
-python3 bin/chan_ma_trend_v2.py --code 000300.SH # 单标的
-python3 bin/chan_ma_trend_v2.py --out /tmp/x.txt # 存档
+python3 chanlun/ma/chan_ma_trend_v2.py                  # 5 宽基 · 日线
+python3 chanlun/ma/chan_ma_trend_v2.py --level week     # 周线
+python3 chanlun/ma/chan_ma_trend_v2.py --code 000300.SH # 单标的
+python3 chanlun/ma/chan_ma_trend_v2.py --out /tmp/x.txt # 存档
 ```
 
 ## 十二、输出示例
@@ -438,9 +438,9 @@ for k in range(len(segs) - 2):
 
 ### 16.5 实现位置
 
-- `bin/tech_summary.py::ma_structure(df)`（真实文件 `report/tech_summary.py`）—— 统一的结构几何（笔/线段/走势类型/**中枢**）
-- `bin/tech_summary.py::draw_chart()` —— 四层面板（价格/均线版/量/MACD）
-- `bin/buypoint_chart.py::draw_buypoint_chart()`（真实文件 `report/buypoint_chart.py`）—— 三面板买点图（日线/小时线/均线版）
+- `misc/engine/tech_summary.py::ma_structure(df)`—— 统一的结构几何（笔/线段/走势类型/**中枢**）
+- `misc/engine/tech_summary.py::draw_chart()` —— 四层面板（价格/均线版/量/MACD）
+- `misc/engine/buypoint_chart.py::draw_buypoint_chart()`—— 三面板买点图（日线/小时线/均线版）
 - 三处**共用 `ma_structure()`**，不许各写一套（2026-11-09 已被大佬抓到过不一致）
 
 ## 十七、⚠️ 2026-11-10 绘图三修（高低点取错 / 末段缺失 / 走势类型恒定盘整）
@@ -501,13 +501,13 @@ swings = [(low, high) for 相邻两段 if a.dir=="up" and b.dir=="dn"]
 
 ## 十八、📤 发布
 
-本技能的权威实现 `bin/chan_ma_trend_v2.py`（真实文件 `chanlun/ma/chan_ma_trend_v2.py`，`bin/` 下是兼容 shim）在 **techAnly-summary** 仓库里同步维护：
+本技能的权威实现 `chanlun/ma/chan_ma_trend_v2.py`在 **techAnly-summary** 仓库里同步维护：
 https://github.com/baizhiwei9/techAnly-summary —— 改了这个文件要一起发（见 tech-summary 技能「发布约定」）。
 
-单标的**出图**用 `bin/chan_ma_chart.py`（真实文件 `chanlun/ma/chan_ma_chart.py`）：
+单标的**出图**用 `chanlun/ma/chan_ma_chart.py`：
 ```bash
-python3 bin/chan_ma_chart.py --target 中证500          # 指数
-python3 bin/chan_ma_chart.py --target 600519 --n 300   # 个股
-python3 bin/chan_ma_chart.py --target 中证500 --push   # 出图 + 推 QQ/飞书
+python3 chanlun/ma/chan_ma_chart.py --target 中证500          # 指数
+python3 chanlun/ma/chan_ma_chart.py --target 600519 --n 300   # 个股
+python3 chanlun/ma/chan_ma_chart.py --target 中证500 --push   # 出图 + 推 QQ/飞书
 ```
 画的是：K线 + MA10/MA20/MA160 + 笔（橙）+ 线段（深蓝粗）+ 中枢（黄框）+ 走势类型底色 + 角标结论。

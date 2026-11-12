@@ -23,10 +23,10 @@
 `misc/strategies/` 目录把五套口径按策略归档，并提供统一的级别入口：
 
 ```bash
-python3 strategies/run_level.py --target 中证500 --level m15   # 15分钟
-python3 strategies/run_level.py --target 600519 --level h1     # 小时线
-python3 strategies/run_level.py --target 600519 --level day    # 日线
-python3 strategies/run_level.py --target 600519 --level week   # 周线（日线合成）
+python3 misc/strategies/run_level.py --target 中证500 --level m15   # 15分钟
+python3 misc/strategies/run_level.py --target 600519 --level h1     # 小时线
+python3 misc/strategies/run_level.py --target 600519 --level day    # 日线
+python3 misc/strategies/run_level.py --target 600519 --level week   # 周线（日线合成）
 ```
 
 | 策略 | 15分钟 | 小时线 | 日线 | 周线 | 入口 |
@@ -49,7 +49,7 @@ python3 strategies/run_level.py --target 600519 --level week   # 周线（日线
   （包含处理 / 分型 / 笔 / 逐笔链式中枢），`chanlun/fractal/chan_smc_index.py` 只是包装并附加 MACD/买卖点；
   `chan_chart.py`、`tech_buypoint.py` 的三买/三卖扫描也全部复用这套中枢，不再各自维护「最近3段」
 - 15m/1h/日线/周线四级交易闸门（15m 只做结构参考，1h 只认三买，周线只认一/二买）
-- `structure_signals_v2.py` 为第二批候选（三买中枢递进校验 + 二买锚定一买），**仅对比、未接实盘**
+- `chanlun/multiscale/chanlun_backtest/structure_signals_v2.py` 为第二批候选（三买中枢递进校验 + 二买锚定一买），**仅对比、未接实盘**
 - 实盘仍走 `chanlun/multiscale/Strategy/chanlun_fractal_Strategy.py`（v1 信号 + 四级闸门）
 
 ---
@@ -171,7 +171,7 @@ mkdir -p ~/.config/tushare && echo 你的token > ~/.config/tushare/proxy_token
 首次运行初始化缓存（**必做一次**，生成申万行业分类缓存）：
 
 ```bash
-python3 tools/bootstrap_cache.py
+python3 misc/tools/bootstrap_cache.py
 # → .cache/sw_member_all.json      5900+ 只个股的 L1/L2/L3 归属
 # → .cache/sw_index_map.json       129 个申万行业指数代码
 # → .cache/tech_stock_names.json   5900+ 个股票中文名（不生成报告里只剩 6 位代码）
@@ -195,9 +195,9 @@ export TECH_FEISHU_CHAT=oc_xxxxxxxx      # 目标群 chat_id
 
 | 文件 | 内容 |
 |---|---|
-| `sample_report_中证500.txt` | 中证500 的六节完整文字报告 |
-| `sample_day_600519.png` | 贵州茅台 日线四面板图（K线+缠论笔/中枢/买卖点+SMC+VWAP六轨+均线版+量+MACD） |
-| `sample_h1_600519.png` | 贵州茅台 小时线 60m 同款图 |
+| `misc/examples/sample_report_中证500.txt` | 中证500 的六节完整文字报告 |
+| `misc/examples/sample_day_600519.png` | 贵州茅台 日线四面板图（K线+缠论笔/中枢/买卖点+SMC+VWAP六轨+均线版+量+MACD） |
+| `misc/examples/sample_h1_600519.png` | 贵州茅台 小时线 60m 同款图 |
 
 ---
 
