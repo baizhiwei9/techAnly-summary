@@ -53,8 +53,6 @@ import urllib.parse
 import urllib.request
 
 # 容器 IPv6 不通 → 强制 IPv4（必须在任何网络请求前生效）
-_orig_gai = socket.getaddrinfo
-socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
 def _repo_root(start):
     """向上探测仓库根：同时含 bin/ 与 core/ 的那一层（2026-11-12 目录整理后可任意层级）。"""
@@ -78,6 +76,15 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
     _p = os.path.join(WS, _sd)
     if os.path.isdir(_p) and _p not in sys.path:
         sys.path.insert(0, _p)
+
+# 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
+# ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
+try:
+    from net_guard import install as _net_install
+    _net_install()
+except Exception:
+    _orig_gai = socket.getaddrinfo
+    socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")

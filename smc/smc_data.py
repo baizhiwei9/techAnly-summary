@@ -11,13 +11,29 @@
 from __future__ import annotations
 import os
 import socket
+
+# 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
+# net_guard 在 misc/core/，import 前先把候选目录塞进 sys.path
+import sys as _sys
+import os as _os
+for _guess in (
+        _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "misc", "core"),
+        _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "misc", "core"),
+        _os.path.dirname(_os.path.abspath(__file__)),
+):
+    _g = _os.path.normpath(_guess)
+    if _os.path.isdir(_g) and _g not in _sys.path:
+        _sys.path.insert(0, _g)
+try:
+    from net_guard import install as _net_install
+    _net_install()
+except Exception:
+    _orig_gai = socket.getaddrinfo
+    socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 import time
 import sys
 from datetime import datetime
 
-# 容器 IPv6 不通 → 强制 IPv4（必须在任何网络请求前生效）
-_o = socket.getaddrinfo
-socket.getaddrinfo = lambda *a, **k: [r for r in _o(*a, **k) if r[0] == socket.AF_INET]
 
 import numpy as np
 import pandas as pd

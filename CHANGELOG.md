@@ -6,6 +6,36 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-12 18:50
+
+**fix(net): 东财 K 线只通 IPv6 → 新增 net_guard 白名单，盘中买点恢复可用**
+
+### 问题
+盘中买点脚本 tech_intraday_buypoint.py 取不到行业 K 线，全部 kline fail ConnectionError。
+根因：2026-11-12 实测东财 K 线接口 push2his.eastmoney.com
+  IPv4 → 全部 RemoteDisconnected（140.207.x / 61.129.x / 103.220.x 都试过）
+  IPv6 → 200 OK
+而本机全局硬规矩是一刀切禁 IPv6 → 盘中所有板块扫描必然失败。
+
+### 改法
+1. 新增 misc/core/net_guard.py：默认仍强制 IPv4，但东财行情族白名单走 IPv6
+   · 白名单：push2his.eastmoney.com / push2.eastmoney.com / eastmoney.com（子域匹配）
+   · 白名单域名 v6 解析失败时自动退回原样，不会比原来更差
+   · 支持 IPV6_OK_HOSTS 环境变量额外放行
+2. 全库 20 个脚本的「一刀切禁 IPv6」统一替换成 net_guard.install()
+   （misc/engine ×6, misc/core ×5, chanlun ×7, smc ×1, wavelet ×1, apps ×2）
+3. ⚠️ 安装位置必须在 sys.path 建好之后（net_guard 在 misc/core/）
+   —— 第一版放错位置导致静默回退，已修正并二次验证
+4. misc/core/tushare_init.py 是 misc/core 同目录，直接补 sys.path 后 import
+5. SKILL.md / misc/README.md / README.md 补网络策略说明
+
+### 验证
+- tech_intraday_buypoint.py --limit 10 --dry：**成功扫出行业+个股**
+  （百货/林业Ⅲ 等上榜，个股 7 只站上 VWAP −1σ，缠论买点命中正常）
+- 东财 K线 200 / 东财 clist 200 / 腾讯 200（走 v4）/ tushare 200（走 v4）
+- tech_summary / tech_buypoint / run_level 全部正常
+- 455 个 py 语法 0 错误
+
 ## 2026-11-12 16:53
 
 **refactor(架构): 对外推送应用移出库 → apps/，库内只留纯取数 sw_daily**

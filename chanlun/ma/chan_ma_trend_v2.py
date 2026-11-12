@@ -44,8 +44,6 @@ import socket
 import sys
 from datetime import datetime
 
-_orig_gai = socket.getaddrinfo
-socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -72,6 +70,15 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
     _p = os.path.join(WS, _sd)
     if os.path.isdir(_p) and _p not in sys.path:
         sys.path.insert(0, _p)
+
+# 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
+# ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
+try:
+    from net_guard import install as _net_install
+    _net_install()
+except Exception:
+    _orig_gai = socket.getaddrinfo
+    socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
 # ── 参数（2026-11-08 大佬定稿：大级别只看 MA160，不要 MA320）──
 A0 = (5, 10, 20)          # 笔：MA5/MA10 双穿 MA20

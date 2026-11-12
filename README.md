@@ -154,6 +154,13 @@ cd techAnly-summary
 pip install -r requirements.txt
 ```
 
+> ### 网络环境说明（2026-11-12）
+> 脚本开头统一调用 `misc/core/net_guard.py`：**默认强制 IPv4**，
+> 但 **东财行情族（`push2his.eastmoney.com` K线）白名单走 IPv6** ——
+> 2026-11-12 实测东财 K 线接口 IPv4 全部 RemoteDisconnected，只有 IPv6 可达。
+> 这类脚本用 `from net_guard import install; install()`，别自己写一刀切禁 IPv6。
+> 需要额外放行时设 `IPV6_OK_HOSTS=域名1,域名2`。
+
 系统字体（K 线图中文字形，必需其一）：
 
 ```bash
@@ -464,6 +471,7 @@ misc/                       ④ 其余全部（杂项）
     feishu_card.py          飞书图文合成卡片
     push_image.py           统一图片推送（QQ + 飞书）
     sw_daily.py             申万行业指数日线取数（纯数据层）
+    net_guard.py            网络出口策略（默认 IPv4，东财行情族走 IPv6）
   engine/                   ── 分析引擎（核心，不是"产出报告"）
     tech_summary.py         四层分析主脚本（报告 + 双图 + 推送）
     tech_buypoint.py        买点分析（指数/行业/概念/个股）

@@ -5,8 +5,18 @@ description: "技术分析汇总：缠论分型版+均线版+SMC+VWAP六轨四�
 
 # 技术分析汇总（四层 + 买卖点优先级 + 盘中 Top10）
 
-> 全流程纯 Python，**0 token**。脚本开头必须禁 IPv6（容器 IPv6 不通会静默卡死）：
-> `socket.getaddrinfo = lambda *a,**k:[r for r in _orig(*a,**k) if r[0]==AF_INET]`
+> 全流程纯 Python，**0 token**。
+>
+> **网络出口策略（2026-11-12 起，重要）**：脚本开头统一调用 `misc/core/net_guard.py`：
+> ```python
+> from net_guard import install; install()
+> ```
+> - **默认仍强制 IPv4**（历史坑：IPv6 静默卡死）
+> - **东财行情族白名单走 IPv6**：`push2his.eastmoney.com`（K线）/ `*.eastmoney.com`
+>   —— 2026-11-12 实测东财 K 线接口 **IPv4 全部 RemoteDisconnected，只有 IPv6 可达**，
+>   一刀切禁 IPv6 会让盘中买点、日线 K 线全部取不到数据
+> - 需要额外放行时设环境变量 `IPV6_OK_HOSTS=域名1,域名2`
+> - ⚠️ 安装位置必须在 `sys.path` 建好**之后**（net_guard 在 `misc/core/`），否则 import 失败会静默退回老行为
 
 > **2026-11-12 目录定稿**：仓库顶层只有 **4 类代码目录** ——
 > `chanlun/`（缠论）· `smc/`（SMC + VWAP）· `wavelet/`（小波）· `misc/`（其余全部）。
@@ -520,7 +530,7 @@ CHAN_QQ_ACCOUNT="" python3 misc/core/push_image.py 图.png --qq-only --document
 
 ## 五、硬规矩（踩过的坑）
 
-1. **禁 IPv6**（见头部）
+1. **网络出口**：默认 IPv4，**东财行情族必须走 IPv6**（2026-11-12 起东财 K 线 IPv4 全废）—— 统一调 `net_guard.install()`，别再自己写一刀切禁 IPv6
 2. K 线上色 = close vs prev close，低开高走涂红但实际跌 → 必须按涨跌幅上色
 3. 小时线买点不能裸认一买/二买（一买须 MA10>MA20，二买不认）
 4. SMC 的 FVG/OB 只作提示，回测无 α，**绝不参与入场判定**
