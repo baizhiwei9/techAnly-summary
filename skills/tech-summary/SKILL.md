@@ -8,6 +8,25 @@ description: "技术分析汇总：缠论分型版+均线版+SMC+VWAP六轨四�
 > 全流程纯 Python，**0 token**。脚本开头必须禁 IPv6（容器 IPv6 不通会静默卡死）：
 > `socket.getaddrinfo = lambda *a,**k:[r for r in _orig(*a,**k) if r[0]==AF_INET]`
 
+> **2026-11-12 目录整理**：按口径分了目录（`core/ report/ chanlun/ misc/ wavelet/ smc/ strategies/`），
+> 旧 `bin/xxx.py` 全部保留**兼容 shim**（转发到真实文件 / `import` 也照旧可用）。
+> 下表写 `bin/` 是「怎么调用」，右边是真实文件位置。
+>
+> | 调用路径（照旧） | 真实文件 |
+> |---|---|
+> | `bin/tech_summary.py` | `report/tech_summary.py` |
+> | `bin/tech_buypoint.py` | `report/tech_buypoint.py` |
+> | `bin/tech_intraday_buypoint.py` | `report/tech_intraday_buypoint.py` |
+> | `bin/buypoint_chart.py` | `report/buypoint_chart.py` |
+> | `bin/wyckoff_buypoint_v2.py` | `report/wyckoff_buypoint_v2.py` |
+> | `bin/chan_smc_index.py` | `chanlun/fractal/chan_smc_index.py` |
+> | `bin/chan_chart.py` | `chanlun/fractal/chan_chart.py` |
+> | `bin/chan_ma_trend_v2.py` | `chanlun/ma/chan_ma_trend_v2.py` |
+> | `bin/chan_ma_chart.py` | `chanlun/ma/chan_ma_chart.py` |
+> | `bin/acvmd_layer.py` / `bin/mad_layer.py` | `wavelet/acvmd_layer.py` / `chanlun/ma/mad_layer.py` |
+> | `bin/datahub.py` / `minute_hub.py` / `tushare_init.py` / `feishu_card.py` / `push_image.py` | `core/` 同名 |
+> | `bin/weekly_zs.py` / `xq_ind_monitor.py` / `xq_portfolio.py` | `misc/` 同名 |
+
 | 脚本 | 干什么 |
 |---|---|
 | `bin/tech_summary.py` | **单标的**四层分析（日线+小时线）+ 两张图 + 飞书卡片 |

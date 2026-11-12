@@ -38,6 +38,8 @@ from smc import smc_core as SMC   # 本地 SMC 唯一口径（FVG/OB/confirm_zon
 
 # 本地缠论分型引擎（唯一口径）：包含处理 / 分型 / 笔 / 中枢
 _CMS = os.path.join(WS, "chanlun", "multiscale")
+if not os.path.isdir(_CMS):                      # 兼容旧目录名
+    _CMS = os.path.join(WS, "chanlun_multiscale")
 if _CMS not in sys.path:
     sys.path.insert(0, _CMS)
 from chanlun_backtest import structure_indicators as LI  # noqa: E402

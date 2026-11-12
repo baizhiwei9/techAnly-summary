@@ -22,14 +22,7 @@ def _repo_root(start):
 
 
 WS = os.environ.get("TECH_WS") or _repo_root(__file__)
-# 顺序有讲究：最后插入的优先级最高 → bin/ 放最前 = 最低优先级，
-# 保证 import 命中真实目录，而不是 bin/ 里的兼容 shim。
-for _sd in ("bin", "", "core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
-            "chanlun/multiscale/vendor", "report", "misc", "wavelet", "smc"):
-    _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
-CACHE = os.path.join(WS, ".cache", "wyckoff_today")
+CACHE = os.path.join(WS, '.cache', 'wyckoff_today')
 KCACHE = os.path.join(CACHE, 'k')
 HOSTS = ['push2his.eastmoney.com', '7.push2.eastmoney.com']
 H = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://quote.eastmoney.com/'}
