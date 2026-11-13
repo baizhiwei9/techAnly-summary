@@ -304,6 +304,48 @@ def _resample(ml, freq, right=False):
     return out
 
 
+def verify_sources(code="sh000905", freq="60", kind=None):
+    """逐源独立探测分钟K线可用性，返回 {'tx': (ok, n), 'sina': (ok, n), 'baidu': (ok, n), 'ak': (ok, n)}。
+
+    用途：盘中出问题时一眼看出哪个源挂了。每个源单独 try/except，互不影响；
+    只做探测，**不改变 get_kline 的降级顺序**（腾讯→新浪→百度→akshare）。
+
+    各源特性（2026-11-13 实测，IPv4 强制）：
+      - tx    腾讯 ifzq.gtimg.cn mkline         ：指数/个股 15m/60m 均 ✅（约 200~320 根）
+      - sina  新浪 getKLineData（独立于 akshare）：指数/个股 15m/60m 均 ✅（约 320 根）
+      - baidu 百度股市通 1min 分时              ：⚠️ 只有当天分时（约 5 根），
+                                                  **不可用于历史 K 线，仅当天临时兜底**
+      - ak    akshare stock_zh_a_minute         ：✅ 约 1970 根（历史最长，速度最慢）
+
+    Args:
+        code: 归一化代码，如 'sh000905' / 'sh600519' / 'sz399006'
+        freq: '1' / '5' / '15' / '30' / '60'
+        kind: None=按代码段猜（指数/个股）
+
+    Returns:
+        dict[str, tuple[bool, int]] — 源名 -> (是否取到, 行数)；取不到为 (False, 0)
+    """
+    def _cnt(fn, *a, **k):
+        try:
+            d = fn(*a, **k)
+            if d is None or len(d) == 0:
+                return (False, 0)
+            return (True, int(len(d)))
+        except Exception as e:
+            TRIED[f"verify_{getattr(fn, '__name__', 'fn')}_{code}_{freq}"] = str(e)[:60]
+            return (False, 0)
+
+    if kind is None:
+        kind = "stock" if str(code)[2:5] in (
+            "300", "301", "600", "601", "603", "605", "000", "001", "002", "688", "5") else "index"
+    return {
+        "tx": _cnt(tx_kline, code, freq, 320),
+        "sina": _cnt(sina_kline_v2, code, freq, 320),
+        "baidu": _cnt(baidu_kline, code, freq, kind=kind),
+        "ak": _cnt(sina_kline, code, freq),
+    }
+
+
 def status(codes=None):
     """各层可用性自检."""
     codes = codes or ["sh000001", "sz399006", "sz300308"]
@@ -322,7 +364,11 @@ def status(codes=None):
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "status":
+    if len(sys.argv) > 1 and sys.argv[1] == "verify":
+        c = sys.argv[2] if len(sys.argv) > 2 else "sh000905"
+        f = sys.argv[3] if len(sys.argv) > 3 else "60"
+        print(c, f + "m", verify_sources(c, f))
+    elif len(sys.argv) > 1 and sys.argv[1] == "status":
         r = status()
         for k, v in r.items():
             print(k, v)

@@ -561,7 +561,7 @@ CHAN_QQ_ACCOUNT="" python3 misc/core/push_image.py 图.png --qq-only --document
 |---|---|
 | 指数日线 | `chan_smc_index.fetch_daily()`（缓存 `.cache/chan_daily/`）；其它走 `datahub.daily()` 三级（akshare→tushare→网页） |
 | 股票日线 | `datahub.daily()`（6h CSV 缓存 `.cache/tech_daily/`）+ `.cache/holding_deep/daily/` |
-| 小时线 60m | `minute_hub.get_kline(sina, "60", kind=index/stock)` |
+| 小时线 60m | `misc/core/minute_hub.py`：`get_kline(code, "60", kind=index/stock)`（L1 腾讯 mkline → L2 新浪 getKLineData → L3 百度分时 → L4 akshare） |
 | 行业成分 | `.cache/sw_member_all.json`（申万 L1/L2/L3） |
 | 行业指数 | `.cache/longxia/sw_classify_L*.json` → 801xxx.SI → `misc/core/sw_daily.fetch_sw_daily`（L1 akshare 最快 4s） |
 | 概念 | tushare `ths_index` / `ths_member` / `ths_daily`（同花顺 885xxx.TI） |
@@ -573,6 +573,14 @@ CHAN_QQ_ACCOUNT="" python3 misc/core/push_image.py 图.png --qq-only --document
 ---
 
 ## 七、校验
+
+分钟线四源自检（盘中出问题先跑这条，一眼看出哪个源挂了）：
+
+```bash
+python3 misc/core/minute_hub.py verify sh000905 60    # 或 sz399006 / sh600519，粒度 1/5/15/30/60
+# 正常应形如 {'tx': (True, 320), 'sina': (True, 320), 'baidu': (True, 5), 'ak': (True, 1970)}
+# ⚠️ baidu 只给当天分时（几根），**不能当历史 K 线用**，仅当天临时兜底
+```
 
 ```bash
 python3 misc/engine/tech_summary.py --target 中证500 --no-chart | grep -c "═══"   # 应 = 5~6
