@@ -19,7 +19,7 @@
 
 data_hub 现有口径备忘（2026-11-13 实测）：
   sector_kline     → DataFrame[date, open, high, low, close, vol, amt]（同花顺板块，1663 根）
-  sector_members   → DataFrame[code, name]（**只有行业板块**，概念是 ajax 取不到）
+  sector_members   → DataFrame[code, name]（行业/概念，同花顺市值排序前 5 页）
   sector_list      → DataFrame[code, name, kind]（行业 90 / 概念 294）
   index_components → list[str] ts_code（中证官网 → tushare index_weight → web）
   stock_daily      → DataFrame[ts_code, trade_date, ..., vol, amount]（adjust 支持 qfq/hfq/""）
@@ -275,7 +275,7 @@ def sector_kline_rows(code=None, name=None, kind="行业", years_back=6, lmt=Non
 
 
 def sector_members(code=None, name=None, kind="行业"):
-    """板块成分股 → [{'code': 6位, 'name': str}...]；**概念板块 data_hub 取不到 → []**"""
+    """板块成分股 → [{'code': 6位, 'name': str}...]；行业/概念均取流通市值前 5 页"""
     mod = module()
     if mod is None:
         return []
