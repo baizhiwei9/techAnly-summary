@@ -18,6 +18,50 @@
 | `misc/engine/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
 | `chanlun/ma/chan_ma_chart.py` | **缠论·均线版单标的出图**（只画均线版一层，图大结构清楚） |
 
+### topology · 拓扑流形（SPD 流形 + TDA + 里奇曲率）
+
+对 **指数 / 行业 / 概念 / 板块** 做成分股协方差 SPD 流形分析，用
+**H1 环寿命 × 平均相关性** 二维化出「机会 / 风险」相位图。全流程纯 Python
+数值计算（numpy / scipy / ripser / matplotlib），零 LLM。
+
+```bash
+python3 topology/run.py --target 沪深300                          # 单指数
+python3 topology/run.py --target 沪深300,科创50,中证500            # 多指数
+python3 topology/run.py --target 指数:沪深300 --target 行业:电子    # 混类型
+python3 topology/run.py --target 概念:人工智能 --target 板块:半导体
+python3 topology/run.py --list                                    # 列出支持的标的
+```
+
+| 参数 | 说明 |
+|---|---|
+| `--target` | 目标标的，可多次 / 逗号分隔 / 混类型；前缀 `指数:` `行业:` `概念:` `板块:` `个股:` |
+| `--days` | 收益窗口交易日数（默认 60） |
+| `--out` | 输出目录（默认 `reports/topology`） |
+| `--no-spd` / `--no-phase` | 不画单标的四合一图 / 不画二维相位图 |
+
+⚠️ 已知限制：**概念板块取不到成分股**（`sector_members` 概念为 ajax 取不到），
+暂无法做 SPD 流形；行业板块、指数正常支持。个股无成分股，不支持。
+
+### topology · 黎曼流形地形图（terrain.py）
+
+把同一份 SPD 流形数据画成**一张地形图**，看「哪里堵、哪里通」：
+左图艺术化地形（红色裂焰=锁死 / 蓝色回流=分化机会 / 黄色胶着=卡滞，空中叠持续同调条码），
+右图真实相关矩阵曲面（按第一主成分重排 + 特征值浮球 + H1 发光线圈）。
+无文字无数字，16:9 深空蓝黑底；所有数值仍全部来自真实日线。
+
+```bash
+python3 topology/terrain.py --target 沪深300                     # 默认 60 天窗口，150 dpi
+python3 topology/terrain.py --target 中证500 --days 90
+python3 topology/terrain.py --target 行业:电子 --out reports/topology
+```
+
+| 参数 | 说明 |
+|---|---|
+| `--target` | 标的（指数 / 行业 / 概念 / 板块，解析规则同 `run.py`） |
+| `--days` | 收益窗口交易日数（默认 60） |
+| `--out` | 输出目录（默认 `reports/topology`） |
+| `--dpi` | 出图 dpi（默认 150 → 2613×1327） |
+
 ### 按级别跑 + 策略索引（2026-11-11 新增）
 
 `misc/strategies/` 目录把五套口径按策略归档，并提供统一的级别入口：
