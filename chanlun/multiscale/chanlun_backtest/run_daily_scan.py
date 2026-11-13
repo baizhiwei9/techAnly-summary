@@ -10,6 +10,21 @@ import json
 import argparse
 from datetime import datetime, timedelta
 
+# ── 东财开关（2026-11-14 大佬定：默认一个东财请求都不发，它那边一直限流）──
+ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _sina_sym(code):
+    """'510300' → 'sh510300'；'159915' → 'sz159915'；'600519' → 'sh600519'"""
+    c = str(code).strip().lower()
+    if c[:2] in ("sh", "sz", "bj"):
+        return c
+    return ("sh" if c[0] in "5609" else "sz") + c
+
+
+def _is_etf(code):
+    return str(code)[:2] in ("51", "15", "16", "50", "58", "56")
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from chanlun_backtest.structure_indicators import calculate_structure_indicators
@@ -47,19 +62,37 @@ def fetch_data_akshare(symbol, name, func_name, period='daily'):
     
     try:
         if func_name == 'stock_zh_a_hist':
-            df = ak.stock_zh_a_hist(
-                symbol=symbol, period=period,
-                start_date=start_date, end_date=end_date, adjust='qfq'
-            )
-            df = df.rename(columns={'日期':'timestamp','开盘':'open','最高':'high','最低':'low','收盘':'close','成交量':'volume'})
+            # 默认零东财：新浪日线（ETF 用新浪基金日线）
+            ss = _sina_sym(symbol)
+            df = None
+            if _is_etf(symbol):
+                try:
+                    df = ak.fund_etf_hist_sina(symbol=ss)
+                except Exception:
+                    df = None
+            if df is None or df.empty:
+                df = ak.stock_zh_a_daily(symbol=ss, adjust='qfq')
+            df = df.rename(columns={'date':'timestamp'})
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            mask = (df['timestamp'] >= pd.to_datetime(start_date)) & \
+                   (df['timestamp'] <= pd.to_datetime(end_date))
+            df = df[mask].copy()
         elif func_name == 'stock_zh_a_hist_min_em':
-            df = ak.stock_zh_a_hist_min_em(
-                symbol=symbol, period=period,
-                start_date=f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]} 09:30:00",
-                end_date=f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]} 15:00:00",
-                adjust='qfq'
-            )
-            df = df.rename(columns={'时间':'timestamp','开盘':'open','最高':'high','最低':'low','收盘':'close','成交量':'volume'})
+            # 默认零东财：新浪分钟线（stock_zh_a_minute，支持 1/5/15/30/60）
+            try:
+                df = ak.stock_zh_a_minute(symbol=_sina_sym(symbol), period=str(period),
+                                          adjust='qfq')
+                df = df.rename(columns={'day': 'timestamp'})
+            except Exception:
+                if not ALLOW_EM:
+                    raise
+                df = ak.stock_zh_a_hist_min_em(
+                    symbol=symbol, period=period,
+                    start_date=f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]} 09:30:00",
+                    end_date=f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]} 15:00:00",
+                    adjust='qfq'
+                )
+                df = df.rename(columns={'时间':'timestamp','开盘':'open','最高':'high','最低':'low','收盘':'close','成交量':'volume'})
         elif func_name == 'stock_zh_index_daily':
             df = ak.stock_zh_index_daily(symbol=f"sh{symbol}")
             # 过滤日期范围

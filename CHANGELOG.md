@@ -6,6 +6,48 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-14 05:10
+
+**feat: 默认不走东财（TECH_ALLOW_EM=0）—— 一个东财请求都不发**
+
+大佬 2026-11-14 04:05/04:11：「能不能改成默认不走东财啊？同花顺、新浪、腾讯自选股都可以啊」
+「默认不走东财，你就不要让它，它那边一直限流」。
+
+### 开关
+`TECH_ALLOW_EM`（默认 `0`）。为 0 时：
+1. 东财族域名在 **DNS 层直接报错**（`net_guard`），请求根本发不出去；
+2. 所有东财分支代码都在 `if ALLOW_EM:` 里，默认不可达。
+
+### 换取数源（每个都保留东财分支，仅开关关闭）
+| 位置 | 原（东财） | 现（默认） |
+|---|---|---|
+| `misc/core/datahub.py` 指数日线 | `index_zh_a_hist` | `stock_zh_index_daily`（新浪，000905 实测 5309 根 / 0.2s） |
+| `misc/core/datahub.py` ETF 日线 | `fund_etf_hist_em` | `fund_etf_hist_sina`（新浪，510300 实测 3515 根 / 0.4s，本地切片） |
+| `misc/core/datafeed.py` 东财兜底 | 默认开 | 默认关（统一听 `TECH_ALLOW_EM`） |
+| `misc/engine/wyckoff_today_fetch.py` 板块报价 | 东财 push2his | 同花顺 realhead / data_hub `sector_spot` |
+| `smc/smc_data.py` ETF 兜底 | `fund_etf_hist_em` | `fund_etf_hist_sina` |
+| `chanlun/ma/mad_layer.py` ETF 兜底 | `fund_etf_hist_em` | `fund_etf_hist_sina` |
+| `chanlun/multiscale/chanlun_backtest/*` | `stock_zh_a_hist` | `stock_zh_a_daily`（新浪，支持 adjust） |
+| `misc/core/net_guard.py` / `net_guard_hook.py` | 东财走 IPv6 白名单 | `TECH_ALLOW_EM=0` 时**黑名单直接拦**（`socket.gaierror`） |
+
+### 验证：零东财硬证明
+把所有 akshare 东财接口 monkeypatch 成抛 `EM_CALLED` 后跑：
+```
+python3 bin/tech_summary.py --target 中证500 --no-chart
+  → 日线 1375 根 源=akshare/tier1/stock_zh_index_daily(sina)
+  → 小时线 400 根
+  → 四层结论正常输出（打分 -4，空头结构）
+  → EM_CALLED 次数 = 0
+python3 bin/tech_buypoint.py --target 半导体
+  → 申万 801081 6492 根，闸门判「无买点」
+  → EM_CALLED 次数 = 0
+```
+
+### 影响文件
+`misc/core/{datahub,datafeed,net_guard,net_guard_hook}.py`、`misc/engine/{tech_summary,wyckoff_today_fetch}.py`、
+`smc/smc_data.py`、`chanlun/ma/mad_layer.py`、`chanlun/multiscale/chanlun_backtest/{data,run_daily_scan}.py`
++ 新增 `misc/tools/api_push.py`（GitHub REST 建 commit 的备用通道）
+
 ## 2026-11-14 04:40
 
 **feat(topology): 新增黎曼流形地形图 terrain.py（大佬要求落库）**

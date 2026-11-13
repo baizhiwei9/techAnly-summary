@@ -45,9 +45,9 @@ except Exception as _e:      # pragma: no cover
 
 # 东财（只用于成分股）
 # ⭐ 2026-11-12 大佬定：「不要用东财了，获取其他的」
-#    东财只作为「同花顺彻底拿不到时」的最后手段，默认关闭。
-#    需要时：DF_EASTMONEY=1
-USE_EASTMONEY = os.environ.get("DF_EASTMONEY", "0") not in ("0", "", "false", "no")
+#    2026-11-14 收口：默认一个东财请求都不发；全库统一只听 TECH_ALLOW_EM
+#    （DF_EASTMONEY 保留兼容：设 1 但仍需 TECH_ALLOW_EM=1 才生效）
+USE_EASTMONEY = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
 DG_MIN_GAP = float(os.environ.get("DG_MIN_GAP", "0.35"))   # 东财请求最小间隔（秒）
 DG_BREAK = int(os.environ.get("DG_BREAK", "4"))            # 连续失败几次就熔断
 _dg_last = [0.0]
@@ -93,10 +93,10 @@ def board_list(kind="行业", eastmoney_fallback=None):
             return [{"code": b["code"], "name": b["name"], "src": "ths"} for b in bs]
         except Exception as e:
             log("[datafeed] 同花顺%s列表失败 %s，退回东财" % (kind, str(e)[:60]))
-    # 东财兜底默认关闭（2026-11-12 大佬：「不要用东财了」）
-    # 需要临时启用：DF_EASTMONEY=1
+    # 东财兜底默认关闭（2026-11-12 大佬：「不要用东财了」；2026-11-14 收口到 TECH_ALLOW_EM）
+    # 需要临时启用：TECH_ALLOW_EM=1
     if eastmoney_fallback is None:
-        eastmoney_fallback = os.environ.get("DF_EASTMONEY", "0") not in ("0", "", "false", "no")
+        eastmoney_fallback = USE_EASTMONEY
     if not eastmoney_fallback:
         raise RuntimeError("板块列表全部来源失败（东财兜底已关闭）")
     # 东财兜底

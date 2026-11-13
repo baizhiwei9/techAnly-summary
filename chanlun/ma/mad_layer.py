@@ -58,7 +58,7 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
     if os.path.isdir(_p) and _p not in sys.path:
         sys.path.insert(0, _p)
 
-# 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
+# 网络出口策略：默认 IPv4；东财族默认直接拦截（TECH_ALLOW_EM=1 才走 IPv6）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
     from net_guard import install as _net_install
@@ -68,6 +68,9 @@ except Exception:
     socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
 import datahub as DH  # noqa: E402
+
+# ── 东财开关（2026-11-14 大佬定：默认一个东财请求都不发，它那边一直限流）──
+_ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
 
 # data_hub 取数桥（纯适配层，失败一律返回 None → 自动降级新浪/东财老链路）
 try:
@@ -159,7 +162,10 @@ def _ak_hfq(sym, days):
 
 
 def _ak_hfq_local(sym, days):
-    """老链路兜底：akshare 新浪 hfq → 东财 hfq（原样保留）"""
+    """老链路兜底：akshare 新浪 hfq → 新浪 ETF 日线（2026-11-14 起默认零东财）
+
+    东财 `fund_etf_hist_em` / `stock_zh_a_hist` 保留但只在该开关开启时走。
+    """
     try:
         import akshare as ak
     except Exception:  # noqa: BLE001
@@ -201,7 +207,19 @@ def _ak_hfq_local(sym, days):
             return rows
     except Exception:  # noqa: BLE001
         pass
-    # ② 东财：ETF 走基金接口，个股走 A 股接口
+    # ② ETF 兜底：新浪基金日线（无日期参数，全量下发 → 本地按 start/end 切片）
+    #    东财 fund_etf_hist_em / stock_zh_a_hist 只在 TECH_ALLOW_EM=1 时走
+    try:
+        if code[:2] in ("51", "15", "16", "50", "58"):
+            d = ak.fund_etf_hist_sina(symbol=sina)
+            rows = _std(d)
+            if rows:
+                return [r for r in rows if start <= r[0] <= end] or rows
+    except Exception:  # noqa: BLE001
+        pass
+    if not _ALLOW_EM:
+        return None
+    # ③ 东财兜底（默认关闭，TECH_ALLOW_EM=1 才进）：ETF 走基金接口，个股走 A 股接口
     try:
         if code[:2] in ("51", "15", "16", "50", "58"):
             d = ak.fund_etf_hist_em(symbol=code, period="daily", start_date=start,

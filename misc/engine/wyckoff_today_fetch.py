@@ -4,6 +4,8 @@
 
 历史：本文件曾是全库**唯一**直连东财（push2his.eastmoney.com）的模块。
 2026-11-12 大佬定「不要用东财了」→ 板块列表/板块 K 线全部改走 misc/core/ths_hub.py。
+2026-11-14 再次收口：默认（TECH_ALLOW_EM=0）连东财域名都发不出去（net_guard 拦截），
+         本文件已无任何东财取数代码，`_get()` 保留为抛错垫片（见下方）。
 
 现状：
   · 板块列表：同花顺 `q.10jqka.com.cn/thshy`（行业 90）/ `.../gn`（概念 294）
@@ -20,6 +22,25 @@
 用法：python3 bin/wyckoff_today_fetch.py [--date YYYYMMDD]
 """
 import os, sys, json, time, argparse
+
+# ── 东财开关（2026-11-14 大佬定：默认一个东财请求都不发，它那边一直限流）──
+# 本文件现已无任何东财直连代码（2026-11-12 已全量改同花顺）；这里保留开关只为
+# 让老调用方（如 misc/core/datafeed.py 的 `F._get(...)`）拿到明确的失败原因，
+# 而不是莫名其妙的 AttributeError。
+ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _get(path, params=None, tries=2, timeout=10):
+    """【已废弃】东财 clist 直连垫片。
+
+    2026-11-12 起板块数据全部走同花顺（ths_hub），东财直连代码已删除。
+    本垫片只为：调用方立刻拿到明确失败，不再向 push2his/push2.eastmoney.com 发任何请求。
+    """
+    if ALLOW_EM:
+        raise RuntimeError("东财直连代码已于 2026-11-12 下线（仅保留开关壳）；"
+                           "板块数据请走 ths_hub / data_hub")
+    raise RuntimeError("东财已默认关闭（TECH_ALLOW_EM=0）；板块数据请走 ths_hub / data_hub")
+
 
 def _repo_root(start):
     """向上探测仓库根：同时含 bin/ 与 chanlun/ 的那一层（2026-11-12 目录整理后可任意层级）。"""

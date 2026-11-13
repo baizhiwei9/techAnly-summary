@@ -1,9 +1,21 @@
 """
 回测数据获取模块 - 支持工业硅期货真实数据 + 模拟数据
 """
+import os
+
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+
+# ── 东财开关（2026-11-14 大佬定：默认一个东财请求都不发，它那边一直限流）──
+ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _sina_sym(code: str) -> str:
+    c = str(code).strip().lower()
+    if c[:2] in ("sh", "sz", "bj"):
+        return c
+    return ("sh" if c[0] in "5609" else "sz") + c
 
 
 def _generate_trading_timestamps(start_date: str, end_date: str) -> list:
@@ -176,7 +188,7 @@ def fetch_silicon_data(start_date: str, end_date: str) -> pd.DataFrame:
 
 def fetch_astock_data(symbol: str, start_date: str, end_date: str, period: str = 'daily') -> pd.DataFrame:
     """
-    获取 A 股股票真实数据（通过 akshare 从东方财富获取）
+    获取 A 股股票真实数据（默认新浪；东财仅 TECH_ALLOW_EM=1 时走）
     
     :param symbol: 股票代码，如 '000001'（平安银行）、'600519'（贵州茅台）
     :param start_date: 开始日期，格式 'YYYY-MM-DD'
@@ -189,6 +201,29 @@ def fetch_astock_data(symbol: str, start_date: str, end_date: str, period: str =
     end_dt = datetime.strptime(end_date, '%Y-%m-%d')
     
     if period in ['daily', 'weekly', 'monthly']:
+        df = None
+        # 默认零东财：新浪日线（qfq）。周/月线由日线本地重采样（新浪无 period 参数）
+        try:
+            df = ak.stock_zh_a_daily(symbol=_sina_sym(symbol), adjust='qfq')
+        except Exception:
+            df = None
+        if df is not None and len(df):
+            df = df.rename(columns={'date': 'timestamp'})
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df = df[(df['timestamp'] >= start_dt) & (df['timestamp'] <= end_dt)].copy()
+            if period in ('weekly', 'monthly') and len(df):
+                rule = 'W-FRI' if period == 'weekly' else 'ME'
+                df = (df.set_index('timestamp')
+                      .resample(rule)
+                      .agg({'open': 'first', 'high': 'max', 'low': 'min',
+                            'close': 'last', 'volume': 'sum'})
+                      .dropna(subset=['close']).reset_index())
+            if len(df):
+                df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+                return df.reset_index(drop=True)
+        if not ALLOW_EM:
+            print(f"获取 {symbol} {period} 数据失败：新浪源不可用，且东财已默认关闭（TECH_ALLOW_EM=0）")
+            return pd.DataFrame()
         try:
             df = ak.stock_zh_a_hist(
                 symbol=symbol,
@@ -217,17 +252,27 @@ def fetch_astock_data(symbol: str, start_date: str, end_date: str, period: str =
         return df
     
     else:
+        # 默认零东财：新浪分钟线 stock_zh_a_minute（1/5/15/30/60）
         try:
-            df = ak.stock_zh_a_hist_min_em(
-                symbol=symbol,
-                start_date=f"{start_date} 09:30:00",
-                end_date=f"{end_date} 15:00:00",
-                period=period,
-                adjust='qfq'
-            )
-        except Exception as e:
-            print(f"获取 {symbol} 分钟线数据失败: {e}")
-            return pd.DataFrame()
+            df = ak.stock_zh_a_minute(symbol=_sina_sym(symbol), period=str(period), adjust='qfq')
+            df = df.rename(columns={'day': 'timestamp'})
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df = df[(df['timestamp'] >= start_dt) & (df['timestamp'] <= end_dt + timedelta(days=1))].copy()
+        except Exception:
+            if not ALLOW_EM:
+                print(f"获取 {symbol} 分钟线数据失败：新浪源不可用，且东财已默认关闭（TECH_ALLOW_EM=0）")
+                return pd.DataFrame()
+            try:
+                df = ak.stock_zh_a_hist_min_em(
+                    symbol=symbol,
+                    start_date=f"{start_date} 09:30:00",
+                    end_date=f"{end_date} 15:00:00",
+                    period=period,
+                    adjust='qfq'
+                )
+            except Exception as e:
+                print(f"获取 {symbol} 分钟线数据失败: {e}")
+                return pd.DataFrame()
         
         if df.empty:
             return pd.DataFrame()

@@ -66,7 +66,7 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
     if os.path.isdir(_p) and _p not in sys.path:
         sys.path.insert(0, _p)
 
-# 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
+# 网络出口策略：默认 IPv4；东财族默认直接拦截（TECH_ALLOW_EM=1 才放开）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
     from net_guard import install as _net_install
@@ -383,7 +383,8 @@ def dh_daily(ts_code, kind="stock", days=1200):
     """DataHub 日线：指数 index_daily / 个股 stock_daily → 归一化 df 或 None
 
     ⚠️ 复权口径（2026-11-13 实测）：DataHub 的 stock_daily 各源口径不一致 ——
-       akshare 源走 `stock_zh_a_hist(adjust="qfq")`（前复权），tushare 源走
+       akshare 源走 `stock_zh_a_hist(adjust="qfq")`（前复权，东财接口；
+       **data_hub 内部已默认不走东财**，akshare 源实际取新浪日线），tushare 源走
        `pro.daily`（**不复权**）。老链路 `core/datahub.py` 的 tushare 层是
        自己用 adj_factor 算前复权的，所以两者历史价可能有差（茅台实测最大 9.7%，
        最新价一致）。这里显式传 `adjust="qfq"` 表达意图（akshare 认，tushare 忽略），

@@ -52,6 +52,9 @@ try:
 except Exception:                                              # noqa: BLE001
     _DHB = None
 
+# ── 东财开关（2026-11-14 大佬定：默认一个东财请求都不发，它那边一直限流）──
+_ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
+
 
 def _log(m):
     print(f"[smc_data] {m}", flush=True)
@@ -189,7 +192,7 @@ def _etf_daily(code):
     """ETF/股票日线（长历史）。股票/ETF 交易级别=日线，需尽量长的历史。
 
     取数（2026-11-13 统一）：**data_hub `etf_daily`** 优先 → 老链路兜底
-    （tushare fund_daily → akshare fund_etf_hist_em，原样保留）。
+    （tushare fund_daily → akshare fund_etf_hist_sina，默认零东财）。
     ⚠️ etf_daily 给 trade_date/vol 字段，需映射成 dt/volume；不复权（adjust=""），
        与原 tushare fund_daily 口径一致，不影响 SMC 结构判定。
     """
@@ -208,7 +211,11 @@ def _etf_daily(code):
 
 
 def _etf_daily_local(code):
-    """老链路兜底：tushare fund_daily → akshare fund_etf_hist_em（原样保留）"""
+    """老链路兜底：tushare fund_daily → akshare fund_etf_hist_sina（默认零东财）
+
+    2026-11-14：akshare 这一层从东财 `fund_etf_hist_em` 换成新浪 `fund_etf_hist_sina`
+      （无日期参数，全量下发，本地按 start 切片）；东财版保留但只在 TECH_ALLOW_EM=1 时走。
+    """
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
     try:
         from tushare_init import ts_call
@@ -229,10 +236,16 @@ def _etf_daily_local(code):
         _log(f"{code} tushare 日线失败: {str(e)[:60]}")
     try:
         import akshare as ak
-        d = _norm(ak.fund_etf_hist_em(symbol=code[2:], period="daily",
-                                      start_date="20180101", end_date="20991231", adjust=""), tcol="日期")
+        d = _norm(ak.fund_etf_hist_sina(symbol=code), tcol="date")
+        if d is None or not len(d):
+            # 东财分支（默认关闭，TECH_ALLOW_EM=1 才进）
+            if _ALLOW_EM:
+                d = _norm(ak.fund_etf_hist_em(symbol=code[2:], period="daily",
+                                              start_date="20180101", end_date="20991231",
+                                              adjust=""), tcol="日期")
         if d is not None and len(d):
-            _log(f"{code} 日线 via akshare rows={len(d)}")
+            d = d[d["dt"] >= pd.to_datetime("20180101")].reset_index(drop=True)
+            _log(f"{code} 日线 via akshare(新浪) rows={len(d)}")
         return d
     except Exception as e:
         _log(f"{code} akshare 日线失败: {str(e)[:60]}")

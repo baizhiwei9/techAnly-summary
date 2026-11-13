@@ -6,8 +6,8 @@
 
 规则：
   · 默认强制 IPv4          —— 历史坑：容器 IPv6 曾不通，域名解析出 v6 会静默卡死到超时
-  · 东财行情族走 IPv6       —— 2026-11-12 实测：东财 K 线 IPv4 全部 RemoteDisconnected，
-                              只有 IPv6 可达（130~190ms，并发 100 次零失败，60 秒持续零失败）
+  · 东财族默认**直接拦截**   —— 2026-11-14 大佬定：东财一直限流，默认一个请求都不发
+                              （TECH_ALLOW_EM=1 才恢复 IPv6 优先的老行为）
   · 白名单域名 v6 解析失败 → 自动退回 v4，不会比原来更差
   · 纯 v6 域名（一个 v4 都没有）→ 原样返回，避免人为连不通
 
@@ -27,12 +27,15 @@
 
 环境变量：
   NET_GUARD=0              完全关掉（退回脚本自己的行为）
+  TECH_ALLOW_EM=1          放开东财（默认 0 = 东财域名直接拦截）
   IPV6_OK_HOSTS=a.com,b.cn 额外放行 IPv6 的域名（子域自动匹配）
   NET_GUARD_VERBOSE=1      启动时打印一次规则
 
 自检：
-  python3 -c "import socket;print(socket.getaddrinfo('push2his.eastmoney.com',443)[0][0])"
+  TECH_ALLOW_EM=1 python3 -c "import socket;print(socket.getaddrinfo('push2his.eastmoney.com',443)[0][0])"
   → 应输出 AddressFamily.AF_INET6
+  python3 -c "import socket;socket.getaddrinfo('push2his.eastmoney.com',443)"
+  → 应报 gaierror（东财已默认拦截）
 """
 from __future__ import annotations
 
@@ -42,6 +45,12 @@ import types
 
 _ENABLED = os.environ.get("NET_GUARD", "1") not in ("0", "false", "no", "")
 _VERBOSE = os.environ.get("NET_GUARD_VERBOSE", "0") not in ("0", "false", "no", "")
+
+# ── 东财开关（2026-11-14 大佬定：默认一个东财请求都不发，它那边一直限流）──
+# 默认 0 = 东财族域名直接拦截（DNS 层报错，requests 层直接失败，请求不出网）
+# TECH_ALLOW_EM=1 才恢复「白名单走 IPv6」的老行为
+ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
+_BLOCK_LOGGED = False
 
 # ── 需要走 IPv6 的域名（2026-11-12 实测东财 K 线 IPv4 全废）──────────
 _IPV6_OK_DEFAULT = (
@@ -87,10 +96,21 @@ def _is_v6_ok(host):
 
 
 def _policy(host, port, family=0, type=0, proto=0, flags=0):
-    """出口策略：白名单走 v6，其余强制 v4"""
+    """出口策略：东财族域名默认拦截；开启时白名单走 v6；其余强制 v4"""
     sk = _get_socket()
     if isinstance(host, bytes):
         host = host.decode("ascii", "ignore")
+
+    if _is_v6_ok(host) and not ALLOW_EM:
+        # 默认拦下：DNS 解析就失败 → requests 直接报 ConnectionError，请求不出网
+        global _BLOCK_LOGGED
+        if not _BLOCK_LOGGED:
+            _BLOCK_LOGGED = True
+            try:
+                print("[net_guard] 东财已默认拦截（TECH_ALLOW_EM=0）: %s" % host, file=sys.stderr)
+            except Exception:
+                pass
+        raise sk.gaierror(-2, "东财已默认拦截（TECH_ALLOW_EM=0）: %s" % host)
 
     if _is_v6_ok(host):
         try:
@@ -146,8 +166,8 @@ def _install():
         guarded.getaddrinfo = _policy
         sys.modules["socket"] = guarded
     if _VERBOSE:
-        print("[net_guard] 出口策略已生效｜白名单 IPv6: %s" % ",".join(_IPV6_OK),
-              file=sys.stderr)
+        print("[net_guard] 出口策略已生效｜allow_em=%d｜白名单: %s"
+              % (1 if ALLOW_EM else 0, ",".join(_IPV6_OK)), file=sys.stderr)
 
 
 _install()
@@ -157,6 +177,7 @@ def describe():
     cur = sys.modules["socket"]
     return {
         "enabled": _ENABLED,
+        "allow_em": ALLOW_EM,
         "ipv6_ok_hosts": list(_IPV6_OK),
         "guarded_module": isinstance(cur, _GuardedModule),
         "policy_installed": getattr(cur.getaddrinfo, "__net_guard_policy__", False),

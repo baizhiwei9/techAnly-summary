@@ -13,6 +13,11 @@
   · 命中白名单域名时，**IPv6 优先**（这些域名 IPv4 已废）
   · 兜底：白名单域名的 IPv6 也解析不出来时，退回 IPv4，不会比原来更差
 
+⭐ 2026-11-14 大佬新规矩：「默认不走东财，它那边一直限流」
+  · **TECH_ALLOW_EM 未设/为 0（默认）→ 东财族域名在 DNS 层直接报错**，
+    任何代码路径（包括老脚本硬编码 requests）都发不出东财请求。
+  · TECH_ALLOW_EM=1 → 恢复下方「白名单 IPv6 优先」的老行为。
+
 用法（脚本开头调用一次）：
     from net_guard import install
     install()
@@ -20,18 +25,20 @@
     或直接在 import 时生效（模块顶层已自动 install，见文件末尾）
 
 环境变量：
+    TECH_ALLOW_EM  1 = 放开东财（默认 0 = 东财直接拦截）
     IPV6_OK_HOSTS  额外放行 IPv6 的域名，逗号分隔（子域名自动匹配）
                     例：IPV6_OK_HOSTS=example.com,foo.cn
 
 为什么不直接把全平台改成 v6 优先：
     1. 历史事故是 IPv6 不通导致**静默卡死**，一刀切放开风险大
     2. tushare / 腾讯 / 同花顺等都能走 IPv4，没必要冒风险
-    3. 只有东财 K 线这批必须 IPv6，做白名单最小改动最安全
+    3. 东财默认关闭，IPv6 白名单只作为 TECH_ALLOW_EM=1 时的可选路径保留
 """
 from __future__ import annotations
 
 import os
 import socket
+import sys
 
 # ── 需要 IPv6 的域名（东财行情族，2026-11-12 实测 IPv4 全废）──────────
 _IPV6_OK_DEFAULT = (
@@ -41,6 +48,12 @@ _IPV6_OK_DEFAULT = (
 )
 
 _orig_gai = socket.getaddrinfo
+
+# ── 东财开关（2026-11-14 大佬定：默认一个东财请求都不发，它那边一直限流）──
+# 默认 0 = 上面这批域名直接**拦截**（DNS 层报错，请求根本发不出去）
+# TECH_ALLOW_EM=1 才恢复「白名单走 IPv6」的老行为
+ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
+_LOGGED = False
 
 
 def _extra_hosts():
@@ -63,9 +76,25 @@ def _is_v6_ok(host):
 
 
 def _resolve(host, port, family=0, type=0, proto=0, flags=0):
-    """改造后的 getaddrinfo：白名单域名 IPv6 优先，其余强制 IPv4"""
+    """改造后的 getaddrinfo：
+        · 东财族域名 且 TECH_ALLOW_EM 关闭 → **直接报错**（默认零东财，请求发不出去）
+        · 东财族域名 且 TECH_ALLOW_EM 开启 → IPv6 优先
+        · 其余域名 → 强制 IPv4
+    """
     if isinstance(host, bytes):
         host = host.decode("ascii", "ignore")
+
+    if _is_v6_ok(host) and not ALLOW_EM:
+        # 默认拦下：DNS 解析就失败，任何代码路径都偷发不了东财请求
+        global _LOGGED
+        if not _LOGGED:
+            _LOGGED = True
+            try:
+                print("[net_guard] 东财已默认拦截（TECH_ALLOW_EM=0）: %s" % host,
+                      file=sys.stderr)
+            except Exception:
+                pass
+        raise socket.gaierror(-2, "东财已默认拦截（TECH_ALLOW_EM=0）: %s" % host)
 
     if _is_v6_ok(host):
         # 白名单：先要 v6，拿不到再退回全部（含 v4）——不会比原来更差
@@ -94,12 +123,16 @@ def install():
     """幂等安装（多次调用无副作用）"""
     if socket.getaddrinfo is not _resolve:
         socket.getaddrinfo = _resolve
+    if _VERBOSE:
+        print("[net_guard] 出口策略已生效｜allow_em=%d｜白名单: %s"
+              % (1 if ALLOW_EM else 0, ",".join(_IPV6_OK)), file=sys.stderr)
     return _resolve
 
 
 def describe():
-    """自检：返回当前生效的白名单"""
-    return {"ipv6_ok_hosts": list(_IPV6_OK), "installed": socket.getaddrinfo is _resolve}
+    """自检：返回当前生效的白名单 + 东财开关"""
+    return {"ipv6_ok_hosts": list(_IPV6_OK), "allow_em": ALLOW_EM,
+            "installed": socket.getaddrinfo is _resolve}
 
 
 # 模块 import 即生效
@@ -108,13 +141,13 @@ install()
 
 if __name__ == "__main__":
     import requests
-    print("白名单:", describe()["ipv6_ok_hosts"])
+    print("白名单:", describe()["ipv6_ok_hosts"], "｜allow_em=", describe()["allow_em"])
     H = {"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"}
     tests = [
-        ("东财 K线（应走 v6）", "https://push2his.eastmoney.com/api/qt/stock/kline/get",
+        ("东财 K线（默认应被拦）", "https://push2his.eastmoney.com/api/qt/stock/kline/get",
          dict(secid="1.600519", klt=101, fqt=1, lmt=3, end="20500101",
               fields1="f1", fields2="f51,f53")),
-        ("东财 clist（应走 v6）", "https://push2.eastmoney.com/api/qt/clist/get",
+        ("东财 clist（默认应被拦）", "https://push2.eastmoney.com/api/qt/clist/get",
          dict(pn=1, pz=3, po=1, np=1, fltt=2, invt=2, fid="f3",
               fs="m:1+t:2", fields="f2,f12,f14")),
         ("腾讯（应走 v4）", "https://qt.gtimg.cn/q=sh600519", None),

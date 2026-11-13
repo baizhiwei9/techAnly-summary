@@ -68,6 +68,10 @@ def _repo_root(start):
 
 
 WS = os.environ.get("TECH_WS") or _repo_root(__file__)
+
+# ── 东财开关（2026-11-14 大佬定：默认一个东财请求都不发，它那边一直限流）──
+# 默认 0 = 所有东方财富接口一律不用；确需临时启用时 TECH_ALLOW_EM=1
+ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
 # 顺序有讲究：最后插入的优先级最高 → bin/ 放最前 = 最低优先级，
 # 保证 import 命中真实目录，而不是 bin/ 里的兼容 shim。
 for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
@@ -140,7 +144,11 @@ def to_ts(sym):
 
 
 def to_em(sym):
-    """→ 东财 secid：0.002463 / 1.600183 / 116.00700"""
+    """→ 东财 secid：0.002463 / 1.600183 / 116.00700
+
+    ⚠️ 默认不用：全库已无调用方（东财默认关闭，TECH_ALLOW_EM=1 才用），
+       保留仅为历史兼容 / 手工排查时拼 URL 方便。
+    """
     s = norm(sym)
     if is_index(s):
         code, mkt = s.split(".")
@@ -250,11 +258,13 @@ def _ak_call(fn, *a, timeout=25, **k):
 
 
 def _l1_akshare(sym, end, days):
-    """AKShare 日线（列名接口）
-        A股/ETF : stock_zh_a_daily(symbol='sz002463', adjust='qfq')
-                  ETF 若报错回退 fund_etf_hist_em
+    """AKShare 日线（列名接口）· **默认零东财**（2026-11-14）
+        A股/ETF : stock_zh_a_daily(symbol='sz002463', adjust='qfq')          ← 新浪
+                  ETF 失败回退 fund_etf_hist_sina(symbol='sh510300')        ← 新浪
+                  （新浪 ETF 接口无日期参数，全量 ~3500 根，本地按 end/days 切片）
         港股     : stock_hk_daily(symbol='06160', adjust='qfq')
-        指数     : index_zh_a_hist(symbol='000300', period='daily')
+        指数     : stock_zh_index_daily(symbol='sh000905')                   ← 新浪
+        东财（index_zh_a_hist / fund_etf_hist_em）仅在 TECH_ALLOW_EM=1 时才走
     """
     import akshare as ak
     s = norm(sym)
@@ -262,17 +272,22 @@ def _l1_akshare(sym, end, days):
         time.time() - max(days, 60) * 2.2 * 86400))
     try:
         if is_index(s):
-            code = s.split(".")[0]
-            df = _ak_call(ak.index_zh_a_hist, symbol=code, period="daily",
-                          start_date=start, end_date=end)
+            df = _ak_call(ak.stock_zh_index_daily, symbol=to_sina(s))
+            if (df is None or not len(df)) and ALLOW_EM:
+                # 东财分支（默认关闭，TECH_ALLOW_EM=1 才进）
+                df = _ak_call(ak.index_zh_a_hist, symbol=s.split(".")[0], period="daily",
+                              start_date=start, end_date=end)
         elif is_hk(s):
             df = _ak_call(ak.stock_hk_daily, symbol=s, adjust="qfq")
         else:
             df = _ak_call(ak.stock_zh_a_daily, symbol=to_sina(s), adjust="qfq")
             if df is None or not len(df):
-                # ETF/LOF 回退（stock_zh_a_daily 对场内基金常失败）
-                df = _ak_call(ak.fund_etf_hist_em, symbol=s[2:], period="daily",
-                              start_date=start, end_date=end, adjust="qfq")
+                # ETF/LOF 回退（stock_zh_a_daily 对场内基金常失败）→ 新浪基金日线
+                df = _ak_call(ak.fund_etf_hist_sina, symbol=to_sina(s))
+                if (df is None or not len(df)) and ALLOW_EM:
+                    # 东财分支（默认关闭，TECH_ALLOW_EM=1 才进）
+                    df = _ak_call(ak.fund_etf_hist_em, symbol=s[2:], period="daily",
+                                  start_date=start, end_date=end, adjust="qfq")
     except Exception as e:
         log("L1 ak %s err %s" % (sym, str(e)[:90]), err=True)
         return []
