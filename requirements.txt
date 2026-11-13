@@ -9,3 +9,7 @@ akshare>=1.18
 tushare>=1.4.6
 Pillow>=9.0
 vmdpy>=0.2
+
+# topology（SPD 流形 + TDA，2026-11-14 新增）
+scipy>=1.11
+ripser>=0.6.8

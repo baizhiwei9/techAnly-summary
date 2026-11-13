@@ -42,7 +42,8 @@ TREES = [
     "chanlun",          # ① 缠论（fractal 分型版 / ma 均线版 / multiscale 回测工程）
     "smc",              # ② SMC + VWAP 六轨 + 模拟交易引擎
     "wavelet",          # ③ 小波
-    "misc",             # ④ 其余全部：core/engine/strategies/tools/examples/compare
+    "topology",         # ④ 拓扑流形（SPD 流形 + TDA + 里奇曲率）
+    "misc",             # ⑤ 其余全部：core/engine/strategies/tools/examples/compare
 ]
 # skills/ 两个技能文档：OpenClaw 技能发现要求放顶层，仓库里也一起带上（不进 TREES 遍历，单独走 FILES）
 # 目录里明确不要的（别的项目 / 大文件 / 缓存）
