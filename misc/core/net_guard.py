@@ -53,6 +53,7 @@ _orig_gai = socket.getaddrinfo
 # 默认 0 = 上面这批域名直接**拦截**（DNS 层报错，请求根本发不出去）
 # TECH_ALLOW_EM=1 才恢复「白名单走 IPv6」的老行为
 ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
+_VERBOSE = os.environ.get("NET_GUARD_VERBOSE", "0") not in ("0", "", "false", "no")
 _LOGGED = False
 
 

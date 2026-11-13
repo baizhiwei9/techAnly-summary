@@ -6,6 +6,19 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-14 05:20
+
+**fix(net_guard): 补回 `_VERBOSE` 定义（上一提交漏掉，import 会 NameError）**
+
+`92f2c2c` 里 `net_guard.py` 只带了 `if _VERBOSE:` 的使用、缺了模块级定义，
+`import net_guard` 首次命中该行就抛 `NameError`。本提交补回：
+
+```python
+_VERBOSE = os.environ.get("NET_GUARD_VERBOSE", "0") not in ("0", "", "false", "no")
+```
+
+影响文件：`misc/core/net_guard.py`
+
 ## 2026-11-14 05:10
 
 **feat: 默认不走东财（TECH_ALLOW_EM=0）—— 一个东财请求都不发**
