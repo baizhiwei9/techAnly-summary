@@ -6,6 +6,32 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-14 04:22
+
+**feat: 5 个缺口补齐 —— data_hub 新增 sw_index_daily/sector_spot/concept_members/futures_main_daily/etf_dividend**
+
+上一版列出的 5 个缺口，本轮在 data_hub 侧新增采集器补齐，技术库接入并保留老链路兜底。
+
+新 data_type（35 → 40）：
+- sw_index_daily：申万行业指数日线（akshare index_hist_sw → tushare sw_daily → 同花顺代理口径）。801081 半导体实测 6492 根。
+- sector_spot：板块实时快照（同花顺 gnSection JSON / thshy 表格）。行业 90、概念 294，含涨跌幅/资金净流入/涨跌家数/领涨股。
+- concept_members：概念板块成分股（tushare ths_member）。885431 云计算 1086 只。
+- futures_main_daily：期货主力连续日线（akshare futures_main_sina）。IF0 451 根 / AG0 3531 根。
+- etf_dividend：ETF 分红序列（akshare fund_etf_dividend_sina）。510300 分红 14 次。
+
+同时修 data_hub 真实 bug（minute_bar）：_norm_code('IF0') 把期货主力连续码当 6 位股票补成 'shif0'，只回 6 根垃圾数据。新增 _norm_fut_code / _is_fut_code，kind=fut 走 futures_zh_minute_sina，且 freq 1/5/15/30/60 都优先真实 K 线（原来只有 15 才走）。实测 IF0 60m 1023 根、AG0 60m 1022 根。
+
+技术库接入：
+- misc/core/dh_bridge.py 新增 sw_index_daily / sector_spot / sector_spot_one / concept_members / concept_code_by_name / futures_main_daily / etf_dividend，并解除 minute_bar 的 kind=fut 封禁
+- misc/engine/tech_buypoint.py 行业日线回到申万口径（口径修正：半导体 6492 根 vs 原同花顺 1663 根），concept_members 改 data_hub 优先
+- misc/engine/wyckoff_today_fetch.py _quote() 加 sector_spot 优先（pct_chg=NaN 时落回 realhead）
+- misc/core/sw_daily.py 新增 L0 data_hub
+- smc/smc_data.py 期货分钟/日线加 data_hub 优先
+- chanlun/ma/mad_layer.py ETF 分红走 data_hub
+- wavelet/signal_monitor.py 期货日线/1h 走 data_hub
+
+数据源选择（重要）：东财 push2 API 从本机完全不可达（网页 200 / API 全 RemoteDisconnected，IPv4 IPv6 皆然），且大佬 2026-11-12 已明令不要用东财 → sector_spot 用同花顺页面、concept_members 用 tushare ths_member，两个采集器均不依赖东财。
+
 ## 2026-11-14 00:33
 
 **feat: 技术分析取数统一走 DataHub（新增 dh_bridge）**

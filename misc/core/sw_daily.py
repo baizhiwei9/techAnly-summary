@@ -14,6 +14,9 @@
     L1 akshare index_hist_sw → 直连申万，最稳最快
     L2 东财行业板块日线       → 网页接口
     L3 tushare sw_daily       → 有权限时最准，但会限流，垫底
+
+2026-11-14 更新：**L0 data_hub `sw_index_daily`** 提到最前面（同一底层 akshare
+index_hist_sw，但多了 tushare / 同花顺两级降级 + 统一字段），失败再走下面三级。
 """
 from __future__ import annotations
 
@@ -212,19 +215,31 @@ def fetch_sw_daily(code, start="20200101", ttl_min=None):
     df = None
     layer = None
 
-    # ── L1 akshare（申万代码去掉 .SI 后缀）
+    # ── L0 data_hub sw_index_daily（2026-11-14 新增 data_type，内部三级降级）
     try:
-        import akshare as ak
-        sym = code.split(".")[0]
-        a = _ak_timeout(ak.index_hist_sw, symbol=sym, period="day", timeout=20)
-        if a is not None and len(a):
-            a = a.rename(columns={"日期": "dt", "收盘": "close", "开盘": "open",
-                                  "最高": "high", "最低": "low"})
-            a["dt"] = pd.to_datetime(a["dt"])
-            df = a[["dt", "open", "high", "low", "close"]]
-            layer = "L1-akshare"
+        import dh_bridge as _DHB
+        h = _DHB.sw_index_daily(code)
+        if h is not None and len(h) > 100:
+            df = h[["dt", "open", "high", "low", "close"]].copy()
+            df["dt"] = pd.to_datetime(df["dt"])
+            layer = "L0-data_hub"
     except Exception as e:
-        log("[sw] %s L1 akshare 失败 %s" % (code, str(e)[:60]))
+        log("[sw] %s L0 data_hub 失败 %s" % (code, str(e)[:60]))
+
+    # ── L1 akshare（申万代码去掉 .SI 后缀）—— L0 命中就不再打这一层
+    if df is None or not len(df):
+        try:
+            import akshare as ak
+            sym = code.split(".")[0]
+            a = _ak_timeout(ak.index_hist_sw, symbol=sym, period="day", timeout=20)
+            if a is not None and len(a):
+                a = a.rename(columns={"日期": "dt", "收盘": "close", "开盘": "open",
+                                      "最高": "high", "最低": "low"})
+                a["dt"] = pd.to_datetime(a["dt"])
+                df = a[["dt", "open", "high", "low", "close"]]
+                layer = "L1-akshare"
+        except Exception as e:
+            log("[sw] %s L1 akshare 失败 %s" % (code, str(e)[:60]))
 
     # ── L2 同花顺行业板块（按名称匹配）
     #   2026-11-12 大佬定：「不要用东财了」→ 原来的 akshare 东财板块接口已移除，

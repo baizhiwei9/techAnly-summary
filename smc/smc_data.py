@@ -135,10 +135,23 @@ def _fut_min(code, per):
     旧代码只试一次就放弃 → 整轮不更新、还把上一次的陈旧数据当成新数据。
     现在重试 2 次；仍失败则**不返回 None**（由 get() 回退到缓存）。
 
-    TODO(口径): data_hub `minute_bar(kind="fut")` 的 `_norm_code` 会把 "IF0"/"AG0"
-        这类主力连续码归一成 "shif0"（当成沪市股票），实测只回 6 根 →
-        **期货分钟暂不接 data_hub**，保持新浪 + minute_hub 原链路，等 data_hub 修期货码归一。
+    取数（2026-11-14 补齐）：**data_hub `minute_bar(kind="fut")`** 优先
+        （data_hub 2026-11-14 修了 `_norm_code` 期货 bug，新增 `_norm_fut_code`，
+         'IF0' 不再被补成 'shif0'；实测 IF0 60m 1023 根正常）
+        → 失败降级新浪 akshare → minute_hub（原链路一行未改）
     """
+    # ⓪ data_hub 期货分钟
+    try:
+        if _DHB is not None:
+            d = _DHB.minute_bar(code, per, 1500, "fut")
+            if d is not None and len(d) > 100:
+                d = _drop_inprogress(d, per)
+                if d is not None and len(d) > 100:
+                    _log(f"{code} {per}m via data_hub rows={len(d)}")
+                    return d
+    except Exception as e:                                       # noqa: BLE001
+        _log(f"{code} {per}m data_hub失败: {str(e)[:60]}")
+
     last_err = None
     for attempt in range(2):
         try:
@@ -229,10 +242,26 @@ def _etf_daily_local(code):
 def _fut_daily(code):
     """期货主力连续日线（新浪）。
 
-    TODO(口径): data_hub **没有期货主力连续日线**通用 data_type
-        （现有 futures_contract_daily 只认具体合约如 IF2609，futures_basis 是基差）→
-        保持 akshare `futures_zh_daily_sina` 原链路，等 data_hub 出主力连续接口再切。
+    取数（2026-11-14 补齐）：**data_hub `futures_main_daily`** 优先（本轮新增
+        data_type，走新浪 `futures_main_sina`，实测 IF0 451 根 / AG0 290 根）
+        → 失败降级 akshare `futures_zh_daily_sina`（原链路一行未改）。
     """
+    try:
+        if _DHB is not None:
+            d = _DHB.futures_main_daily(code)
+            if d is not None and len(d) > 100:
+                dd = d.rename(columns={"trade_date": "dt", "vol": "volume"})
+                if "dt" not in dd.columns:
+                    for c in ("date", "trade_date"):
+                        if c in dd.columns:
+                            dd = dd.rename(columns={c: "dt"})
+                            break
+                if "volume" not in dd.columns and "vol" in dd.columns:
+                    dd = dd.rename(columns={"vol": "volume"})
+                _log(f"{code} 日线 via data_hub rows={len(dd)}")
+                return dd
+    except Exception as e:                                       # noqa: BLE001
+        _log(f"{code} 日线 data_hub失败: {str(e)[:60]}")
     try:
         import akshare as ak
         d = _norm(ak.futures_zh_daily_sina(symbol=code), tcol="date")

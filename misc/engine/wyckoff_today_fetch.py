@@ -72,7 +72,7 @@ def _num(v):
     return f
 
 
-def _quote(code):
+def _quote(code, name=""):
     """单板块快照 → 东财同义字段
 
     同花顺 realhead 字段（实测 881121 半导体）：
@@ -80,10 +80,35 @@ def _quote(code):
     ⚠️ 主力净流入(netmain)、上涨/下跌/平家数(up/dn/n) 同花顺该接口没有 →
        置 0 并在注释写明；当前无调用方消费这些字段（只有 f12/f14 被用到）。
 
-    TODO(口径): data_hub **没有板块实时快照** data_type（sector_kline 只给日 K，
-        逐板块拉 90 次 K 线比这个单请求快照重 7 倍，且盘中会拿到未完结 bar）→
-        本函数保留同花顺 realhead 直连，等 data_hub 出 sector_spot 再切。
+    取数（2026-11-14 补齐）：**data_hub `sector_spot`** 优先（同花顺板块页单请求
+        拿全表快照，含 name/涨跌幅/成交额/净流入/涨跌家数/领涨股），
+        取不到降级同花顺 realhead 逐板块直连（原链路）。
+    ⚠️ 板块快照统一用同花顺口径（881xxx/885xxx），与本脚本板块码同源，无需编码映射。
     """
+    # ⓪ data_hub sector_spot（同花顺板块页，单请求拿全表），按 name → code 匹配
+    try:
+        if DHB is not None:
+            row = None
+            if name:
+                row = DHB.sector_spot_one(name, kind="行业")
+            if row is None and code:
+                row = DHB.sector_spot_one(str(code), kind="行业")
+            if row:
+                # 同花顺行业表：vol 单位万手、amt 单位亿元；realhead 口径 vol=手、amt=元
+                vol = row.get("vol")
+                amt = row.get("amt")
+                pct = row.get("pct_chg")
+                # ⚠️ 同花顺行业首页只给前 50 个快照，其余 40 个是「有码无值」占位行
+                #    （pct_chg 为 NaN）→ 这种情况必须落回 realhead，否则会把空值当快照
+                if pct is not None and pct == pct:
+                    return dict(price=row.get("price"), pct1d=pct,
+                                high=None, low=None, open=None,
+                                vol=(None if vol is None or vol != vol else vol * 1e4),
+                                amt=(None if amt is None or amt != amt else amt * 1e8))
+    except Exception as e:                                      # noqa: BLE001
+        print("[wyckoff_today] data_hub sector_spot 失败 %s → 降级同花顺"
+              % str(e)[:60], file=sys.stderr, flush=True)
+
     import requests
     import re
     last = None
@@ -146,7 +171,7 @@ def board_list(fs, with_quotes=False):
              # 同花顺该接口拿不到的字段 → 0（无调用方消费）
              "netmain": 0.0, "up": 0, "dn": 0, "n": 0}
         if with_quotes:
-            q = _quote(code)
+            q = _quote(code, name=name)
             if q:
                 amt_yi = (q["amt"] or 0.0) / 1e8
                 r.update(pct1d=q["pct1d"], price=q["price"], amt=amt_yi, vol=q["vol"],

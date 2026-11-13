@@ -149,7 +149,10 @@ def fetch_etf_data(code, market='sh', days=500):
 
 
 def fetch_futures_data(symbol='AG', days=800):
-    """获取期货主力连续日线"""
+    """获取期货主力连续日线
+
+    取数（2026-11-14 补齐）：**data_hub `futures_main_daily`** 优先 → AKShare 兜底
+    """
     local_file = os.path.join(DATA_DIR, f'futures_{symbol}.parquet')
     
     if os.path.exists(local_file):
@@ -161,7 +164,24 @@ def fetch_futures_data(symbol='AG', days=800):
         except:
             pass
     
-    # 用AKShare拉取
+    # ① data_hub futures_main_daily（2026-11-14 新增 data_type）
+    if _DHB is not None:
+        try:
+            d = _DHB.futures_main_daily(f'{symbol}0')
+            if d is not None and len(d) > 100:
+                dd = d.set_index('dt')
+                if 'oi' in dd.columns:
+                    dd = dd.rename(columns={'oi': 'open_interest'})
+                else:
+                    dd['open_interest'] = 0.0
+                dd = dd[['open', 'high', 'low', 'close', 'volume', 'open_interest']].sort_index()
+                dd.to_parquet(local_file)
+                print(f'  [INFO] {symbol} 期货日线 ← data_hub futures_main_daily rows={len(dd)}')
+                return dd
+        except Exception as e:
+            print(f'  [WARN] data_hub futures {symbol} 失败({str(e)[:50]}) → 降级 AKShare')
+
+    # ② 老链路兜底：AKShare
     try:
         import akshare as ak
         # 白银主力
@@ -184,8 +204,23 @@ def fetch_futures_data(symbol='AG', days=800):
 
 
 def fetch_futures_1h_data(symbol='AG', days=200):
-    """获取期货1小时K线"""
+    """获取期货1小时K线
+
+    取数（2026-11-14 补齐）：**data_hub `minute_bar(kind="fut")`** 优先 → AKShare 兜底
+    """
     local_file = os.path.join(DATA_DIR, f'futures_{symbol}_1h.parquet')
+
+    # ① data_hub 期货分钟（data_hub 2026-11-14 修了 IF0→shif0 的归一 bug）
+    if _DHB is not None:
+        try:
+            d = _DHB.minute_bar(f'{symbol}0', '60', 1500, 'fut')
+            if d is not None and len(d) > 100:
+                dd = d.set_index('dt')[['open', 'high', 'low', 'close', 'volume']].sort_index()
+                dd.to_parquet(local_file)
+                print(f'  [INFO] {symbol} 1h ← data_hub minute_bar rows={len(dd)}')
+                return dd
+        except Exception as e:
+            print(f'  [WARN] data_hub 1h {symbol} 失败({str(e)[:50]}) → 降级 AKShare')
 
     # AKShare 拉取1小时数据
     try:

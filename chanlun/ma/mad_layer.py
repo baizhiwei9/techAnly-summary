@@ -256,16 +256,33 @@ def _etf_hfq(sym, days):
         d = d.dropna(subset=["close"]).sort_values("dt").reset_index(drop=True)
     if len(d) < 60:
         return None
-    try:
-        dv = ak.fund_etf_dividend_sina(symbol=sym.lower())
-        dv["日期"] = pd.to_datetime(dv["日期"])
-        dv = dv.sort_values("日期").reset_index(drop=True)
-        per = dv["累计分红"].diff()
-        per.iloc[0] = dv["累计分红"].iloc[0]
-        events = [(r["日期"], float(r["per"])) for _, r in dv.assign(per=per).iterrows()
-                  if float(r["per"]) > 0]
-    except Exception:  # noqa: BLE001
-        return None
+    events = []
+    # ① data_hub etf_dividend（2026-11-14 新增 data_type，与 akshare 同源同口径）
+    if _DHB is not None:
+        try:
+            code6 = sym[2:] if sym[:2].lower() in ("sh", "sz") else sym
+            ts = code6 + (".SH" if sym[:2].lower() == "sh" else ".SZ")
+            dv = _DHB.etf_dividend(ts)
+            if dv is not None and len(dv):
+                events = [(r.dt, float(r.per_dividend)) for r in dv.itertuples()
+                          if float(getattr(r, "per_dividend", 0) or 0) > 0]
+                if events:
+                    print("[mad] %s 分红 %d 次 ← data_hub etf_dividend" % (sym, len(events)),
+                          file=sys.stderr, flush=True)
+        except Exception:                                        # noqa: BLE001
+            events = []
+    # ② 老链路兜底：akshare 新浪分红
+    if not events:
+        try:
+            dv = ak.fund_etf_dividend_sina(symbol=sym.lower())
+            dv["日期"] = pd.to_datetime(dv["日期"])
+            dv = dv.sort_values("日期").reset_index(drop=True)
+            per = dv["累计分红"].diff()
+            per.iloc[0] = dv["累计分红"].iloc[0]
+            events = [(r["日期"], float(r["per"])) for _, r in dv.assign(per=per).iterrows()
+                      if float(r["per"]) > 0]
+        except Exception:  # noqa: BLE001
+            return None
     if not events:
         return None
 

@@ -19,7 +19,7 @@
 
 data_hub 现有口径备忘（2026-11-13 实测）：
   sector_kline     → DataFrame[date, open, high, low, close, vol, amt]（同花顺板块，1663 根）
-  sector_members   → DataFrame[code, name]（行业/概念，同花顺市值排序前 5 页）
+  sector_members   → DataFrame[code, name]（**只有行业板块**，概念是 ajax 取不到）
   sector_list      → DataFrame[code, name, kind]（行业 90 / 概念 294）
   index_components → list[str] ts_code（中证官网 → tushare index_weight → web）
   stock_daily      → DataFrame[ts_code, trade_date, ..., vol, amount]（adjust 支持 qfq/hfq/""）
@@ -275,7 +275,7 @@ def sector_kline_rows(code=None, name=None, kind="行业", years_back=6, lmt=Non
 
 
 def sector_members(code=None, name=None, kind="行业"):
-    """板块成分股 → [{'code': 6位, 'name': str}...]；行业/概念均取流通市值前 5 页"""
+    """板块成分股 → [{'code': 6位, 'name': str}...]；**概念板块 data_hub 取不到 → []**"""
     mod = module()
     if mod is None:
         return []
@@ -450,19 +450,20 @@ def minute_bar(code, freq="60", n=400, kind="index"):
         code: 已归一化代码（sh600519 / sh000905），或标准 ts_code（600519.SH）
         freq: '1'/'5'/'15'/'30'/'60'
         n: 目标根数
-        kind: 'index' / 'stock' / 'auto'
+        kind: 'index' / 'stock' / 'fut' / 'auto'
 
-    ⚠️ **kind='fut' 不支持**（data_hub 的 `_norm_code("IF0")` → `"shif0"`，
-       只回 6 根，等于不可用）→ 期货分钟请走原 minute_hub 链路。
+    ⚠️ 2026-11-14 更新：data_hub 已修 `_norm_code` 的期货 bug（新增 `_norm_fut_code`，
+    'IF0' 不再被补成 'shif0'），`kind='fut'` 现在走 `futures_zh_minute_sina`，实测
+    IF0 60m 1023 根正常。老链路（minute_hub）保留作兜底。
     """
     mod = module()
     if mod is None:
         return None
-    if str(kind).lower() == "fut":
-        return None
     kw = {"freq": str(freq), "n": int(n), "kind": kind}
     c = str(code).strip()
-    if "." in c and not c.lower().startswith(("sh", "sz", "bj")):
+    if str(kind).lower() == "fut":
+        kw["ts_code"] = c                       # 期货：IF0 / AG0 / IF2609
+    elif "." in c and not c.lower().startswith(("sh", "sz", "bj")):
         kw["ts_code"] = c
     else:
         kw["code"] = c.lower()
@@ -496,6 +497,186 @@ def minute_bar(code, freq="60", n=400, kind="index"):
 
 # ═══════════════════════ 股票名称 ═══════════════════════
 _NAME_MAP = None
+
+
+# ═══════════════════════ 2026-11-14 补的 5 个缺口 ═══════════════════════
+# 这 5 个原来是「data_hub 没对应 data_type」的缺口，现在 data_hub 已补齐：
+#   sector_spot / concept_members / sw_index_daily / futures_main_daily / etf_dividend
+# 每个都保留老链路兜底（调用方自己决定，本模块只负责取，失败一律返回 None/[]）。
+
+def sector_spot(kind="行业"):
+    """板块实时快照 → DataFrame[code,name,price,pct_chg,vol,amt,kind]；失败 None
+
+    ⚠️ 东财 BKxxxx 编码，与同花顺 881/885 **不是一套**。
+       要跨源对齐（如同花顺板块 K 线 + 东财快照）请按**板块名称**匹配，
+       可直接用 `sector_spot_one(name)`。
+    """
+    mod = module()
+    if mod is None:
+        return None
+    try:
+        with _quiet():
+            df = mod.get_data("sector_spot", kind=str(kind))
+    except Exception as e:                                       # noqa: BLE001
+        log("sector_spot(%s) 失败: %s" % (kind, str(e)[:80]))
+        return None
+    if df is None or not hasattr(df, "columns") or len(df) == 0:
+        return None
+    return df
+
+
+def sector_spot_one(name, kind="行业"):
+    """按板块名取单个快照 → dict（code/name/price/pct_chg/vol/amt/kind）；失败 None"""
+    mod = module()
+    if mod is None or not name:
+        return None
+    try:
+        from data_hub.collectors.stocks.sector_spot import get_sector_spot_one as _one
+        with _quiet():
+            return _one(str(name).strip(), kind=str(kind))
+    except Exception as e:                                       # noqa: BLE001
+        log("sector_spot_one(%s) 失败: %s" % (name, str(e)[:80]))
+        return None
+
+
+def concept_members(code=None, name=None, ths_code=None, kind="概念"):
+    """概念板块成分股 → [{'code','name'}...]；失败 []
+
+    取数（2026-11-14 定案）：data_hub `concept_members` ← **tushare `ths_member`**
+      · 东财 push2 API 从本机完全不可达（网页 200 / API 全 RemoteDisconnected）
+      · 同花顺概念详情页成分是 ajax 动态加载，直连 **HTTP 401**
+      · tushare `ths_member` 可用（885431 云计算 1086 只）
+
+    参数（优先级 ths_code > code > name）：
+      ths_code 同花顺 885xxx / 885431.TI（**推荐**）
+      code     同 ths_code（兼容老调用）
+      name     板块名（在 sector_list("概念") 里精确/包含匹配出 885xxx）
+    """
+    mod = module()
+    if mod is None:
+        return []
+    kw = {}
+    if ths_code:
+        kw["ths_code"] = str(ths_code).strip()
+    elif code:
+        kw["ths_code"] = str(code).strip()
+    elif name:
+        kw["name"] = str(name).strip()
+    else:
+        return []
+    try:
+        with _quiet():
+            df = mod.get_data("concept_members", **kw)
+    except Exception as e:                                       # noqa: BLE001
+        log("concept_members(%s) 失败: %s"
+            % (kw.get("ths_code") or kw.get("name"), str(e)[:80]))
+        return []
+    if df is None or not hasattr(df, "columns") or len(df) == 0:
+        return []
+    out = []
+    for _, r in df.iterrows():
+        c = str(r.get("con_code") or r.get("code") or "").strip()
+        if c:
+            out.append({"code": c.split(".")[0].zfill(6),
+                        "name": str(r.get("con_name") or r.get("name") or "").strip()})
+    return out
+
+
+def concept_code_by_name(name, kind="概念"):
+    """概念名 → 同花顺 885xxx.TI（供跨源对齐用）；失败 None"""
+    mod = module()
+    if mod is None or not name:
+        return None
+    try:
+        from data_hub.collectors.stocks.concept_members import _code_by_name as _cb
+        with _quiet():
+            return _cb(str(name).strip()) or None
+    except Exception:                                            # noqa: BLE001
+        return None
+
+
+def sw_index_daily(code, start=None, end=None):
+    """申万行业指数日线 → DataFrame[dt,open,high,low,close,volume,amt]；失败 None
+
+    Args:
+        code: 801081 / 801081.SI
+        start/end: YYYYMMDD 或 YYYY-MM-DD
+
+    ⚠️ 返回对象的 `.attrs["proxy"]` 为 True 时代表 L3 同花顺代理口径
+       （申万取不到时降级），报告里必须标注。
+    """
+    mod = module()
+    if mod is None or not code:
+        return None
+    try:
+        with _quiet():
+            df = mod.get_data("sw_index_daily", code=str(code),
+                              start_date=start, end_date=end)
+    except Exception as e:                                       # noqa: BLE001
+        log("sw_index_daily(%s) 失败: %s" % (code, str(e)[:80]))
+        return None
+    if df is None or not hasattr(df, "columns") or len(df) == 0:
+        return None
+    proxy = bool(getattr(df, "attrs", {}).get("proxy", False))
+    d = df.rename(columns={"trade_date": "dt", "amount": "amt", "vol": "volume"})
+    d["dt"] = _pd().to_datetime(d["dt"], format="%Y%m%d", errors="coerce")
+    keep = [c for c in ("dt", "open", "high", "low", "close", "volume", "amt")
+            if c in d.columns]
+    d = d[keep].dropna(subset=["dt", "close"]).sort_values("dt").reset_index(drop=True)
+    d.attrs["proxy"] = proxy
+    d.attrs["source"] = "data_hub/sw_index_daily"
+    return d if len(d) else None
+
+
+def futures_main_daily(symbol, start=None, end=None):
+    """期货主力连续日线 → DataFrame[dt,open,high,low,close,volume,oi]；失败 None
+
+    Args:
+        symbol: IF0 / AG0 / RB0（尾部 0 = 主力连续；纯字母会自动补 0）
+        start/end: YYYYMMDD 或 YYYY-MM-DD
+    """
+    mod = module()
+    if mod is None or not symbol:
+        return None
+    try:
+        with _quiet():
+            df = mod.get_data("futures_main_daily", symbol=str(symbol),
+                              start_date=start, end_date=end)
+    except Exception as e:                                       # noqa: BLE001
+        log("futures_main_daily(%s) 失败: %s" % (symbol, str(e)[:80]))
+        return None
+    if df is None or not hasattr(df, "columns") or len(df) == 0:
+        return None
+    d = df.rename(columns={"trade_date": "dt", "vol": "volume"})
+    d["dt"] = _pd().to_datetime(d["dt"], format="%Y%m%d", errors="coerce")
+    keep = [c for c in ("dt", "open", "high", "low", "close", "volume", "oi")
+            if c in d.columns]
+    d = d[keep].dropna(subset=["dt", "close"]).sort_values("dt").reset_index(drop=True)
+    d.attrs["source"] = "data_hub/futures_main_daily"
+    return d if len(d) else None
+
+
+def etf_dividend(ts_code):
+    """ETF 分红序列 → DataFrame[dt, cum_dividend, per_dividend]；失败 None
+
+    用于后复权因子：hfq_t = raw_t × ∏_{分红日≤t}(1 + 每份分红 / 除息前收盘)
+    从未分红的 ETF → None（不是失败）。
+    """
+    mod = module()
+    if mod is None or not ts_code:
+        return None
+    try:
+        with _quiet():
+            df = mod.get_data("etf_dividend", code=str(ts_code))
+    except Exception as e:                                       # noqa: BLE001
+        log("etf_dividend(%s) 失败: %s" % (ts_code, str(e)[:80]))
+        return None
+    if df is None or not hasattr(df, "columns") or len(df) == 0:
+        return None
+    d = df.rename(columns={"trade_date": "dt"})
+    d["dt"] = _pd().to_datetime(d["dt"], format="%Y%m%d", errors="coerce")
+    d = d.dropna(subset=["dt"]).sort_values("dt").reset_index(drop=True)
+    return d if len(d) else None
 
 
 def stock_name_map():

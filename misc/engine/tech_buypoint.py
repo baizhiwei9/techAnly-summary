@@ -202,9 +202,12 @@ def resolve_concept(name, cmap):
 def concept_members(ts_code):
     """概念成分股（带磁盘缓存，7天）
 
-    TODO(口径): data_hub `sector_members` 暂不支持概念成分（同花顺概念详情页是
-    ajax 动态加载，data_hub 侧实测返回空）→ 本函数**保持原链路**（tushare
-    ths_member），等 data_hub 补齐 ajax 方案后再切。
+    取数（2026-11-14 补齐缺口）：
+      ① data_hub `concept_members`（东财 b:BKxxxx，**按概念名映射 BK 码**）
+      ② 老链路兜底：tushare `ths_member`（原逻辑一行未改）
+
+    ⚠️ 同花顺概念（885xxx）与东财概念（BKxxxx）编码不同，data_hub 内部按名称映射；
+       名称差异（「半导体概念」vs「半导体」）已做去后缀 + 包含匹配。
     """
     import time as _t
     os.makedirs(THS_MEMBER_CACHE, exist_ok=True)
@@ -214,6 +217,27 @@ def concept_members(ts_code):
             return json.load(open(fp, encoding="utf-8"))
         except Exception:
             pass
+    # ① data_hub concept_members（概念名映射东财 BK 码）
+    try:
+        nm = ""
+        try:
+            for b in (DHB.sector_list("概念") or []):
+                if str(b.get("code")).split(".")[0] == str(ts_code).split(".")[0]:
+                    nm = str(b.get("name") or "")
+                    break
+        except Exception:
+            nm = ""
+        rows = DHB.concept_members(name=nm, ths_code=ts_code, kind="概念") if nm \
+            else DHB.concept_members(ths_code=ts_code, kind="概念")
+        if rows:
+            out = [[str(r["code"]), str(r.get("name", ""))] for r in rows]
+            json.dump(out, open(fp, "w", encoding="utf-8"), ensure_ascii=False)
+            log("[概念] %s 成分 %d 只 ← data_hub concept_members（东财）" % (ts_code, len(out)))
+            return out
+        log("[概念] %s data_hub concept_members 返回空 → 降级 tushare ths_member" % ts_code)
+    except Exception as e:
+        log("[概念] %s data_hub 失败 %s → 降级 tushare" % (ts_code, str(e)[:60]))
+    # ② 老链路兜底
     try:
         from tushare_init import ts_call
         m = ts_call("ths_member", ts_code=ts_code)
@@ -347,17 +371,19 @@ def _index_members_local(ts_code):
 
 
 def sector_index_daily(kind, code, name=""):
-    """板块指数日线：**data_hub sector_kline** 优先，取不到降级老链路
+    """板块指数日线：**data_hub 优先**，取不到降级老链路
 
-    取数（2026-11-13 统一）：
-      · industry 行业：data_hub `sector_kline(name=<行业名>, kind="行业")`
-            —— data_hub 侧是同花顺板块（881xxx）；老链路是申万 sw_daily（801xxx.SI）
+    取数（2026-11-14 更新）：
+      · industry 行业：data_hub `sw_index_daily(code=801xxx)` ← **申万口径，与传入代码一致**
+            取不到才降级 data_hub `sector_kline`（同花顺 881xxx，口径不同必须标注）
+            再降级老链路 sw_daily
       · concept  概念：data_hub `sector_kline(code=<885xxx>)`；老链路 tushare ths_daily
       · index    指数：走 tech_summary 的 DataHub 链路（本来就已经是 data_hub）
 
-    ⚠️ **已知口径变化（行业）**：申万行业 vs 同花顺行业**成分不同**，K 线根数会变
-        （半导体：申万 801081 约 2400 根 vs 同花顺 881121 约 1663 根）→
-        笔 / 中枢 / 背驰的判定结果会跟着变。这是**明示的口径切换**，日志里会打出来。
+    ⚠️ 历史坑（2026-11-13）：申万行业 vs 同花顺行业**成分不同**，K 线根数会变
+        （半导体：申万 801081 约 6492 根 vs 同花顺 881121 约 1663 根）→
+        笔 / 中枢 / 背驰的判定结果会跟着变。**2026-11-14 data_hub 补了
+        `sw_index_daily` 后，行业默认回到申万口径**，同花顺只在申万取不到时兜底。
 
     → DataFrame[dt, open, high, low, close, volume] 或 None
     """
@@ -370,8 +396,17 @@ def sector_index_daily(kind, code, name=""):
         # ② 老链路兜底
         return _sector_index_daily_local(kind, code, name)
     if kind == "industry":
-        # ① data_hub：申万行业名 → 同花顺板块码（data_hub 内含匹配，白酒Ⅱ→白酒 能对上）
         _nm = name or ""
+        # ① data_hub **申万口径**（801xxx，与本函数传入的 code 同一套编码）
+        if code and str(code).split(".")[0].startswith("801"):
+            ds = DHB.sw_index_daily(code)
+            if ds is not None and len(ds) >= 60:
+                proxy = bool(getattr(ds, "attrs", {}).get("proxy", False))
+                log("[板块] 行业「%s」(%s) ← data_hub sw_index_daily（申万口径）%d 根%s"
+                    % (_nm, code, len(ds), "  ⚠️代理口径" if proxy else ""))
+                return ds[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+            log("[板块] 行业 %s/%s 申万 data_hub 取不到 → 试同花顺 sector_kline" % (_nm, code))
+        # ② data_hub 同花顺口径（成分不同，必须标注）
         bc = DHB.board_code_by_name(_nm, kind="行业") if _nm else None
         d = DHB.sector_kline(code=bc, kind="行业") if bc else None
         if d is not None and len(d) >= 60:
@@ -380,7 +415,7 @@ def sector_index_daily(kind, code, name=""):
                 % (_nm, code, _nm, bc, len(d)))
             return d[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
         log("[板块] 行业 %s/%s data_hub 取不到 → 降级申万 sw_daily 老链路" % (_nm, code))
-        # ② 老链路兜底
+        # ③ 老链路兜底
         return _sector_index_daily_local(kind, code, name)
     if kind == "index":
         try:
