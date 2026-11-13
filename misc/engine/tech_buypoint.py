@@ -203,11 +203,11 @@ def concept_members(ts_code):
     """概念成分股（带磁盘缓存，7天）
 
     取数（2026-11-14 补齐缺口）：
-      ① data_hub `concept_members`（东财 b:BKxxxx，**按概念名映射 BK 码**）
-      ② 老链路兜底：tushare `ths_member`（原逻辑一行未改）
+      ① data_hub `concept_members`（**tushare `ths_member`**，按同花顺概念码 885xxx 直取）
+      ② 老链路兜底：tushare `ths_member`（原逻辑一行未改，与 ① 同源，仅差在缓存层）
 
-    ⚠️ 同花顺概念（885xxx）与东财概念（BKxxxx）编码不同，data_hub 内部按名称映射；
-       名称差异（「半导体概念」vs「半导体」）已做去后缀 + 包含匹配。
+    ⚠️ 数据源选择（2026-11-14 实测）：东财 push2 API 本机完全不可达；同花顺概念详情页
+       成分是 ajax 动态加载（直连 401）→ 概念成分统一用 tushare `ths_member`。
     """
     import time as _t
     os.makedirs(THS_MEMBER_CACHE, exist_ok=True)
@@ -217,7 +217,7 @@ def concept_members(ts_code):
             return json.load(open(fp, encoding="utf-8"))
         except Exception:
             pass
-    # ① data_hub concept_members（概念名映射东财 BK 码）
+    # ① data_hub concept_members（tushare ths_member，按同花顺概念码）
     try:
         nm = ""
         try:
@@ -232,7 +232,7 @@ def concept_members(ts_code):
         if rows:
             out = [[str(r["code"]), str(r.get("name", ""))] for r in rows]
             json.dump(out, open(fp, "w", encoding="utf-8"), ensure_ascii=False)
-            log("[概念] %s 成分 %d 只 ← data_hub concept_members（东财）" % (ts_code, len(out)))
+            log("[概念] %s 成分 %d 只 ← data_hub concept_members（tushare ths_member）" % (ts_code, len(out)))
             return out
         log("[概念] %s data_hub concept_members 返回空 → 降级 tushare ths_member" % ts_code)
     except Exception as e:

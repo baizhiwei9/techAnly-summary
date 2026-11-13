@@ -6,6 +6,12 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-14 04:27
+
+**fix: 概念成分股日志措辞改为 tushare ths_member（原写东财）**
+
+misc/engine/tech_buypoint.py：concept_members 走的是 tushare ths_member，不是东财；上一版日志/注释措辞写错，本次更正（逻辑无变化）。
+
 ## 2026-11-14 04:22
 
 **feat: 5 个缺口补齐 —— data_hub 新增 sw_index_daily/sector_spot/concept_members/futures_main_daily/etf_dividend**
