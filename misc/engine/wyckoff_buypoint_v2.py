@@ -71,6 +71,7 @@ import chan_ma_trend_v2 as M          # noqa: E402
 import tech_summary as TS             # noqa: E402
 import tech_buypoint as TB            # noqa: E402
 import smc_core as S                  # noqa: E402
+import dh_bridge as DHB               # noqa: E402  data_hub 取数桥（失败静默降级老链路）
 from tech_intraday_buypoint import (   # noqa: E402
     to_df, board_members, stock_kline, analyse_stock, stock_rank_key,
     weekly_buys, WEEK_BARS, STOCK_VWAP_SIGMA, QQ_ACCOUNT, _qq_target,
@@ -122,37 +123,105 @@ _THS_MAP = None
 
 
 def ths_index_map():
-    """同花顺行业名 → 881xxx.TI（缓存）"""
+    """同花顺行业名 → {'code': '881121', 'type': 'I'}（缓存）
+
+    取数（2026-11-13 统一）：**data_hub `sector_list("行业")`** 优先；
+    取不到降级老链路 tushare `ths_index`。
+    """
     global _THS_MAP
     if _THS_MAP is not None:
         return _THS_MAP
     p = os.path.join(WS, ".cache/ths_industry_map.json")
+
+    def _a_share(c):
+        """只认 A 股板块码（881xxx 行业 / 885xxx 概念）"""
+        c6 = str(c or "").split(".")[0]
+        return len(c6) == 6 and c6.isdigit() and c6[:3] in ("881", "885")
+
+    # ① data_hub 行业板块列表（**最准**：与 wyckoff_today 的板块清单同名同码）
+    m = {}
+    try:
+        rows = DHB.sector_list("行业")
+        for b in rows:
+            nm = str(b.get("name") or "").replace("(A股)", "").strip()
+            if nm and b.get("code"):
+                m.setdefault(nm, {"code": str(b["code"]), "type": "I"})
+        if m:
+            try:
+                json.dump(m, open(p, "w"), ensure_ascii=False)
+            except Exception:
+                pass
+            _THS_MAP = m
+            log("[行业] 指数表 ← data_hub sector_list %d 个" % len(m))
+            return m
+    except Exception as e:
+        log("[行业] data_hub sector_list 失败 %s → 降级缓存/tushare" % str(e)[:60])
+    # ② 缓存（可能是老 tushare ths_index 建的，混了全球行业/美股板块 → 只留 A 股板块码）
     try:
         if time.time() - os.path.getmtime(p) < 7 * 86400:
-            _THS_MAP = json.load(open(p, encoding="utf-8"))
-            return _THS_MAP
+            cached = json.load(open(p, encoding="utf-8"))
+            ok = {k: v for k, v in (cached or {}).items() if _a_share((v or {}).get("code"))}
+            if len(ok) >= 60:
+                _THS_MAP = ok
+                return _THS_MAP
+            log("[行业] 缓存行业表只有 %d 条 A 股板块码（旧表混了全球行业）→ 走 tushare 重建" % len(ok))
     except Exception:
         pass
+    # ③ 老链路兜底（tushare ths_index，只留 A 股板块码）
+    m = _ths_index_map_local()
+    _THS_MAP = m
+    return m
+
+
+def _ths_index_map_local():
+    """老链路兜底：tushare `ths_index`（原样保留）"""
     from tushare_init import ts_call
     idx = ts_call("ths_index")
     m = {}
+    def _a_share(c):
+        c6 = str(c or "").split(".")[0]
+        return len(c6) == 6 and c6.isdigit() and c6[:3] in ("881", "885")
     if idx is not None and len(idx):
         for _, r in idx.iterrows():
             tp = str(r.get("type") or "")
             if tp not in ("I", "N", ""):
                 continue
+            # 只收 A 股板块码：ths_index 里混了 1200+ 条全球行业/美股板块，
+            # 拿它们的码去取 A 股板块 K 线必然失败（2026-11-13 实测 865053.TI）
+            if not _a_share(r.get("ts_code")):
+                continue
             nm = str(r["name"]).replace("(A股)", "").strip()
             m.setdefault(nm, {"code": r["ts_code"], "type": tp})
-    try:
-        json.dump(m, open(p, "w"), ensure_ascii=False)
-    except Exception:
-        pass
-    _THS_MAP = m
     return m
 
 
 def ths_daily(code, start="20230101"):
-    """同花顺板块日线 → DataFrame[dt,open,high,low,close,volume]"""
+    """同花顺板块日线 → DataFrame[dt,open,high,low,close,volume]
+
+    取数（2026-11-13 统一）：**data_hub `sector_kline`** 优先，取不到降级 tushare ths_daily。
+    """
+    # ① data_hub
+    try:
+        d = DHB.sector_kline(code=code)
+        if d is not None and len(d) >= 60:
+            if start:
+                try:
+                    s = pd.to_datetime(str(start), format="%Y%m%d", errors="coerce")
+                    if pd.notna(s):
+                        d = d[d["dt"] >= s]
+                except Exception:
+                    pass
+            if len(d):
+                return d[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+        log("[行业] data_hub sector_kline(%s) 不足 → 降级 tushare ths_daily" % code)
+    except Exception as e:
+        log("[行业] data_hub sector_kline(%s) 失败 %s → 降级 tushare" % (code, str(e)[:60]))
+    # ② 老链路兜底
+    return _ths_daily_local(code, start)
+
+
+def _ths_daily_local(code, start="20230101"):
+    """老链路兜底：tushare `ths_daily`（原样保留）"""
     from tushare_init import ts_call
     d = ts_call("ths_daily", ts_code=code, start_date=start)
     if d is None or not len(d):
@@ -236,7 +305,25 @@ def ind_rank_key(r):
 
 # ═════════════════════ ③ 行业 → 个股 ═════════════════════
 def ths_members(code, tries=4):
-    """同花顺板块成分股（带重试：tushare 偶发返回空 = 被限流，不是真没成分）"""
+    """同花顺板块成分股
+
+    取数（2026-11-13 统一）：**data_hub `sector_members`（同花顺行业板块）** 优先；
+    取不到降级老链路 tushare `ths_member`（带重试：偶发返回空 = 被限流，不是真没成分）。
+    ⚠️ 概念板块 data_hub 取不到（ajax）→ 自动落到老链路。
+    """
+    # ① data_hub（行业板块能取到；概念返回空）
+    try:
+        mem = DHB.sector_members(code=code, kind="行业")
+        if mem:
+            return [{"code": m["code"], "name": m["name"]} for m in mem]
+    except Exception as e:
+        log("    [warn] data_hub sector_members(%s) 失败 %s → 降级 tushare" % (code, str(e)[:50]))
+    # ② 老链路兜底
+    return _ths_members_local(code, tries=tries)
+
+
+def _ths_members_local(code, tries=4):
+    """老链路兜底：tushare `ths_member`（原样保留）"""
     from tushare_init import ts_call
     m = None
     for i in range(tries):

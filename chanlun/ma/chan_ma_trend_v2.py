@@ -80,6 +80,12 @@ except Exception:
     _orig_gai = socket.getaddrinfo
     socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
+# data_hub 取数桥（纯适配层，失败一律返回 None → 自动降级 tushare 老链路）
+try:
+    import dh_bridge as _DHB
+except Exception:                                             # noqa: BLE001
+    _DHB = None
+
 # ── 参数（2026-11-08 大佬定稿：大级别只看 MA160，不要 MA320）──
 A0 = (5, 10, 20)          # 笔：MA5/MA10 双穿 MA20
 A1 = (20, 40, 80)         # 线段：MA20/MA40 双穿 MA80
@@ -632,7 +638,29 @@ def macd_state(d: pd.DataFrame) -> str:
 
 # ───────────── 数据 ─────────────
 def load_index(ts_code: str) -> pd.DataFrame | None:
+    """指数日线：**data_hub `index_daily`** 优先 → tushare `index_daily` → 本地缓存
+
+    取数（2026-11-13 统一）。返回 DataFrame[dt, open, high, low, close]（升序）。
+    """
     cache = os.path.join(WS, ".cache", "ma_trend_%s_d.csv" % ts_code.replace(".", "_"))
+    # ① data_hub
+    if _DHB is not None:
+        try:
+            d = _DHB.index_daily(ts_code, start="20150101")
+            if d is not None and len(d) > 200:
+                try:
+                    d.to_csv(cache, index=False)
+                except Exception:
+                    pass
+                return d[["dt", "open", "high", "low", "close"]]
+        except Exception:
+            pass
+    # ② 老链路兜底
+    return _load_index_local(ts_code, cache)
+
+
+def _load_index_local(ts_code: str, cache: str) -> pd.DataFrame | None:
+    """老链路兜底：tushare `index_daily` → 本地缓存（原样保留）"""
     try:
         import tushare_init as ti
         pro = ti.get_pro()

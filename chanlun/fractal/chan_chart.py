@@ -119,14 +119,24 @@ def chan_geometry(hb):
 # ─────────── 画图 ───────────
 def draw(name, level="h1", n=120, out=None, show_macd=True):
     if level == "h1":
-        # 直接用 minute_hub 取（要 volume；C.fetch_60 只返回 OHLC 四列）
-        import minute_hub as mh
-        df = mh.get_kline(C.IDX_SH[name], "60", n=400, kind="index",
-                          cache=True, cache_ttl_min=10)
-        if df is not None:
-            df = df.rename(columns={"day": "Date"})
-            if "volume" not in df.columns:
-                df["volume"] = 0.0
+        # ① data_hub `minute_bar`（要 volume；C.fetch_60 只返回 OHLC 四列）
+        df = None
+        try:
+            import dh_bridge as _DHB
+            d = _DHB.minute_bar(C.IDX_SH[name], freq="60", n=400, kind="index")
+            if d is not None and len(d) > 40:
+                df = d.rename(columns={"dt": "Date"})
+        except Exception:                                        # noqa: BLE001
+            df = None
+        # ② 老链路兜底：minute_hub（原样保留）
+        if df is None:
+            import minute_hub as mh
+            df = mh.get_kline(C.IDX_SH[name], "60", n=400, kind="index",
+                              cache=True, cache_ttl_min=10)
+            if df is not None:
+                df = df.rename(columns={"day": "Date"})
+                if "volume" not in df.columns:
+                    df["volume"] = 0.0
     else:
         df = C.fetch_daily(dict((x[0], x[1]) for x in C.IDX)[name])
         if df is not None:

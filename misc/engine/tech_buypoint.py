@@ -31,6 +31,11 @@
   python3 bin/tech_buypoint.py --target 传媒 --push       # 推飞书卡片
   python3 bin/tech_buypoint.py --target 传媒 --no-scan    # 只看板块指数，不扫成分股
   python3 bin/tech_buypoint.py --list-concepts 游戏        # 列出匹配的概念名
+
+取数（2026-11-13 统一）：日线 / 60m 分钟线优先走 DataHub
+  （`tech_summary.load_day` / `tech_summary.dh_minute`，即 optstack/data_hub 的
+  index_daily / stock_daily / minute_bar），DataHub 不可用时静默降级本机老链路
+  （tushare / core/datahub 三级 / core/minute_hub）。开关 `TECH_DATA_SOURCE=datahub|local`。
 """
 from __future__ import annotations
 
@@ -83,6 +88,7 @@ import chan_smc_index as C                    # noqa: E402
 import chan_ma_trend_v2 as M                  # noqa: E402
 import datahub as DH                          # noqa: E402
 import tech_summary as TS                     # noqa: E402
+import dh_bridge as DHB                       # noqa: E402  data_hub 取数桥（纯适配，失败自动降级）
 from tech_summary import (                    # noqa: E402
     ma20_state, rank_buys, best_buy, PRI_MARK, BUY_PRIORITY, MA20_UP_BARS,
 )  # noqa: F401
@@ -194,7 +200,12 @@ def resolve_concept(name, cmap):
 
 
 def concept_members(ts_code):
-    """概念成分股（带磁盘缓存，7天）"""
+    """概念成分股（带磁盘缓存，7天）
+
+    TODO(口径): data_hub `sector_members` 暂不支持概念成分（同花顺概念详情页是
+    ajax 动态加载，data_hub 侧实测返回空）→ 本函数**保持原链路**（tushare
+    ths_member），等 data_hub 补齐 ajax 方案后再切。
+    """
     import time as _t
     os.makedirs(THS_MEMBER_CACHE, exist_ok=True)
     fp = os.path.join(THS_MEMBER_CACHE, ts_code.replace(".", "_") + ".json")
@@ -241,11 +252,54 @@ def _ak_timeout(fn, *a, timeout=25, **k):
 
 
 def index_members(ts_code):
-    """指数成分股：中证官网（精确）→ tushare index_weight → 同花顺成份股概念
+    """指数成分股：**data_hub index_components** 优先，取不到降级老链路
+
+    取数（2026-11-13 统一）：
+      ① data_hub `index_components`（akshare index_stock_cons → csindex → tushare index_weight → web）
+      ② 老链路兜底（顺序原样保留）：中证官网 → tushare index_weight → 同花顺成份股概念
 
     ⚠️ 同花顺「中证500成份股」概念实际给的是 552 只（含大量非成分股），
        只能当最后兜底，不能当准；中证官网 index_stock_cons_csindex 是 500 只，才准。
+
+    ⚠️ 2026-11-13 实测坑：data_hub 的 akshare 分支用的是新浪 `index_stock_cons`，
+       中证500 只给 **425 只**（缺 75 只，2026-11 换过样本？），而中证官网 csindex 给 500 只。
+       少 75 只会让扫股直接漏掉一批，比「取不到」更危险 → **加成分数量校验**，
+       低于预期的 95% 就视为不可信，降级老链路（中证官网优先）。
     """
+    # ① data_hub（统一入口，内部已做多级降级）
+    try:
+        codes = DHB.index_components(ts_code)
+        if codes:
+            out = [[str(c), ""] for c in codes]
+            exp = IDX_EXPECT.get(str(ts_code).upper())
+            if exp and len(out) < exp * 0.98:
+                log("[指数] ⚠️ data_hub 只给 %d 只（预期 ~%d，缺 %d 只）→ 降级老链路（中证官网优先）"
+                    % (len(out), exp, exp - len(out)))
+            else:
+                log("[指数] data_hub index_components %d 只%s"
+                    % (len(out), "（预期 ~%d）" % exp if exp else ""))
+                return out
+        else:
+            log("[指数] data_hub index_components 返回空 → 降级老链路")
+    except Exception as e:
+        log("[指数] data_hub index_components 失败 %s → 降级老链路" % str(e)[:60])
+    return _index_members_local(ts_code)
+
+
+# 宽基指数成分股预期数量（用于校验 data_hub 返回是否缺斤少两；非宽基不校验）
+IDX_EXPECT = {
+    "000300.SH": 300,
+    "000905.SH": 500,
+    "000852.SH": 1000,
+    "000016.SH": 50,
+    "000688.SH": 50,
+    "399006.SZ": 100,
+    "399673.SZ": 50,
+}
+
+
+def _index_members_local(ts_code):
+    """老链路兜底：中证官网 → tushare index_weight → 同花顺成份股概念（原样保留）"""
     sym = str(ts_code).split(".")[0]
     # ① 中证官网（只有中证系指数有）
     try:
@@ -266,9 +320,16 @@ def index_members(ts_code):
     except Exception as e:
         log("[指数] 中证官网失败 %s" % str(e)[:60])
     # ② tushare index_weight
+    #   ⚠️ 2026-11-13 实测：不传日期 → 接口回全历史 6000 行（6.8~15.1s），
+    #      超过 ts_call 的 TS_TIMEOUT=8s → 被判 timeout 返回 None（看着像"接口不支持"）。
+    #      传 start_date/end_date(近 40 天) → 1~3s 返回月末快照，500/1000 只全对。
     try:
         from tushare_init import ts_call
-        m = ts_call("index_weight", index_code=ts_code)
+        import datetime as _dtm
+        _end = _dtm.date.today()
+        _st = (_end - _dtm.timedelta(days=40))
+        m = ts_call("index_weight", index_code=ts_code,
+                    start_date=_st.strftime("%Y%m%d"), end_date=_end.strftime("%Y%m%d"))
         if m is not None and len(m):
             d = m.sort_values("trade_date")
             last = str(d["trade_date"].iloc[-1])
@@ -286,10 +347,60 @@ def index_members(ts_code):
 
 
 def sector_index_daily(kind, code, name=""):
-    """板块指数日线：行业=申万 sw_daily / 概念=同花顺 ths_daily
+    """板块指数日线：**data_hub sector_kline** 优先，取不到降级老链路
+
+    取数（2026-11-13 统一）：
+      · industry 行业：data_hub `sector_kline(name=<行业名>, kind="行业")`
+            —— data_hub 侧是同花顺板块（881xxx）；老链路是申万 sw_daily（801xxx.SI）
+      · concept  概念：data_hub `sector_kline(code=<885xxx>)`；老链路 tushare ths_daily
+      · index    指数：走 tech_summary 的 DataHub 链路（本来就已经是 data_hub）
+
+    ⚠️ **已知口径变化（行业）**：申万行业 vs 同花顺行业**成分不同**，K 线根数会变
+        （半导体：申万 801081 约 2400 根 vs 同花顺 881121 约 1663 根）→
+        笔 / 中枢 / 背驰的判定结果会跟着变。这是**明示的口径切换**，日志里会打出来。
 
     → DataFrame[dt, open, high, low, close, volume] 或 None
     """
+    if kind == "concept":
+        # ① data_hub（同花顺板块 K 线，885xxx）
+        d = DHB.sector_kline(code=code, kind="概念")
+        if d is not None and len(d) >= 60:
+            log("[板块] 概念 %s ← data_hub sector_kline（同花顺口径）%d 根" % (code, len(d)))
+            return d[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+        # ② 老链路兜底
+        return _sector_index_daily_local(kind, code, name)
+    if kind == "industry":
+        # ① data_hub：申万行业名 → 同花顺板块码（data_hub 内含匹配，白酒Ⅱ→白酒 能对上）
+        _nm = name or ""
+        bc = DHB.board_code_by_name(_nm, kind="行业") if _nm else None
+        d = DHB.sector_kline(code=bc, kind="行业") if bc else None
+        if d is not None and len(d) >= 60:
+            log("[板块] ⚠️ 口径切换：申万行业「%s」(%s) → 同花顺行业「%s」(%s)，"
+                "%d 根日线（两者成分不同，K 线根数与笔/中枢数量会有差异）"
+                % (_nm, code, _nm, bc, len(d)))
+            return d[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+        log("[板块] 行业 %s/%s data_hub 取不到 → 降级申万 sw_daily 老链路" % (_nm, code))
+        # ② 老链路兜底
+        return _sector_index_daily_local(kind, code, name)
+    if kind == "index":
+        try:
+            # 指数自身日线：走 tech_summary 的数据链路（DataHub index_daily / 老链路）
+            tg = TS.resolve(code)
+            d = TS.load_day(tg)
+            if d is None or len(d) < 60:
+                return None
+            d = d.copy()
+            if "volume" not in d.columns:
+                d["volume"] = d.get("vol", 0.0)
+            return d[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+        except Exception as e:
+            log("[板块] 指数取数失败 %s %s: %s" % (kind, code, str(e)[:70]))
+            return None
+    return None
+
+
+def _sector_index_daily_local(kind, code, name=""):
+    """老链路兜底：行业=申万 sw_daily / 概念=同花顺 tushare ths_daily（原样保留）"""
     try:
         if kind == "concept":
             from tushare_init import ts_call
@@ -304,16 +415,6 @@ def sector_index_daily(kind, code, name=""):
             if "volume" not in d.columns:
                 d["volume"] = 0.0
             return d[["dt", "open", "high", "low", "close", "volume"]].dropna(subset=["close"]).reset_index(drop=True)
-        if kind == "index":
-            # 指数自身日线：走 tech_summary 的数据链路（tushare index_daily / datahub 三级）
-            tg = TS.resolve(code)
-            d = TS.load_day(tg)
-            if d is None or len(d) < 60:
-                return None
-            d = d.copy()
-            if "volume" not in d.columns:
-                d["volume"] = d.get("vol", 0.0)
-            return d[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
         if kind == "industry":
             from sw_daily import fetch_sw_daily
             d = fetch_sw_daily(code)
@@ -325,7 +426,7 @@ def sector_index_daily(kind, code, name=""):
                 d["volume"] = 0.0
             return d.sort_values("dt").reset_index(drop=True)
     except Exception as e:
-        log("[板块] 指数取数失败 %s %s: %s" % (kind, code, str(e)[:70]))
+        log("[板块] 老链路取数失败 %s %s: %s" % (kind, code, str(e)[:70]))
     return None
 
 
@@ -419,6 +520,7 @@ def resolve_industry(name, by_l1, by_l2, by_l3):
 
 
 def name_map():
+    """ts_code → 中文名（本地缓存优先 → **data_hub get_stock_list** → sw_member 兜底）"""
     m = {}
     if os.path.exists(NAMES_CSV):
         try:
@@ -432,6 +534,14 @@ def name_map():
             m.update(json.load(open(p, encoding="utf-8")))
         except Exception:
             pass
+    # data_hub 全市场名录（SQLite stock_basic 表，5224 行；取不到返回 {} 不抛）
+    try:
+        dh_names = DHB.stock_name_map()
+        if dh_names:
+            for c, n in dh_names.items():
+                m.setdefault(c, n)
+    except Exception as e:
+        log("[名称] data_hub 名录失败 %s" % str(e)[:60])
     # 兜底：sw_member_all.json 里已带每只股的 name（bootstrap_cache 一定会生成）
     if len(m) < 1000:
         try:
@@ -467,7 +577,27 @@ def _today_hist():
 
 
 def _fetch_full_daily(code, start="20200101"):
-    """从 tushare 拉全量日线（用于修补本地缓存缺口）→ DataFrame 或 None"""
+    """拉全量日线（用于修补本地缓存缺口）→ DataFrame 或 None
+
+    取数（2026-11-13 统一）：**data_hub `stock_daily`（adjust="" 不复权）** 优先。
+    ⚠️ 必须不复权 —— 下游要拿它和当日全市场快照（`.cache/market/<date>/daily_hist.csv`，
+       不复权）按日期对齐；前/后复权会让历史价与快照价错开，买点价格全歪。
+    取不到降级老链路 tushare `daily`（同样不复权）。
+    """
+    # ① data_hub（不复权）
+    try:
+        d = DHB.stock_daily(code, start=start, adjust="")
+        if d is not None and len(d):
+            log("[数据] %s ← data_hub stock_daily(不复权) %d 根" % (code, len(d)))
+            return d[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+    except Exception as e:
+        log("[数据] %s data_hub 失败 %s → 降级 tushare" % (code, str(e)[:60]))
+    # ② 老链路兜底（tushare 不复权）
+    return _fetch_full_daily_local(code, start)
+
+
+def _fetch_full_daily_local(code, start="20200101"):
+    """老链路兜底：tushare `daily`（不复权，原样保留）"""
     try:
         from tushare_init import ts_call
         d = ts_call("daily", ts_code=code, start_date=start)
@@ -510,7 +640,7 @@ def load_daily(code, hist):
                 d.to_csv(p, index=False)
             except Exception:
                 pass
-            log("[数据] %s 无本地缓存 → 已从 tushare 拉全量 %d 根" % (code, len(d)))
+            log("[数据] %s 无本地缓存 → 已拉全量并落盘 %d 根" % (code, len(d)))
         else:
             d = None
     add = hist[hist["ts_code"] == code] if hist is not None else None
@@ -601,11 +731,20 @@ def _sina_code(ts_code):
 def load_h1(ts_code, kind="stock"):
     """60 分钟线 → DataFrame[dt,open,high,low,close,volume] 或 None
 
+    取数统一（2026-11-13）：**优先走 DataHub `minute_bar`**（tech_summary.dh_minute），
+    不可用/过短才降级本机 minute_hub（老链路，行为不变）。
     ⚠️ minute_hub 磁盘缓存 key 不含 n：长度不够必须 cache=False 强制刷新
     """
     try:
-        import minute_hub as mh
         code = _sina_code(ts_code)
+        # ① DataHub 主路径
+        if TS.DATA_HUB_SOURCE != "local":
+            d = TS.dh_minute(code, freq="60", n=H1_N, kind=kind,
+                             min_bars=H1_MIN_BARS, ttl=20)
+            if d is not None and len(d) >= H1_MIN_BARS:
+                return d
+        # ② 本机 minute_hub 兜底（老链路）
+        import minute_hub as mh
         d = mh.get_kline(code, "60", n=H1_N, kind=kind, cache=True, cache_ttl_min=20)
         if d is None or len(d) < H1_MIN_BARS:
             d = mh.get_kline(code, "60", n=H1_N, kind=kind, cache=False)

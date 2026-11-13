@@ -6,6 +6,28 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-14 00:33
+
+**feat: 技术分析取数统一走 DataHub（新增 dh_bridge）**
+
+新增 misc/core/dh_bridge.py —— 技术分析库 → data_hub 取数桥（纯适配层，不含抓取逻辑）。
+
+- 惰性 import optstack/data_hub，失败静默返回 None/[]，绝不抛异常
+- 字段名对齐老口径（date/trade_date→dt、vol→volume），OHLCV 统一升序去重
+- 开关 TECH_DATA_SOURCE=datahub|local（默认 datahub，local 强制走老链路做对比/排障）
+- 覆盖：sector_list / sector_kline / sector_members / index_daily / stock_daily / etf_daily / minute_bar / index_components / stock_name_map
+
+改造的取数点（每个都保留原老链路做兜底）：
+- chanlun/fractal/chan_smc_index.py：fetch_daily 改 data_hub index_daily 优先，tushare 兜底
+- chanlun/fractal/chan_chart.py、chanlun/ma/mad_layer.py、chanlun/ma/chan_ma_trend_v2.py
+- smc/smc_data.py、wavelet/signal_monitor.py、misc/strategies/levels.py
+- misc/engine/tech_summary.py、tech_buypoint.py、tech_intraday_buypoint.py
+- misc/engine/wyckoff_buypoint_v2.py、wyckoff_today_fetch.py
+
+已知 5 个缺口仍未接 data_hub（老链路保留）：申万 801xxx 行业日线（data_hub 只有同花顺 881xxx）、
+概念板块成分股（data_hub 只支持行业）、板块实时快照（无 sector_spot）、期货主力连续（无该 data_type）、
+ETF 分红序列（后复权因子仍要 akshare）。
+
 ## 2026-11-13 09:00
 
 **feat(minute_hub): 新增 verify_sources() 四源逐源自检 + 命令行 verify 子命令**

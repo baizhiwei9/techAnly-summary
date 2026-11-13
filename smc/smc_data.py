@@ -42,6 +42,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from smc_config import CACHE, INSTRUMENTS
 
+# ────────────────────── 取数统一（2026-11-13）──────────────────────
+# 大佬定：「技术分析这个玩意你不要自己取数了，就用 DataHub 来取数」。
+# 本模块只保留 data_hub 取不到的（期货分钟/期货日线），其余走 dh_bridge。
+# 硬约束：data_hub 只读；每个点失败一律降级老链路，算法一行不改。
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "misc", "core"))
+    import dh_bridge as _DHB
+except Exception:                                              # noqa: BLE001
+    _DHB = None
+
 
 def _log(m):
     print(f"[smc_data] {m}", flush=True)
@@ -123,7 +133,12 @@ def _fut_min(code, per):
 
     ⚠️ 2026-10-08：新浪 `futures_zh_minute_sina` 偶发 RemoteDisconnected，
     旧代码只试一次就放弃 → 整轮不更新、还把上一次的陈旧数据当成新数据。
-    现在重试 2 次；仍失败则**不返回 None**（由 get() 回退到缓存）。"""
+    现在重试 2 次；仍失败则**不返回 None**（由 get() 回退到缓存）。
+
+    TODO(口径): data_hub `minute_bar(kind="fut")` 的 `_norm_code` 会把 "IF0"/"AG0"
+        这类主力连续码归一成 "shif0"（当成沪市股票），实测只回 6 根 →
+        **期货分钟暂不接 data_hub**，保持新浪 + minute_hub 原链路，等 data_hub 修期货码归一。
+    """
     last_err = None
     for attempt in range(2):
         try:
@@ -159,7 +174,28 @@ def _fut_30m(code):
 # ── 日线（补长历史，用于 day/week 级别回测与长周期 bias）─────
 def _etf_daily(code):
     """ETF/股票日线（长历史）。股票/ETF 交易级别=日线，需尽量长的历史。
-    tushare fund_daily（fund_daily 返回 vol 列）→ akshare fund_etf_hist_em 兜底。"""
+
+    取数（2026-11-13 统一）：**data_hub `etf_daily`** 优先 → 老链路兜底
+    （tushare fund_daily → akshare fund_etf_hist_em，原样保留）。
+    ⚠️ etf_daily 给 trade_date/vol 字段，需映射成 dt/volume；不复权（adjust=""），
+       与原 tushare fund_daily 口径一致，不影响 SMC 结构判定。
+    """
+    ts = code[2:] + (".SH" if code.startswith("sh") else ".SZ")
+    # ① data_hub（ETF 日线，不复权，口径与原 fund_daily 一致）
+    if _DHB is not None:
+        try:
+            d = _DHB.etf_daily(ts, start="20180101")
+            if d is not None and len(d) > 100:
+                _log(f"{code} 日线 ← data_hub etf_daily rows={len(d)}")
+                return d[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+        except Exception as e:                                 # noqa: BLE001
+            _log(f"{code} data_hub etf_daily 失败 {str(e)[:50]} → 降级老链路")
+    # ② 老链路兜底（原样保留）
+    return _etf_daily_local(code)
+
+
+def _etf_daily_local(code):
+    """老链路兜底：tushare fund_daily → akshare fund_etf_hist_em（原样保留）"""
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
     try:
         from tushare_init import ts_call
@@ -191,6 +227,12 @@ def _etf_daily(code):
 
 
 def _fut_daily(code):
+    """期货主力连续日线（新浪）。
+
+    TODO(口径): data_hub **没有期货主力连续日线**通用 data_type
+        （现有 futures_contract_daily 只认具体合约如 IF2609，futures_basis 是基差）→
+        保持 akshare `futures_zh_daily_sina` 原链路，等 data_hub 出主力连续接口再切。
+    """
     try:
         import akshare as ak
         d = _norm(ak.futures_zh_daily_sina(symbol=code), tcol="date")

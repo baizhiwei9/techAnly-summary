@@ -77,6 +77,7 @@ import tech_buypoint as TB        # noqa: E402
 import wyckoff_today_fetch as F   # noqa: E402
 import datafeed as DF             # noqa: E402  多源取数（K线走同花顺，东财只取成分股）
 import smc_core as S              # noqa: E402
+import dh_bridge as DHB           # noqa: E402  data_hub 取数桥（失败静默降级 datafeed）
 
 SIGN = "📎 来自 OpenClaw.Deepseek"
 def _qq_target():
@@ -107,8 +108,33 @@ def log(*a):
 
 # ════════════════════════ 取数 ════════════════════════
 def board_rows(kind):
-    """板块列表：同花顺优先（90 行业 / 294 概念），失败才退东财"""
+    """板块列表：**data_hub sector_list** 优先（同花顺 90 行业 / 294 概念）→ 失败退 datafeed"""
+    try:
+        rows = DHB.sector_list(kind)
+        if rows:
+            return [{"code": r["code"], "name": r["name"], "src": "ths"} for r in rows]
+        log("[板块] data_hub sector_list(%s) 返回空 → 降级 datafeed" % kind)
+    except Exception as e:
+        log("[板块] data_hub sector_list(%s) 失败 %s → 降级 datafeed" % (kind, str(e)[:60]))
     return DF.board_list(kind)
+
+
+def board_kline(code, src="ths", years_back=6):
+    """板块日线：**data_hub sector_kline** 优先（同花顺板块码 881xxx/885xxx）
+
+    → [{date,open,high,low,close,vol,amt}...] 升序（datafeed 老口径）
+    ⚠️ 东财 BKxxxx 码 data_hub 不认识 → 直接走 datafeed 老链路。
+    """
+    c6 = str(code or "").strip()
+    if len(c6) == 6 and c6.isdigit():
+        try:
+            rows = DHB.sector_kline_rows(code=c6, years_back=years_back)
+            if rows and len(rows) >= 60:
+                return rows
+            log("[板块] data_hub sector_kline(%s) 不足 → 降级 datafeed" % c6)
+        except Exception as e:
+            log("[板块] data_hub sector_kline(%s) 失败 %s → 降级 datafeed" % (c6, str(e)[:60]))
+    return DF.board_kline(code, src=src, years_back=years_back)
 
 
 def to_df(ks):
@@ -308,14 +334,38 @@ def _secid(code):
 
 
 def board_members(board_code, cap=60, name=None, kind="行业", src="dg"):
-    """板块成分股：只有东财有（同花顺 401 反爬），走 datafeed 的限流保护"""
+    """板块成分股：**data_hub sector_members（仅行业）** 优先 → 概念/失败退 datafeed
+
+    ⚠️ data_hub `sector_members` 只有同花顺**行业**口径能取到（概念板块详情页是
+       ajax 动态加载，实测返回空）→ 概念板块照旧走 datafeed（东财，需 DF_EASTMONEY=1）。
+    """
+    if str(kind) == "行业":
+        try:
+            mem = DHB.sector_members(code=board_code, name=name, kind="行业")
+            if mem:
+                out = [{"code": m["code"], "name": m["name"], "pct": None,
+                        "price": None, "amt": 0.0} for m in mem][:cap]
+                if out:
+                    return out
+            log("[成分] data_hub sector_members(%s) 空 → 降级 datafeed" % board_code)
+        except Exception as e:
+            log("[成分] data_hub sector_members(%s) 失败 %s → 降级 datafeed"
+                % (board_code, str(e)[:60]))
     return DF.board_members(board_code, cap=cap, name=name, kind=kind, src=src)
 
 
 def stock_kline(code, lmt=420):
-    """个股日线：同花顺优先，东财兜底"""
+    """个股日线：**data_hub（同花顺个股 K 线 / stock_daily）** 优先 → 失败退 datafeed"""
+    c6 = str(code or "").split(".")[0].strip()
+    if len(c6) == 6 and c6.isdigit():
+        try:
+            # 同花顺个股接口（与老 datafeed 同一口径，最可比）
+            rows = DHB.stock_kline_rows_ths(c6, lmt=lmt)
+            if rows and len(rows) >= 60:
+                return rows
+        except Exception as e:
+            log("[个股] data_hub 同花顺个股 %s 失败 %s → 降级 datafeed" % (c6, str(e)[:50]))
     return DF.stock_kline(code)
-    return ks
 
 
 def analyse_stock(code, name, ks):
@@ -602,7 +652,7 @@ def main():
                 continue
             n_scan += 1
             try:
-                ks = DF.board_kline(code, src=src, years_back=6)
+                ks = board_kline(code, src=src, years_back=6)
             except Exception as e:
                 log("  kline fail %s %s" % (name, str(e)[:50]))
                 continue

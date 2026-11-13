@@ -44,6 +44,12 @@ import pandas as pd
 
 from smc import smc_core as SMC   # 本地 SMC 唯一口径（FVG/OB/confirm_zone）
 
+# data_hub 取数桥（纯适配层，失败一律返回 None → 自动降级 tushare 老链路）
+try:
+    import dh_bridge as DHB
+except Exception:                                             # noqa: BLE001
+    DHB = None
+
 # 本地缠论分型引擎（唯一口径）：包含处理 / 分型 / 笔 / 中枢
 _CMS = os.path.join(WS, "chanlun", "multiscale")
 if not os.path.isdir(_CMS):                      # 兼容旧目录名
@@ -423,8 +429,28 @@ IDX = [("沪深300", "000300.SH"), ("中证500", "000905.SH"),
        ("中证1000", "000852.SH"), ("创业板指", "399006.SZ"), ("科创50", "000688.SH")]
 
 def fetch_daily(ts_code):
+    """指数日线：**data_hub `index_daily`** 优先 → tushare `index_daily` → 本地缓存
+
+    取数（2026-11-13 统一）。返回 DataFrame 带 dt/open/high/low/close/volume（升序）。
+    """
     cache = os.path.join(WS, ".cache/chan_daily", ts_code + ".csv")
     os.makedirs(os.path.dirname(cache), exist_ok=True)
+    # ① data_hub
+    if DHB is not None:
+        try:
+            d = DHB.index_daily(ts_code, start="20220101")
+            if d is not None and len(d) > 100:
+                try: d.to_csv(cache, index=False)
+                except Exception: pass
+                return d
+        except Exception as e:
+            print("[WARN] data_hub index_daily %s: %s" % (ts_code, str(e)[:70]), flush=True)
+    # ② 老链路兜底：tushare index_daily（带重试）
+    return _fetch_daily_local(ts_code, cache)
+
+
+def _fetch_daily_local(ts_code, cache):
+    """老链路兜底：tushare `index_daily` → 本地缓存（原样保留）"""
     import tushare_init as ti
     pro = ti.get_pro()
     for k in range(4):
@@ -466,7 +492,20 @@ IDX_SH = {"沪深300": "sh000300", "中证500": "sh000905", "中证1000": "sh000
 
 
 def fetch_60(sh_code):
-    """60分钟（小时线）——腾讯/新浪分钟K线，多级回退"""
+    """60分钟（小时线）——**data_hub `minute_bar`** 优先 → 腾讯/新浪分钟K线兜底
+
+    取数（2026-11-13 统一）。返回 DataFrame[dt, open, high, low, close]（升序）。
+    """
+    # ① data_hub（统一入口）
+    if DHB is not None:
+        try:
+            d = DHB.minute_bar(sh_code, freq="60", n=400, kind="index")
+            if d is not None and len(d) > 40:
+                return d[["dt", "open", "high", "low", "close"]].reset_index(drop=True)
+        except Exception as e:                                     # noqa: BLE001
+            print("[WARN] data_hub 60min %s: %s → 降级 minute_hub"
+                  % (sh_code, str(e)[:60]), flush=True)
+    # ② 老链路兜底（原样保留）
     try:
         sys.path.insert(0, os.path.join(WS, "bin"))
         import minute_hub as mh

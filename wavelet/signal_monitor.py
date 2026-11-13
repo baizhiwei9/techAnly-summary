@@ -31,6 +31,16 @@ STATE_DIR = os.path.join(os.path.dirname(__file__), 'state')
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATE_DIR, exist_ok=True)
 
+# ────────────────────── 取数统一（2026-11-13）──────────────────────
+# 大佬定：「技术分析这个玩意你不要自己取数了，就用 DataHub 来取数」。
+# 本模块 ETF 日线走 data_hub `etf_daily`；期货（日线/1h）data_hub 没有 → 保留原 akshare。
+# 硬约束：data_hub 只读；失败一律降级老链路，算法一行不改。
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "misc", "core"))
+    import dh_bridge as _DHB
+except Exception:                                              # noqa: BLE001
+    _DHB = None
+
 # ETF配置
 ETF_CONFIG = {
     '510300': {'name': '沪深300ETF', 'market': 'sh'},
@@ -81,7 +91,12 @@ FUTURES_PARAMS = {
 
 # ===== 数据获取 =====
 def fetch_etf_data(code, market='sh', days=500):
-    """获取ETF日线数据（优先本地parquet，否则AKShare）"""
+    """获取ETF日线数据（本地parquet新鲜则用 → **data_hub etf_daily** → AKShare 兜底）
+
+    取数（2026-11-13 统一）：ETF 日线优先走 data_hub `etf_daily`，
+    失败再降级 akshare `fund_etf_hist_sina`（原样保留）。
+    ⚠️ 原口径 `fund_etf_hist_sina` 不复权；data_hub etf_daily 同样不复权，一致。
+    """
     local_file = os.path.join(DATA_DIR, f'etf_{code}.parquet')
     
     # 检查本地文件是否最新
@@ -95,8 +110,21 @@ def fetch_etf_data(code, market='sh', days=500):
                 return df
         except:
             pass
+
+    # ① data_hub etf_daily
+    if _DHB is not None:
+        try:
+            ts = f'{code}.SH' if market == 'sh' else f'{code}.SZ'
+            d = _DHB.etf_daily(ts, lookback=int(days * 1.6) + 120)
+            if d is not None and len(d) > 60:
+                df = d.set_index('dt')[['open', 'high', 'low', 'close', 'volume']].sort_index()
+                df.to_parquet(local_file)
+                print(f'  [INFO] {code} 日线 ← data_hub etf_daily rows={len(df)}')
+                return df
+        except Exception as e:
+            print(f'  [WARN] data_hub etf_daily {code} 失败({str(e)[:50]}) → 降级 AKShare')
     
-    # 拉取新数据
+    # ② 老链路兜底：AKShare（原样保留）
     try:
         import akshare as ak
         symbol = f'{market}{code}'

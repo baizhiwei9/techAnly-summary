@@ -69,6 +69,12 @@ except Exception:
 
 import datahub as DH  # noqa: E402
 
+# data_hub 取数桥（纯适配层，失败一律返回 None → 自动降级新浪/东财老链路）
+try:
+    import dh_bridge as _DHB
+except Exception:                                             # noqa: BLE001
+    _DHB = None
+
 # ---------------- 参数（与历史实现一致） ----------------
 MA_SHORT, MA_MID, MA_LONG = 20, 40, 200
 SLOPE_LAG = 5
@@ -134,7 +140,26 @@ def _ak_hfq(sym, days):
     只要区间内发生除权除息，不复权价会出现跳空，短均线被瞬间压低/抬高，
     MAD 与「站上 MA40」的判定都会被污染。后复权把历史价格按累计因子放大，
     序列内部的相对位置才是真实收益关系。
+
+    取数（2026-11-13 统一）：**data_hub `stock_daily(adjust="hfq")`** 优先，
+    取不到降级 akshare（新浪 stock_zh_a_daily hfq → 东财 hist hfq）老链路。
     """
+    # ① data_hub 后复权（个股）
+    if _DHB is not None:
+        try:
+            code6 = sym[2:] if sym[:2].lower() in ("sh", "sz") else sym
+            ts = code6 + (".SH" if sym[:2].lower() == "sh" else ".SZ")
+            d = _DHB.stock_daily(ts, lookback=int(days), adjust="hfq")
+            if d is not None and len(d) >= 60:
+                return [[r.dt.strftime("%Y%m%d"), r.open, r.high, r.low, r.close, r.volume]
+                        for r in d.itertuples()]
+        except Exception:                                        # noqa: BLE001
+            pass
+    return _ak_hfq_local(sym, days)
+
+
+def _ak_hfq_local(sym, days):
+    """老链路兜底：akshare 新浪 hfq → 东财 hfq（原样保留）"""
     try:
         import akshare as ak
     except Exception:  # noqa: BLE001
@@ -196,22 +221,39 @@ def _etf_hfq(sym, days):
     —— 历史价保持原样，除息之后的价格按累计分红因子放大，除息跳空被抹平。
     窗口之前的分红事件缺少对应价格无法折算，会造成一个常数缩放；
     MAD 是均线比值、站上 MA40 是价格与均线比较，常数缩放不影响结论。
+
+    取数（2026-11-13 统一）：日线底料优先 **data_hub `etf_daily`**，取不到退 datahub 三级 web。
+    TODO(口径): ETF 分红因子（akshare `fund_etf_dividend_sina`）data_hub **没有对应
+        data_type**（etf_daily 只给行情，不给分红序列）→ 分红因子这一段保持原样直连新浪。
     """
     try:
         import akshare as ak
     except Exception:  # noqa: BLE001
         return None
-    try:
-        rows = DH.daily(sym, days=days, layers=("web",))
-    except Exception:  # noqa: BLE001
-        return None
-    if not rows:
-        return None
-    d = pd.DataFrame(rows, columns=["dt", "open", "high", "low", "close", "volume"])
-    d["dt"] = pd.to_datetime(d["dt"], format="%Y%m%d", errors="coerce")
-    for c in ("open", "high", "low", "close", "volume"):
-        d[c] = pd.to_numeric(d[c], errors="coerce")
-    d = d.dropna(subset=["close"]).sort_values("dt").reset_index(drop=True)
+    d = None
+    # ① data_hub ETF 日线
+    if _DHB is not None:
+        try:
+            code6 = sym[2:] if sym[:2].lower() in ("sh", "sz") else sym
+            ts = code6 + (".SH" if sym[:2].lower() == "sh" else ".SZ")
+            x = _DHB.etf_daily(ts, lookback=int(days))
+            if x is not None and len(x) >= 60:
+                d = x[["dt", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+        except Exception:                                        # noqa: BLE001
+            d = None
+    # ② 老链路兜底：datahub 三级 web
+    if d is None:
+        try:
+            rows = DH.daily(sym, days=days, layers=("web",))
+        except Exception:  # noqa: BLE001
+            rows = None
+        if not rows:
+            return None
+        d = pd.DataFrame(rows, columns=["dt", "open", "high", "low", "close", "volume"])
+        d["dt"] = pd.to_datetime(d["dt"], format="%Y%m%d", errors="coerce")
+        for c in ("open", "high", "low", "close", "volume"):
+            d[c] = pd.to_numeric(d[c], errors="coerce")
+        d = d.dropna(subset=["close"]).sort_values("dt").reset_index(drop=True)
     if len(d) < 60:
         return None
     try:

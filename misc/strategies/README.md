@@ -35,6 +35,9 @@
 1. **15 分钟数据只有约 320 根（腾讯分钟线上限）**，约 1 个月。
    跑结构够用（笔/中枢/MA160 都能算），但**不能拿它当长周期回测**。
 2. **周线不是单独取数**，是日线 `resample("W-FRI")` 合成，保留 volume。
+   **日线 / 15m / 60m 统一走 DataHub**（`optstack/data_hub` 的
+   `index_daily` / `stock_daily` / `minute_bar`），DataHub 不可用时静默降级
+   本机 `minute_hub` / `datahub` 三级；开关 `TECH_DATA_SOURCE=datahub|local`。
 3. **分型版的小时线买点规则不同**：日线认一/二/三买；小时线只认三买，
    一买须 MA10>MA20 金叉，二买一律不认（`bin/tech_summary.py` 的口径）。
    周线在 `bin/tech_intraday_buypoint.py` 里只认一买/二买，与日线三买是两套闸门。

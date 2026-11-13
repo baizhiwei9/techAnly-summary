@@ -48,6 +48,13 @@ except Exception as _e:      # pragma: no cover
     THS = None
     print("[wyckoff_today] ths_hub 不可用: %s" % _e, file=sys.stderr, flush=True)
 
+# data_hub 取数桥（纯适配层，失败一律返回空 → 自动降级 ths_hub 老链路）
+try:
+    import dh_bridge as DHB
+except Exception as _e:      # pragma: no cover
+    DHB = None
+    print("[wyckoff_today] dh_bridge 不可用: %s" % _e, file=sys.stderr, flush=True)
+
 # 同花顺 realhead 快照（板块实时/收盘快照，替代东财 clist）
 _REALHEAD = "https://d.10jqka.com.cn/v6/realhead/48_%s/defer/last.js"
 _H = {"User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -72,6 +79,10 @@ def _quote(code):
         10=现价 6=昨收 7=今开 8=最高 9=最低 13=成交量 19=成交额 199112=涨跌幅%
     ⚠️ 主力净流入(netmain)、上涨/下跌/平家数(up/dn/n) 同花顺该接口没有 →
        置 0 并在注释写明；当前无调用方消费这些字段（只有 f12/f14 被用到）。
+
+    TODO(口径): data_hub **没有板块实时快照** data_type（sector_kline 只给日 K，
+        逐板块拉 90 次 K 线比这个单请求快照重 7 倍，且盘中会拿到未完结 bar）→
+        本函数保留同花顺 realhead 直连，等 data_hub 出 sector_spot 再切。
     """
     import requests
     import re
@@ -109,10 +120,21 @@ def board_list(fs, with_quotes=False):
             netmain,up,dn,n, f2,f3,f5,f6,f15,f16,f17}]
       · 无快照时 pct1d/price… 为 None，f2/f3/f5/f6/f15/f16/f17 不出现（与东财「缺字段」一致）
     """
-    if THS is None:
-        raise RuntimeError("ths_hub 不可用，无法取板块列表")
     kind = "概念" if "t:3" in str(fs).replace(" ", "") else "行业"
-    rows = THS.board_list(kind)
+    # ① data_hub sector_list（同花顺板块列表）
+    rows = []
+    if DHB is not None:
+        try:
+            rows = DHB.sector_list(kind)
+        except Exception as _e:
+            print("[wyckoff_today] data_hub sector_list(%s) 失败 %s → 降级 ths_hub"
+                  % (kind, str(_e)[:60]), file=sys.stderr, flush=True)
+            rows = []
+    # ② 老链路兜底：ths_hub
+    if not rows:
+        if THS is None:
+            raise RuntimeError("板块列表取不到（data_hub + ths_hub 都不可用）")
+        rows = THS.board_list(kind)
     out = []
     for b in rows:
         code, name = b.get("code"), b.get("name")
@@ -144,16 +166,28 @@ def kline(code, lmt=140):
 
     code: 同花顺板块码（881xxx 行业 / 885xxx 概念）
     ⚠️ 防护：东财 BKxxxx 这类非 6 位数字码直接返回 []（不抛异常，避免中断整条链）
+
+    取数（2026-11-13 统一）：**data_hub `sector_kline`** 优先，取不到降级 ths_hub 老链路。
     """
     code = str(code or "").strip()
     if not (len(code) == 6 and code.isdigit()):
         print("[wyckoff_today] 跳过非板块码 %r（东财 BK 码同花顺不支持）" % code,
               file=sys.stderr, flush=True)
         return []
-    if THS is None:
-        raise RuntimeError("ths_hub 不可用，无法取板块 K 线")
     # 交易日 ≈ 244/年；多取一年保证足够根数
     years_back = max(2, int((lmt or 140) / 244) + 2)
+    # ① data_hub 板块日线
+    if DHB is not None:
+        try:
+            rows = DHB.sector_kline_rows(code=code, years_back=years_back, lmt=lmt)
+            if rows:
+                return rows
+        except Exception as _e:
+            print("[wyckoff_today] data_hub sector_kline(%s) 失败 %s → 降级 ths_hub"
+                  % (code, str(_e)[:60]), file=sys.stderr, flush=True)
+    # ② 老链路兜底：ths_hub
+    if THS is None:
+        raise RuntimeError("ths_hub 不可用，无法取板块 K 线")
     ks = THS.board_kline(code, years_back=years_back)
     if not ks:
         return []

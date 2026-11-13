@@ -5,7 +5,9 @@
 五套口径里，①分型版 ②均线版 ③SMC ④VWAP 都是「喂什么级别的 K 线就算什么级别」，
 公式本身与周期无关。所以「按参数切级别」只做三件事：
 
-  1) 取数：m15/hour 走 minute_hub（腾讯→新浪→百度），日线走 datahub 三级灾备；
+  1) 取数：**日线/分钟线统一走 DataHub**（`optstack/data_hub`：index_daily /
+     stock_daily / minute_bar）；DataHub 不可用时静默降级本机老链路
+     （minute_hub / datahub 三级）—— 本仓库会发布到公开仓库，别的机器没有 optstack；
   2) 周线：由日线 resample(W-FRI) 合成（多级别分析不单独取周线数据）；
   3) 标签：级别名、新鲜度阈值、报告标题随之切换。
 
@@ -110,9 +112,16 @@ def load(target: str, level: str, n: int = 320):
         d = resample_week(TS.load_day(tg))
     else:  # m15
         kind = "index" if tg["kind"] == "index" else "stock"
-        d = MH.get_kline(tg["sina"], "15", n=n, kind=kind, cache=True, cache_ttl_min=10)
+        d = None
+        # ① DataHub 主路径（统一取数入口，2026-11-13）
+        if TS.DATA_HUB_SOURCE != "local":
+            d = TS.dh_minute(tg["sina"], freq="15", n=n, kind=kind,
+                             min_bars=MIN_BARS["m15"], ttl=10)
+        # ② 本机 minute_hub 兜底（老链路）
         if d is None or len(d) < MIN_BARS["m15"]:
-            d = MH.get_kline(tg["sina"], "15", n=n, kind=kind, cache=False)
+            d = MH.get_kline(tg["sina"], "15", n=n, kind=kind, cache=True, cache_ttl_min=10)
+            if d is None or len(d) < MIN_BARS["m15"]:
+                d = MH.get_kline(tg["sina"], "15", n=n, kind=kind, cache=False)
         if d is None:
             raise RuntimeError("15分钟数据获取失败（%s）" % tg["sina"])
 

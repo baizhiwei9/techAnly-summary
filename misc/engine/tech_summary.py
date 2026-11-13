@@ -2,6 +2,15 @@
 # -*- coding: utf-8 -*-
 """技术分析汇总 · 单一标的四层合一（日线 + 小时线）· 报告 + 双图 + 飞书推送
 =====================================================================
+取数（2026-11-13 统一）：**日线 / 分钟线一律优先走 DataHub**
+  · 指数日线 `get_data("index_daily", ts_code=...)`
+  · 个股日线 `get_data("stock_daily", ts_code=...)`
+  · 分钟线   `get_data("minute_bar", code="sh000905", freq="60"/"15", n=...)`
+  DataHub 根目录：`DATA_HUB_PATH` > `${WS}/optstack` > 向上探测；
+  import 失败 / 返回空 / 根数过短 → 静默降级本机老链路（`_load_day_local` /
+  `_load_h1_local`：tushare index_daily / datahub 三级 / minute_hub）。
+  开关：`TECH_DATA_SOURCE=datahub|local`（默认 datahub，local 强制走老链路）。
+
 把本机四套技术分析口径一次性跑完并出图（纯程序，0 token）：
 
   ① 缠论·分型版   （包含处理→分型→笔→中枢→背驰；日线认一二三买；小时线只认三买 及 一买+金叉）
@@ -93,6 +102,12 @@ import smc_core as S                # SMC FVG/OB/VWAP  # noqa: E402
 import datahub as DH                # 股票/指数三级日线兜底  # noqa: E402
 from chan_chart import chan_geometry  # 笔/分型几何（与画图口径一致）  # noqa: E402
 
+# data_hub 取数桥（纯适配层：只取名称/日线，失败一律返回空 → 静默降级老链路）
+try:
+    import dh_bridge as _dhb
+except Exception:                                             # noqa: BLE001
+    _dhb = None
+
 OUT_DIR = os.path.join(WS, ".cache/charts")
 RED, GRN, BLUE, ORANGE = "#d62728", "#2ca02c", "#1f4e79", "#e67e22"
 NAME_CACHE = os.path.join(WS, ".cache/tech_stock_names.json")
@@ -175,6 +190,20 @@ def stock_name(ts_code):
         m = {}
     if ts_code in m:
         return m[ts_code]
+    # ① data_hub 全市场名录（SQLite stock_basic 表；取不到返回 '' 不抛）
+    try:
+        nm = _dhb.stock_name(ts_code) if _dhb is not None else ""
+        if nm:
+            m[ts_code] = nm
+            try:
+                os.makedirs(os.path.dirname(NAME_CACHE), exist_ok=True)
+                json.dump(m, open(NAME_CACHE, "w", encoding="utf-8"), ensure_ascii=False)
+            except Exception:
+                pass
+            return nm
+    except Exception:
+        pass
+    # ② 老链路兜底：tushare stock_basic
     try:
         import tushare_init as ti
         df = ti.get_pro().stock_basic(ts_code=ts_code, fields="ts_code,name")
@@ -214,6 +243,245 @@ def resolve(target):
 
 
 # ══════════════════════════ 数据 ══════════════════════════
+# ── 取数入口（2026-11-13 统一）：日线/分钟线一律优先走 DataHub ──────────────
+#   大佬原话：「techAnly 这个玩意你不要取数了，你就用 DataHub 来取数」
+#   · 默认 TECH_DATA_SOURCE=datahub：index_daily / stock_daily / minute_bar
+#   · TECH_DATA_SOURCE=local：走本机老链路（tushare index_daily / datahub 三级 /
+#     minute_hub），方便对比与排障
+#   · DataHub 路径：DATA_HUB_PATH > ${WS}/optstack > 向上探测 optstack/data_hub
+#   · import 失败/返回空/过短 → 静默降级到本机老链路（本仓库会发布到公开仓库，
+#     别的机器没有 optstack，降级后行为与改造前完全一致）
+DATA_HUB_SOURCE = os.environ.get("TECH_DATA_SOURCE", "datahub").strip().lower()
+if DATA_HUB_SOURCE not in ("datahub", "local"):
+    print("[取数] TECH_DATA_SOURCE=%r 不认识，按 datahub 处理" % DATA_HUB_SOURCE,
+          file=sys.stderr, flush=True)
+    DATA_HUB_SOURCE = "datahub"
+
+_DH_MOD = None          # None=未尝试；False=不可用；模块=已加载
+
+
+def _dh_log(msg):
+    print("[取数·data_hub] %s" % msg, file=sys.stderr, flush=True)
+
+
+def _dh_candidates():
+    """DataHub 根目录候选（含 data_hub 包的那一层）"""
+    out = []
+    env = os.environ.get("DATA_HUB_PATH")
+    if env:
+        out.append(os.path.abspath(os.path.expanduser(env)))
+    out.append(os.path.join(WS, "optstack"))
+    out.append(WS)
+    d = WS
+    for _ in range(5):
+        nd = os.path.dirname(d)
+        if nd == d:
+            break
+        d = nd
+        out.append(os.path.join(d, "optstack"))
+        out.append(d)
+    return out
+
+
+def dh_module():
+    """惰性加载 DataHub；不可用返回 None（只打一行日志，绝不抛异常）"""
+    global _DH_MOD
+    if _DH_MOD is not None:
+        return _DH_MOD or None
+    if DATA_HUB_SOURCE != "datahub":
+        _DH_MOD = False
+        return None
+    for base in _dh_candidates():
+        if not os.path.isdir(os.path.join(base, "data_hub")):
+            continue
+        try:
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            import importlib
+            mod = importlib.import_module("data_hub")
+            if not hasattr(mod, "get_data"):
+                continue
+            # data_hub 的 minute_bar 模块顶层会把 getaddrinfo 改成「一刀切 IPv4」。
+            # 本机有 misc/core/net_guard_hook.pth 兜底（会拦掉这种赋值），这里再
+            # 幂等装一次 net_guard，保证没有 .pth 钩子的环境也保住 IPv6 白名单出口。
+            try:
+                from net_guard import install as _ni
+                _ni()
+            except Exception:
+                pass
+            _DH_MOD = mod
+            _dh_log("已加载 %s" % os.path.join(base, "data_hub"))
+            return mod
+        except Exception as e:                                  # noqa: BLE001
+            _dh_log("加载失败(%s): %s" % (base, str(e)[:90]))
+    _DH_MOD = False
+    _dh_log("不可用，降级本机取数链路（DATA_HUB_PATH=%s）"
+            % os.environ.get("DATA_HUB_PATH", "-"))
+    return None
+
+
+def _dh_is_index(ts, kind="stock"):
+    """判断 ts_code 到底是「指数」还是「股票」（DataHub 选 index_daily / stock_daily 用）
+
+    ⚠️ 2026-11-13 实测：`resolve("600519.SH")` 会把它判成 kind=index
+       （因为 `datahub.is_index()` 是「6位+.SH/.SZ」全匹配，分不出个股），
+       以前走 C.fetch_daily 失败后才落到 datahub 三级，勉强能用；
+       现在如果直接按 kind 走 index_daily，就会拿指数接口去取个股。
+       这里按代码段做一次硬判断，判不出来才退回 kind。
+
+        SH 000xxx/999xxx → 指数（上证系列）｜ SH 6xxxxx/5xxxxx → 个股/ETF
+        SZ 399xxx        → 指数         ｜ SZ 000/002/300 → 个股
+        BJ 899xxx        → 指数
+    """
+    s = str(ts).strip().upper()
+    if s in set(IDX_TS.values()):
+        return True
+    num, _, mkt = s.partition(".")
+    if len(num) != 6 or not num.isdigit():
+        return kind == "index"
+    if mkt == "SH":
+        if num.startswith(("000", "999")):
+            return True
+        if num.startswith(("6", "5")):
+            return False
+        return kind == "index"
+    if mkt == "SZ":
+        if num.startswith(("399", "395")):
+            return True
+        if num.startswith(("000", "001", "002", "003", "300", "301")):
+            return False
+        return kind == "index"
+    if mkt == "BJ":
+        return num.startswith("899") or kind == "index"
+    return kind == "index"
+
+
+def _dh_norm_daily(d):
+    """DataHub 日线 → [dt, open, high, low, close, volume] 升序"""
+    if d is None or not hasattr(d, "columns") or len(d) == 0:
+        return None
+    d = d.copy()
+    for c in ("trade_date", "date", "day", "dt"):
+        if c in d.columns and "dt" not in d.columns:
+            d = d.rename(columns={c: "dt"})
+    if "dt" not in d.columns:
+        return None
+    s = d["dt"].astype(str).str.replace("-", "", regex=False).str[:8]
+    d["dt"] = pd.to_datetime(s, format="%Y%m%d", errors="coerce")
+    if "volume" not in d.columns:
+        d["volume"] = d["vol"] if "vol" in d.columns else 0.0
+    for c in ("open", "high", "low", "close", "volume"):
+        if c not in d.columns:
+            d[c] = 0.0
+        d[c] = pd.to_numeric(d[c], errors="coerce")
+    d = d[["dt", "open", "high", "low", "close", "volume"]]
+    d = d.dropna(subset=["dt", "close"]).sort_values("dt").drop_duplicates("dt")
+    return d.reset_index(drop=True)
+
+
+def dh_daily(ts_code, kind="stock", days=1200):
+    """DataHub 日线：指数 index_daily / 个股 stock_daily → 归一化 df 或 None
+
+    ⚠️ 复权口径（2026-11-13 实测）：DataHub 的 stock_daily 各源口径不一致 ——
+       akshare 源走 `stock_zh_a_hist(adjust="qfq")`（前复权），tushare 源走
+       `pro.daily`（**不复权**）。老链路 `core/datahub.py` 的 tushare 层是
+       自己用 adj_factor 算前复权的，所以两者历史价可能有差（茅台实测最大 9.7%，
+       最新价一致）。这里显式传 `adjust="qfq"` 表达意图（akshare 认，tushare 忽略），
+       并把实际命中源打进日志；需要严格前复权时设 `TECH_DATAHUB_REQUIRE_QFQ=1`，
+       不复权的数据会被判为不可用 → 降级本机老链路（保复权口径）。
+    """
+    mod = dh_module()
+    if mod is None:
+        return None
+    kind = "index" if _dh_is_index(ts_code, kind) else "stock"
+    dtype = "index_daily" if kind == "index" else "stock_daily"
+    end = datetime.now().strftime("%Y%m%d")
+    start = (pd.Timestamp(end) - pd.Timedelta(days=int(days * 1.7) + 30)).strftime("%Y%m%d")
+    kw = dict(ts_code=ts_code, start_date=start, end_date=end)
+    if kind != "index":
+        kw["adjust"] = "qfq"
+    src = ""
+    try:
+        if hasattr(mod, "get_data_result"):
+            res = mod.get_data_result(dtype, **kw)
+            raw = res.data if getattr(res, "success", False) else None
+            src = "%s/tier%s" % (getattr(res, "source", "?"), getattr(res, "source_tier", "?"))
+            api = (getattr(res, "meta", None) or {}).get("api", "")
+            if api:
+                src += "/" + str(api)
+        else:
+            raw = mod.get_data(dtype, **kw)
+    except Exception as e:                                      # noqa: BLE001
+        _dh_log("%s %s 失败: %s" % (dtype, ts_code, str(e)[:90]))
+        return None
+    d = _dh_norm_daily(raw)
+    if d is None or len(d) == 0:
+        _dh_log("%s %s 返回空" % (dtype, ts_code))
+        return None
+    _dh_log("%s %s rows=%d %s→%s%s" % (dtype, ts_code, len(d),
+                                       d["dt"].iloc[0].date(), d["dt"].iloc[-1].date(),
+                                       (" 源=%s" % src) if src else ""))
+    # 个股复权口径守卫：tushare 的 pro.daily 是不复权，与老链路（前复权）不一致
+    if (kind != "index" and os.environ.get("TECH_DATAHUB_REQUIRE_QFQ", "0") == "1"
+            and "/daily" in src):
+        _dh_log("stock_daily 命中不复权源（%s），按 TECH_DATAHUB_REQUIRE_QFQ=1 判为不可用" % src)
+        return None
+    return d
+
+
+def _dh_norm_minute(m):
+    """DataHub 分钟线 → [dt, open, high, low, close, volume] 升序"""
+    if m is None or not hasattr(m, "columns") or len(m) == 0:
+        return None
+    d = m.copy()
+    for c in ("datetime", "day", "date", "t", "dt"):
+        if c in d.columns and "dt" not in d.columns:
+            d = d.rename(columns={c: "dt"})
+    if "dt" not in d.columns:
+        return None
+    d["dt"] = pd.to_datetime(d["dt"], errors="coerce")
+    if "volume" not in d.columns:
+        d["volume"] = d["vol"] if "vol" in d.columns else 0.0
+    for c in ("open", "high", "low", "close", "volume"):
+        if c not in d.columns:
+            d[c] = 0.0
+        d[c] = pd.to_numeric(d[c], errors="coerce")
+    d = d[["dt", "open", "high", "low", "close", "volume"]]
+    d = d.dropna(subset=["dt", "close"]).sort_values("dt").drop_duplicates("dt")
+    return d.reset_index(drop=True)
+
+
+def dh_minute(code, freq="60", n=400, kind="auto", min_bars=120, ttl=20):
+    """DataHub 分钟线：minute_bar → 归一化 df 或 None
+
+    ⚠️ 保留老链路「长度不够就重新取一次（不读缓存）」的行为：
+       DataHub 内部同样有磁盘缓存（key 不含 n），命中短缓存时要强制刷新。
+    """
+    mod = dh_module()
+    if mod is None:
+        return None
+    for cache in (True, False):
+        try:
+            raw = mod.get_data("minute_bar", code=code, freq=str(freq), n=n,
+                               kind=kind, cache=cache, cache_ttl_min=(ttl if cache else 0))
+        except Exception as e:                                  # noqa: BLE001
+            _dh_log("minute_bar %s/%s 失败: %s" % (code, freq, str(e)[:90]))
+            raw = None
+        d = _dh_norm_minute(raw)
+        if d is not None and len(d) >= min_bars:
+            _dh_log("minute_bar %s freq=%s rows=%d %s→%s%s"
+                    % (code, freq, len(d), d["dt"].iloc[0], d["dt"].iloc[-1],
+                       "" if cache else "（强制刷新）"))
+            return d
+        if cache:
+            _dh_log("minute_bar %s freq=%s 缓存命中但过短(%d 根 < %d) → 强制刷新"
+                    % (code, freq, 0 if d is None else len(d), min_bars))
+        if not cache:
+            _dh_log("minute_bar %s freq=%s 数据不足(%d 根)"
+                    % (code, freq, 0 if d is None else len(d)))
+    return None
+
+
 def _rows_to_df(rows):
     if not rows:
         return None
@@ -224,9 +492,9 @@ def _rows_to_df(rows):
     return d.dropna(subset=["close"]).sort_values("dt").reset_index(drop=True)
 
 
-def load_day(tg):
-    """日线：指数先走 tushare index_daily（chan_smc_index 缓存），失败或过短则 datahub 三级兜底；
-    股票直接走 datahub 三级灾备"""
+def _load_day_local(tg):
+    """本机老链路（私有兜底）：指数 tushare index_daily（chan_smc_index 缓存）→ datahub 三级；
+    股票直接 datahub 三级灾备。仅在 DataHub 不可用/数据过短时调用。"""
     if tg["kind"] == "index" and tg["ts"] in set(IDX_TS.values()):
         df = C.fetch_daily(tg["ts"])
         if df is not None and len(df) >= 200:
@@ -261,8 +529,29 @@ def load_day(tg):
     return d
 
 
-def load_h1(tg, n=400):
-    """小时线 60m：minute_hub（带 volume）
+def load_day(tg):
+    """日线（统一入口，2026-11-13 改）：**优先走 DataHub**
+
+    指数 → `get_data("index_daily", ts_code=...)`
+    个股 → `get_data("stock_daily", ts_code=...)`
+    统一归一化成 [dt, open, high, low, close, volume]（dt 为 datetime 升序）。
+
+    DataHub 不可用 / 返回空 / 根数 < 200 时，静默降级 `_load_day_local`（老链路）。
+    环境变量 `TECH_DATA_SOURCE=local` 可强制走老链路（对比/排障用）。
+    """
+    if DATA_HUB_SOURCE != "local":
+        # 用 _dh_is_index 硬判（tg["kind"] 对 "600519.SH" 这类写法会误判成 index）
+        d = dh_daily(tg["ts"], tg["kind"])
+        if d is not None and len(d) >= 200:
+            _dh_log("日线命中：%s %d 根（末根 %s）→ DataHub"
+                    % (tg["ts"], len(d), d["dt"].iloc[-1].date()))
+            return d
+        _dh_log("日线 DataHub 不可用/过短 → 降级本机链路")
+    return _load_day_local(tg)
+
+
+def _load_h1_local(tg, n=400):
+    """本机老链路（私有兜底）：minute_hub（带 volume）
 
     ⚠️ minute_hub 的磁盘缓存 key **不含 n**：之前用 n=60 取过一次，
        n=400 时会直接返回那份 60 根的旧缓存 → 误判「数据不足」。
@@ -280,6 +569,23 @@ def load_h1(tg, n=400):
     if "volume" not in d.columns:
         d["volume"] = 0.0
     return d[["dt", "open", "high", "low", "close", "volume"]].sort_values("dt").reset_index(drop=True)
+
+
+def load_h1(tg, n=400):
+    """小时线 60m（统一入口，2026-11-13 改）：**优先走 DataHub `minute_bar`**
+
+    保留老行为：长度不够时强制刷新再取一次；仍不够则降级 `_load_h1_local`。
+    环境变量 `TECH_DATA_SOURCE=local` 可强制走老链路。
+    """
+    if DATA_HUB_SOURCE != "local":
+        kd = "index" if tg["kind"] == "index" else "stock"
+        d = dh_minute(tg["sina"], freq="60", n=n, kind=kd, min_bars=120, ttl=10)
+        if d is not None and len(d) >= 120:
+            _dh_log("小时线命中：%s %d 根（末根 %s）→ DataHub"
+                    % (tg["ts"], len(d), d["dt"].iloc[-1]))
+            return d
+        _dh_log("小时线 DataHub 不可用/过短 → 降级本机链路")
+    return _load_h1_local(tg, n=n)
 
 
 # ══════════════════════════ 四层计算 ══════════════════════════
