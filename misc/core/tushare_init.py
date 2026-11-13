@@ -131,7 +131,11 @@ def _age(df, asof):
 #   原来 ts_call 里 `getattr(pro, api)(**kw)` **没有超时**：
 #   网络卡住就无限阻塞（代理 + 直连各卡一次 = 两个都等死），上层只能干等。
 #   → 每个调用包一层线程 + join(timeout)，超时立刻放弃，交给上层降级到下一层 API。
-TS_TIMEOUT = float(os.environ.get("TS_TIMEOUT", "8"))
+# ⚠️ 2026-11-13 大佬定：8s → 50s（方案 A）
+#   实测代理端全市场 trade_date 接口要 11~60s（daily 11~19s / daily_basic 8~61s /
+#   moneyflow 11~29s），8s 会把它们全部掐死 → 返回 None → build_momentum 22天全空，
+#   TDA 日报静默用旧动量面板。token 没过期、代理没挂，纯粹是超时太短。
+TS_TIMEOUT = float(os.environ.get("TS_TIMEOUT", "50"))
 
 
 def _call_with_timeout(fn, kw, timeout):
@@ -161,7 +165,7 @@ def _call_with_timeout(fn, kw, timeout):
 def ts_call(api, **kw):
     """tushare 调用：**代理 token 优先 → 直连 token 兜底**，每层带硬超时。
 
-    - 每层最多等 TS_TIMEOUT 秒（默认 8s），超时立刻切下一层
+    - 每层最多等 TS_TIMEOUT 秒（默认 50s），超时立刻切下一层
     - 轮 1：优先返回「数据日期够新」的结果（代理 → 直连）；
     - 轮 2：两级都只能拿到旧数据（如代理当日滞后）→ 回退用旧数据；
     - 两级都空/都超时 → 返回 None（上层立即可降级到 akshare / 网页）

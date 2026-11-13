@@ -6,6 +6,12 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-13 08:03
+
+**fix(tushare): TS_TIMEOUT 8s → 50s（代理端全市场接口 11~60s，8s 全被掐死）**
+
+tushare_init.py: 代理 token 实测 daily 11~19s / daily_basic 8~61s / moneyflow 11~29s，8s 硬超时导致 TDA build_momentum 22 天全空；改 50s 后 21/22 天成功。同时 tushare_init 接入 net_guard（默认 IPv4，东财族走 IPv6）。
+
 ## 2026-11-12 22:47
 
 **refactor(wyckoff): 移除最后的东财直连，改用同花顺**
