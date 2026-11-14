@@ -74,6 +74,7 @@ def _print_list():
     print("  「画拓扑结构图 / 拓扑图 / 画拓扑」  → topology-manifold（UMAP 结构 + 里奇曲率）")
     print("  「画流形图 / 流形结构图」          → topology-spd（SPD 流形 + TDA + 相位图）")
     print("  「画地形图 / 黎曼地形图」          → topology-terrain")
+    print("  「画五大宽基 / 五个指数一张图 / 宽基总览」 → five-index（缠论买卖点 + 拓扑结构，日报配图）")
 
 
 def _target_tag(extra):

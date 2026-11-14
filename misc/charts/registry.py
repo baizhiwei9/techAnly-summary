@@ -83,6 +83,17 @@ CHARTS = [
         entry=None,
     ),
     dict(
+        name="five-index",
+        keywords=["五大宽基", "五大指数", "五个指数", "宽基总览", "五指数对比"],
+        desc="五大宽基（沪深300/中证500/中证1000/创业板指/科创50）缠论买卖点 + 拓扑结构 合并总览图"
+             "（每行一个指数：左=缠论分型版，右=成分股 UMAP 结构 + 结构分 + 趋势层）",
+        module="charts/five_index.py",
+        default_out="reports/charts/five_index",
+        out_kind="file",
+        kind="script",
+        entry=None,
+    ),
+    dict(
         name="topology-manifold",
         keywords=["拓扑结构图", "拓扑图", "画拓扑", "拓扑流形图", "里奇曲率"],
         desc="拓扑·流形图（左：UMAP 结构位置 / 右：里奇曲率网络）。"
