@@ -94,6 +94,17 @@ CHARTS = [
         entry=None,
     ),
     dict(
+        name="five-topo",
+        keywords=["五大宽基拓扑", "五个指数拓扑", "宽基拓扑结构", "五大宽基里奇曲率"],
+        desc="五大宽基「纯拓扑结构」总览图（每行一个指数：左=UMAP 结构位置，右=里奇曲率联动网络 + 多空结论条）。"
+             "**不掺缠论** —— 缠论看图 five-chan / 日报缠论堆叠图",
+        module="charts/five_topo.py",
+        default_out="reports/charts/five_topo",
+        out_kind="file",
+        kind="script",
+        entry=None,
+    ),
+    dict(
         name="topology-manifold",
         keywords=["拓扑结构图", "拓扑图", "画拓扑", "拓扑流形图", "里奇曲率"],
         desc="拓扑·流形图（左：UMAP 结构位置 / 右：里奇曲率网络）。"

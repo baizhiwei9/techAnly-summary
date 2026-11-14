@@ -1095,20 +1095,30 @@ def plot(emb, mom5, curv, deg, corr, close, codes, names, index_code, index_name
 
 
 # ─────────────── 偏误审计（hermer2 口径） ───────────────
-def _index_close_series(index_code: str, days: int = 700):
-    """指数收盘序列（严格 IPv4，不走新接口）。失败返回 None。"""
-    try:
-        sys.path.insert(0, _CORE)
-        from tushare_init import get_pro  # noqa: E402
-        _d0 = (datetime.now() - timedelta(days=days * 2 + 60)).strftime("%Y%m%d")
-        _d1 = datetime.now().strftime("%Y%m%d")
-        _ix = get_pro().index_daily(ts_code=index_code, start_date=_d0, end_date=_d1)
-        if _ix is not None and len(_ix) > 30:
-            s = _ix.sort_values("trade_date").set_index("trade_date")["close"]
-            s.index = s.index.astype(str)
-            return s
-    except Exception as e:
-        print("[audit] 指数收盘取数失败（改用成分等权）：%s" % str(e)[:80])
+def _index_close_series(index_code: str, days: int = 700, tries: int = 3):
+    """指数收盘序列（严格 IPv4，不走新接口）。失败返回 None。
+
+    2026-11-14 加 3 次重试：tushare 代理端点偶发 Read timeout，
+    失败会静默退回「成分等权合成」——那会让趋势票跟指数口径不一致，必须重试。
+    """
+    sys.path.insert(0, _CORE)
+    from tushare_init import get_pro  # noqa: E402
+    _d0 = (datetime.now() - timedelta(days=days * 2 + 60)).strftime("%Y%m%d")
+    _d1 = datetime.now().strftime("%Y%m%d")
+    last_err = None
+    for k in range(max(1, tries)):
+        try:
+            _ix = get_pro().index_daily(ts_code=index_code, start_date=_d0, end_date=_d1)
+            if _ix is not None and len(_ix) > 30:
+                s = _ix.sort_values("trade_date").set_index("trade_date")["close"]
+                s.index = s.index.astype(str)
+                return s
+            last_err = "返回行数不足（%s）" % (0 if _ix is None else len(_ix))
+        except Exception as e:
+            last_err = str(e)[:80]
+        if k + 1 < tries:
+            time.sleep(1.5 * (k + 1))
+    print("[audit] 指数收盘取数失败（%d 次，改用成分等权）：%s" % (tries, last_err))
     return None
 
 
