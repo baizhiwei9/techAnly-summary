@@ -18,36 +18,14 @@
 | `misc/engine/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
 | `chanlun/ma/chan_ma_chart.py` | **缠论·均线版单标的出图**（只画均线版一层，图大结构清楚） |
 
-### charts · 统一画图模块（2026-11-14）
-
-所有画图功能统一收进 `charts/`，按口径分子模块；原入口文件保留为转发 shim，旧 import 照常可用：
-
-| 模块 | 内容 |
-|---|---|
-| `charts/chan_fractal.py` | 缠论·分型版 K线图（K线 + 笔 + 中枢 + 买卖点 + MACD）｜单指数 `draw` + 多指数并排对比 `draw_compare` |
-| `charts/chan_vwap.py` | 缠论·分型版 + VWAP 单子图（K线 + 笔 + 中枢 + VWAP ±1σ/±2σ） |
-| `charts/chan_ma.py` | 缠论·均线版 K线图（MA10/20/160 + 笔 + 线段 + 中枢 + 走势类型底色） |
-| `charts/buypoint.py` | 买点三面板大图 + 成分股网格（日线/小时线/均线版） |
-| `charts/topology.py` | SPD 流形图（`plot_spd` / `plot_phase` / `plot_multi`） |
-| `charts/terrain.py` | 黎曼流形地形图（`build`） |
-| `charts/compare.py` | 笔/分型 引擎对比图 |
-| `charts/common.py` | 共享：仓库根探测 / sys.path / 网络出口 / 中文字体 / Agg |
-
-统一入口（惰性导入，`import charts` 不会拉起 mplfinance/ripser）：
-
-```python
-from charts import draw_chan_fractal, draw_compare, draw_chan_ma, draw_chan_vwap
-from charts import draw_buypoint_chart, draw_stock_grid
-from charts import plot_spd, plot_phase, plot_multi, draw_terrain
-```
-
-缠论·分型版多指数并排对比（每列一个指数：上=价格面板，下=MACD 面板；判定用全量K线）：
-
-```bash
-python3 charts/chan_fractal.py --compare 上证50,沪深300          # 按名称，逗号分隔
-python3 charts/chan_fractal.py --compare 000016.SH,000300.SH    # 按代码
-python3 charts/chan_fractal.py --compare 上证50,沪深300,中证500 --compare-n 160
-```
+> **画图统一入口（2026-11-14）**：上面这些图（含 topology 三张）现在都从 `misc/charts/run.py` 走，
+> 不用再记各脚本路径：
+> ```bash
+> python3 misc/charts/run.py --list                             # 列出全部图
+> python3 misc/charts/run.py topology-manifold --target 科创50   # 后面参数原样透传
+> ```
+> 默认输出统一到 `reports/charts/<图名>/`。新图往 `misc/charts/registry.py` 登记一条即可。
+> 详见 `misc/charts/README.md`。
 
 ### topology · 拓扑流形（SPD 流形 + TDA + 里奇曲率）
 
@@ -92,6 +70,31 @@ python3 topology/terrain.py --target 行业:电子 --out reports/topology
 | `--days` | 收益窗口交易日数（默认 60） |
 | `--out` | 输出目录（默认 `reports/topology`） |
 | `--dpi` | 出图 dpi（默认 150 → 2613×1327） |
+
+### topology · 流形拓扑图（manifold_topo.py）
+
+一张图两块：**左 = 成分股 UMAP 结构位置 + 近 5 日动量气沫，右 = 相关网络 + 里奇曲率脉络**。
+标题区把两类结论**分开写、不混用**：
+
+- **结构研判（不含方向）**：只看连通簇数 / 闭环数 / 平均曲率 / 簇数趋势（相关矩阵的几何），
+  分档：结构分化偏高 / 结构略分化 / 结构中性 / 结构略聚合 / 结构聚合。
+  **它不含任何价格与动量，不能用来判涨跌**（2026-11-14 改名，旧版叫「偏风险/偏机会」，是错的）。
+- **趋势层（含方向）**：单独一行纯价格读数 ——
+  `近60日 / 距60日高 / vs MA60 / 近10日 / 近5日 / 站上MA20 占比`，
+  基准取指数自己的收盘（取不到则成分股等权合成），**从不参与结构打分**。
+
+```bash
+python3 misc/charts/run.py topology-manifold --target 科创50      # 推荐：走统一入口
+python3 topology/manifold_topo.py --target 科创50                # 旧路径（也能跑）
+python3 topology/manifold_topo.py --target 科创50 --score-mode multi   # 旧多维加权口径
+```
+
+| 参数 | 说明 |
+|---|---|
+| `--target` | 指数名（科创50 / 沪深300 / 中证500 / 上证50 / 中证1000 / 创业板指） |
+| `--days` | 收益窗口交易日数（默认 60） |
+| `--score-mode` | `hermer2`（默认，纯结构）/ `multi`（含趋势的多维加权） |
+| `--out` | 输出 PNG 路径 |
 
 ### 按级别跑 + 策略索引（2026-11-11 新增）
 
@@ -562,6 +565,11 @@ misc/                       ④ 其余全部（杂项）
     levels.py               级别适配层
   tools/                    ── 发布工具
     gh_commit.py gh_publish.py publish_techanly.py publish_techsummary.py bootstrap_cache.py
+  charts/                   ── **唯一画图入口**（2026-11-14 新增）
+    run.py                  统一 CLI：--list 列表 / <图名> 后原脚本参数原样透传
+    registry.py             画图登记表（chan-fractal / chan-ma / buypoint / simple /
+                            topology-spd / topology-terrain / topology-manifold）
+    README.md               为什么有它 + 怎么用 + 新图往哪登记
   examples/                 真实样板产物（报告 txt + 两张样板图）
   compare/                  笔/中枢引擎对比图与说明（仅 4 个文件）
 

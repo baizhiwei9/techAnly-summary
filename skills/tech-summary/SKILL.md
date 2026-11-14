@@ -327,7 +327,33 @@ out.sort(key=lambda x: (not x["accept"], x["pri"], x.get("age", 0)))
 | 按级别跑（m15/h1/day/week） | `python3 misc/strategies/run_level.py --target 600519 --level week` |
 | 缠论分型版 / 均线版出图 | `python3 chanlun/fractal/chan_chart.py --target 中证500`<br>`python3 chanlun/ma/chan_ma_chart.py --target 中证500` |
 | 小波趋势层 | `python3 wavelet/acvmd_layer.py --target 中证500` |
+| **黎曼流形地形图**（封面图） | `python3 topology/terrain.py --target 沪深300`<br>（云上部署可用）`python3 ~/.openclaw/workspace/bin/terrain.py --target 沪深300` |
+| 拓扑流形四合一图 + 相位图 | `python3 topology/run.py --target 沪深300` |
+| **拓扑流形图**（左 UMAP 2D + 右 里奇曲率网络） | `python3 topology/manifold_topo.py --target 科创50`<br>指定代码/本地面板：`--index 000688.SH --name 科创50 --csv /tmp/kc50_close.csv` |
 | 检查环境是否正常 | `python3 misc/engine/tech_summary.py --target 中证500 --no-chart \| grep -c "═══"` （应 = 5~6） |
+
+### 3.0.1 ⭐ 画图路由（听到哪句话就走哪张图 · 大佬 2026-11-14 定）
+
+**所有画图统一走 `misc/charts/run.py`**（登记表在 `misc/charts/registry.py`，新增图只改那张表）：
+
+```bash
+python3 misc/charts/run.py --list        # 列出全部可画的图
+python3 misc/charts/run.py <name> [原脚本参数...]
+```
+
+| 大佬说（关键词） | 走哪张图 | 命令 |
+|---|---|---|
+| **画拓扑结构图 / 拓扑结构 / 拓扑图** | **拓扑流形图**（左 UMAP 结构位置 + 右 里奇曲率网络；标题两行：结构研判·不含方向 + 趋势层·含方向） | `python3 misc/charts/run.py topology-manifold --target 科创50` |
+| **画流形结构图 / 流形图 / 流形** | **SPD 流形四合一图 + 二维相位图**（H1 环寿命 × 平均相关性） | `python3 misc/charts/run.py topology-spd --target 沪深300` |
+| 画地形图 / 黎曼地形图 | 黎曼流形地形图（地形 + 持续同调条码 + 相关矩阵曲面） | `python3 misc/charts/run.py topology-terrain --target 沪深300` |
+| 缠论图（分型版 / 均线版） | chan-fractal / chan-ma | `python3 misc/charts/run.py chan-fractal --target 中证500`<br>`python3 misc/charts/run.py chan-ma --target 中证500` |
+
+> **「拓扑结构图」≠「流形图」，这两句分得很清，别串：**
+> - 「拓扑结构图」→ `topology-manifold`（UMAP + 里奇曲率，看结构状态/咽喉股）
+> - 「流形图 / 流形结构图」→ `topology-spd`（SPD 流形 + TDA + 二维相位图）
+> - 「地形图」→ `topology-terrain`
+>
+> 输出目录统一在 `reports/charts/<name>/`。
 
 > 所有命令都从**仓库根目录**执行。脚本内部会自动探测仓库根（向上找同时含
 > `chanlun/` 与 `misc/` 的那层），所以从子目录跑也能用。

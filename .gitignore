@@ -9,3 +9,4 @@ config.local.*
 chanlun/multiscale/reports/
 *.orig
 *.rej
+reports/
