@@ -31,6 +31,14 @@ import chan_smc_index as C  # noqa: E402
 from chan_smc_index import MACD_FAST, MACD_SLOW, MACD_SIGNAL  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
+# VWAP 标准差带（2026-11-15 大佬：「缠论的那图都要带上那个 VWAP，
+# 我好像知道它到了几倍的标准差了」→ 图上直接标 σ 倍数）
+# 计算源唯一：smc/smc_core.py:vwap_tracks()（滚动 win 根、成交量加权、返回 vwap+sigma）
+try:
+    from smc_core import vwap_tracks as _vwap_tracks  # noqa: E402
+except Exception:                                     # 画图不应因 VWAP 缺失而整体失败
+    _vwap_tracks = None
+
 OUT_DIR = os.path.join(WS, ".cache/charts")
 LV_TXT = {"h1": "小时线60m", "day": "日线"}
 VER = "缠论·分型版"
@@ -524,6 +532,57 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
         y0, y1 = min(o[i], c[i]), max(o[i], c[i])
         ax.add_patch(Rectangle((i - bw / 2, y0), bw, max(y1 - y0, rng * 0.0008),
                                facecolor=cols[i], edgecolor=cols[i], lw=0.5, zorder=4))
+    # ── VWAP 标准差带（±1σ / ±2σ / ±3σ）─────────────────────────
+    # 2026-11-15 大佬要求：缠论图必须带 VWAP，并且要能看出「到了几倍标准差」。
+    # 画法：中线实线 + 每档虚线；现价所在档位加粗高亮，标题旁直接标 ±X.Xσ。
+    vwap_sig = None
+    if _vwap_tracks is not None:
+        try:
+            _vw = _vwap_tracks(df)
+            _v = np.asarray(_vw["vwap"], dtype=float)[start:]
+            _sg = np.asarray(_vw["sigma"], dtype=float)[start:]
+            if np.isfinite(_v).any():
+                ax.plot(x, _v, color="#8e44ad", lw=2.0, zorder=5.5,
+                        label="VWAP 中线")
+                for k, ls, col, lw in ((1, ":", "#e67e22", 1.0),
+                                       (-1, ":", "#e67e22", 1.0),
+                                       (2, "--", "#c0392b", 1.1),
+                                       (-2, "--", "#c0392b", 1.1),
+                                       (3, "-.", "#7f8c8d", 0.9),
+                                       (-3, "-.", "#7f8c8d", 0.9)):
+                    _b = _v + k * _sg
+                    if not np.isfinite(_b).any():
+                        continue
+                    _hit = False
+                    if k in (2, -2) and np.isfinite(_b[-1]) and np.isfinite(c[-1]):
+                        _hit = abs(k - (c[-1] - _v[-1]) / _sg[-1]) < 0.5 if _sg[-1] > 0 else False
+                    ax.plot(x, _b, color=col, lw=(lw * 2.2 if _hit else lw), ls=ls,
+                            alpha=(0.95 if _hit else 0.55), zorder=(5.6 if _hit else 5.4),
+                            label="%+dσ" % k)
+                # 现价相对 VWAP 的 σ 倍数（画在图右上角）
+                if np.isfinite(_v[-1]) and _sg[-1] > 0:
+                    vwap_sig = (c[-1] - _v[-1]) / _sg[-1]
+                    _col = ("#c0392b" if abs(vwap_sig) >= 2 else
+                            ("#e67e22" if abs(vwap_sig) >= 1 else "#7f8c8d"))
+                    ax.text(0.995, 0.975,
+                            "现价距 VWAP %+.2fσ" % vwap_sig,
+                            transform=ax.transAxes, ha="right", va="top",
+                            fontsize=f_pt + 0.5, fontweight="bold", color="white",
+                            bbox=dict(boxstyle="round,pad=0.34", fc=_col,
+                                      ec="white", alpha=0.92, lw=1.0), zorder=12)
+                    if abs(vwap_sig) >= 2:
+                        ax.text(0.995, 0.885,
+                                "⚠ 已到 %d 倍标准差（%s）" % (
+                                    int(abs(vwap_sig)), "上轨·超买" if vwap_sig > 0 else "下轨·超卖"),
+                                transform=ax.transAxes, ha="right", va="top",
+                                fontsize=f_pt, color=_col, fontweight="bold",
+                                bbox=dict(boxstyle="round,pad=0.28", fc="white",
+                                          ec=_col, alpha=0.9, lw=0.9), zorder=12)
+                ax.legend(loc="upper left", fontsize=f_tick - 0.5, framealpha=0.82,
+                          ncol=4, borderpad=0.35, handlelength=1.6)
+        except Exception as _e:
+            print("[WARN] VWAP 叠加失败:", str(_e)[:100])
+
     sx, sy = [], []
     for p in geo["bi"]:
         xi = p["orig"] - start
@@ -593,9 +652,10 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
                                   ec=col, alpha=0.94, lw=1.0))
     zpos = {"in": "中枢内", "above": "中枢上方", "below": "中枢下方"}.get(ck.get("zpos"), "-")
     ts_txt = last_ts.strftime("%Y-%m-%d")
-    ax.set_title("%s（%s）· %s   收盘 %.2f   ｜   阶段：%s   ｜   %s   ｜   背驰：%s"
+    _sig_txt = ("   ｜   VWAP %+.2fσ" % vwap_sig) if vwap_sig is not None else ""
+    ax.set_title("%s（%s）· %s   收盘 %.2f   ｜   阶段：%s   ｜   %s   ｜   背驰：%s%s"
                  % (name, code, ts_txt, P, ck.get("stage", ""), zpos,
-                    ck.get("div") or "无"),
+                    ck.get("div") or "无", _sig_txt),
                  fontsize=f_title, pad=9, loc="left")
     ax.set_ylabel("价格", fontsize=f_y)
     ax.grid(True, ls=":", color="#cccccc", alpha=0.55)
@@ -747,7 +807,7 @@ def draw_stack(pairs, out=None, n_show=160, row_h=8.0, width=12.0, dpi=150):
                  y=1 - 0.42 / _h, va="center")
     fig.text(0.5, 1 - 0.86 / _h,
              "口径：包含处理→顶底分型→笔→中枢(ZG/ZD)→背驰　｜　★买点 ▼卖点　"
-             "黄框=最近中枢　蓝线=笔",
+             "黄框=最近中枢　蓝线=笔　紫线=VWAP中线　虚线=±1σ/±2σ/±3σ",
              ha="center", va="center", fontsize=14.5, color="#444444")
     if os.environ.get("CHAN_AUDIT"):
         _audit_stack(fig)
