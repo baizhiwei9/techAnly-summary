@@ -339,3 +339,88 @@ def plot_phase(results, out_path, corr_th=0.50, h1_th=0.50):
 
 def _zone_color(zone):
     return {"chance": BLUE, "risk": RED, "bottom": GOLD, "alert": ORANGE}[zone]
+
+
+# ───────────────────────── 多标的合并总览图 ─────────────────────────
+def plot_multi(results, out_path, name_map=None):
+    """多标的合并到一张图：每个标的占一行子图，纵向堆叠、横向对比。
+
+    与 plot_phase（所有标的混到一张相位图）互补——这个满足「每个指数一个子图」：
+      每行画三条 0~1 可直接跨标的对比的信号：
+        同步度 corr（绿）＝ 越高越锁死（风险）
+        H1 环寿命（青）＝ 越高越分化（机会）
+        谱熵 ent（紫）＝ 越高越结构化
+      叠加红/黄/蓝结构分区背景，当前窗口打星，左侧标名称、右侧标当前结论象限。
+    单标的也兼容（画一行），但单标的默认走 plot_spd 更丰富。
+    """
+    from . import spd as _spd
+    n = len(results)
+    if n == 0:
+        return None
+
+    fig_h = 2.55 * n + 3.8
+    fig, axes = plt.subplots(n, 1, figsize=(17.5, fig_h), sharex=True, squeeze=False)
+    axes = axes[:, 0]
+
+    last_dates = None
+    for ax, (name, color, res) in zip(axes, results):
+        dates = res["dates"]
+        last_dates = dates
+        n_days = len(dates)
+        W, m = res["W"], res["m"]
+        x = np.arange(n_days)
+        xw = np.arange(W - 1, n_days)
+
+        # 结构分区背景：红=锁死(风险) 黄=卡滞 蓝=分化(机会)
+        for i0, i1, st in _zone_spans(res["states"], m, n_days):
+            ax.axvspan(i0 - 0.5, i1 + 0.5, color=[RED, GOLD, BLUE][st], alpha=0.14, lw=0)
+
+        # 三条 0~1 信号
+        ax.plot(xw, res["corr_c"], color=GREEN, lw=1.5, alpha=0.92, label="同步度 corr")
+        ax.plot(xw, res["h1n"], color=CYAN, lw=1.5, alpha=0.92, label="H1 环寿命")
+        ax.plot(xw, np.clip(res["ent"], 0, 1), color=PURPLE, lw=1.2, alpha=0.85,
+                label="谱熵 ent")
+
+        # 0.5 分界参考线
+        ax.axhline(0.5, color=GRIDC, lw=0.8, ls="--", alpha=0.6)
+
+        # 当前窗口星标
+        ax.scatter([xw[-1]], [res["corr_c"][-1]], s=110, c=color, marker="*",
+                   edgecolors="white", linewidths=0.8, zorder=6)
+
+        # 左侧名称 + 右侧当前结论
+        zone = _spd.classify(res["corr_c"][-1], res["h1n"][-1])
+        zname, zdesc = ZONE_LABEL[zone]
+        zcolor = _zone_color(zone)
+        ax.set_ylabel(name, rotation=0, ha="right", va="center",
+                      fontsize=12, color=color, fontweight="bold", labelpad=6)
+        ax.text(1.006, 0.70, zname, transform=ax.transAxes, fontsize=12.5,
+                color=zcolor, fontweight="bold", va="center")
+        ax.text(1.006, 0.48, zdesc, transform=ax.transAxes, fontsize=8.5,
+                color=MUTED, va="center")
+        ax.text(1.006, 0.26, "corr=%.2f  H1=%.2f" % (res["corr_c"][-1], res["h1n"][-1]),
+                transform=ax.transAxes, fontsize=8.5, color=TEXTC, va="center")
+
+        ax.set_ylim(0, 1)
+        ax.set_xlim(-1, n_days)
+        ax.grid(alpha=0.4)
+
+    # 共享 x 轴：只在最底行画日期刻度
+    if last_dates is not None:
+        n_days = len(last_dates)
+        x = np.arange(n_days)
+        axes[-1].set_xticks(x[::10])
+        axes[-1].set_xticklabels([d[4:] for d in last_dates[::10]])
+    axes[-1].legend(loc="upper left", framealpha=0.25, fontsize=9, ncol=3)
+
+    fig.text(0.006, 0.52, "↑ 拓扑再生（H1 环寿命 / 谱熵）　　↓ 同步锁死（平均相关 corr）",
+             rotation=90, fontsize=10, color=MUTED, va="center", ha="center")
+    fig.text(0.03, 0.975, "多标的 SPD 流形结构总览 · 每行一个标的 · 右栏 = 当前结论",
+             fontsize=13, color="#e2e8f0", va="center")
+    fig.text(0.03, 0.012,
+             "读法：绿线(同步度)↑且青线(H1)↓ = 转风险；绿线↓且青线↑ = 转机会。"
+             "红/黄/蓝底 = 结构分区（锁死 / 卡滞 / 分化）。星号 = 当前窗口。",
+             fontsize=10, color="#94a3b8")
+    fig.savefig(out_path, dpi=115, facecolor=BG, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
