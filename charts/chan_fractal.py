@@ -499,6 +499,268 @@ def draw_compare(pairs, out=None, n_show=160):
     return out
 
 
+# ─────────── 多指数纵向堆叠（一指数一行，不压缩宽度） ───────────
+def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
+               fs=None):
+    """在给定 axes 上画一个完整指数的日线（价格面板 + MACD 面板）。"""
+    fs = fs or {}
+    f_title, f_zt, f_pt, f_tick, f_y = (fs.get("title", 14.0), fs.get("ztick", 10.5),
+                                      fs.get("pt", 11.0), fs.get("tick", 9.5),
+                                      fs.get("y", 11.0))
+    view = df.iloc[start:]
+    x = np.arange(nv)
+    o = view["open"].astype(float).values
+    h = view["high"].astype(float).values
+    l = view["low"].astype(float).values
+    c = view["close"].astype(float).values
+    prev = np.concatenate([[np.nan], c[:-1]])
+    if start > 0:
+        prev[0] = float(df["close"].iloc[start - 1])
+    cols = [RED if (np.isfinite(prev[i]) and c[i] >= prev[i]) else GRN for i in range(nv)]
+    bw = 0.62
+    rng = max(h.max() - l.min(), 1e-9)
+    for i in range(nv):
+        ax.vlines(i, l[i], h[i], color=cols[i], lw=0.9, zorder=3)
+        y0, y1 = min(o[i], c[i]), max(o[i], c[i])
+        ax.add_patch(Rectangle((i - bw / 2, y0), bw, max(y1 - y0, rng * 0.0008),
+                               facecolor=cols[i], edgecolor=cols[i], lw=0.5, zorder=4))
+    sx, sy = [], []
+    for p in geo["bi"]:
+        xi = p["orig"] - start
+        if -2 <= xi <= nv + 2:
+            sx.append(xi)
+            sy.append(p["price"])
+    if len(sx) >= 2:
+        ax.plot(sx, sy, color="#1f4e79", lw=1.7, zorder=6)
+    for p in geo["bi"]:
+        xi = p["orig"] - start
+        if -1 <= xi <= nv:
+            ax.scatter([xi], [p["price"]], s=32, zorder=7,
+                       color=(RED if p["type"] == 1 else GRN),
+                       marker=("v" if p["type"] == 1 else "^"))
+    if zs and geo["zs_x"]:
+        x0 = max(geo["zs_x"][0] - start, -0.5)
+        x1 = geo["zs_x"][1] - start
+        if x1 >= -1:
+            ax.add_patch(Rectangle((x0, zs[0]), x1 - x0, zs[1] - zs[0],
+                                   facecolor="#ffd24d", alpha=0.22,
+                                   edgecolor="#b8860b", lw=1.6, zorder=3))
+            ax.axhline(zs[1], color="#b8860b", lw=1.0, ls="--", alpha=0.75, zorder=4)
+            ax.axhline(zs[0], color="#b8860b", lw=1.0, ls="--", alpha=0.75, zorder=4)
+            ax.text(max(x0, 0), zs[1], " ZG %.2f" % zs[1], va="bottom", ha="left",
+                    fontsize=f_zt, color="#8b6508", zorder=8)
+            ax.text(max(x0, 0), zs[0], " ZD %.2f" % zs[0], va="top", ha="left",
+                    fontsize=f_zt, color="#8b6508", zorder=8)
+            ax.text(max(x0, 0) + 0.4, (zs[0] + zs[1]) / 2, "中枢", va="center",
+                    ha="left", fontsize=f_zt + 3, color="#8b6508", alpha=0.85, zorder=8)
+    for kind, lst, styles, dy in (("买", ck.get("buy_list") or [], BUY_STYLE, -1),
+                                  ("卖", ck.get("sell_list") or [], SELL_STYLE, 1)):
+        for b in lst:
+            tag = b["tag"]
+            if tag not in styles:
+                continue
+            mk, col, sz = styles[tag]
+            price = b["level"]
+            cand = [p for p in geo["bi"] if p["type"] == (1 if kind == "卖" else -1)]
+            if not cand:
+                continue
+            pt = min(cand, key=lambda p: abs(p["price"] - price))
+            xi = pt["orig"] - start
+            if not (-1 <= xi <= nv):
+                continue
+            ax.scatter([xi], [pt["price"]], s=sz * 1.15, marker=mk, color=col,
+                       edgecolor="white", linewidth=1.3, zorder=10)
+            y0_, y1_ = ax.get_ylim()
+            span = y1_ - y0_
+            d = dy
+            if dy < 0 and pt["price"] - span * 0.16 < y0_:
+                d = 1
+            elif dy > 0 and pt["price"] + span * 0.16 > y1_:
+                d = -1
+            # 贴近右边缘的标注会飘出画布（2026-11-14 自检发现）→ 水平方向往内推
+            _xt = 0
+            if xi > nv - nv * 0.18:
+                _xt = -58
+            elif xi < nv * 0.10:
+                _xt = 58
+            ax.annotate("%s %.2f（%d根前）" % (tag, price, b["age"]),
+                        xy=(xi, pt["price"]),
+                        xytext=(_xt, 34 * d), textcoords="offset points",
+                        ha=("right" if _xt < 0 else ("left" if _xt > 0 else "center")),
+                        va=("top" if d < 0 else "bottom"),
+                        fontsize=f_pt, color=col, fontweight="bold", zorder=11,
+                        bbox=dict(boxstyle="round,pad=0.3", fc="white",
+                                  ec=col, alpha=0.94, lw=1.0))
+    zpos = {"in": "中枢内", "above": "中枢上方", "below": "中枢下方"}.get(ck.get("zpos"), "-")
+    ts_txt = last_ts.strftime("%Y-%m-%d")
+    ax.set_title("%s（%s）· %s   收盘 %.2f   ｜   阶段：%s   ｜   %s   ｜   背驰：%s"
+                 % (name, code, ts_txt, P, ck.get("stage", ""), zpos,
+                    ck.get("div") or "无"),
+                 fontsize=f_title, pad=9, loc="left")
+    ax.set_ylabel("价格", fontsize=f_y)
+    ax.grid(True, ls=":", color="#cccccc", alpha=0.55)
+    ax.set_xlim(-2, nv + 1)
+    ax.tick_params(labelsize=f_tick)
+    plt.setp(ax.get_xticklabels(), visible=False)
+
+    # MACD(10,20,5) —— 与 draw() 同口径
+    cl = df["close"].astype(float)
+    dif = cl.ewm(span=MACD_FAST, adjust=False).mean() - cl.ewm(span=MACD_SLOW, adjust=False).mean()
+    dea = dif.ewm(span=MACD_SIGNAL, adjust=False).mean()
+    hist = 2 * (dif - dea)
+    hh = hist.values[start:]
+    axm.bar(x, hh, width=bw, color=[RED if v >= 0 else GRN for v in hh], alpha=0.7)
+    axm.plot(x, dif.values[start:], color="#e67e22", lw=1.0, label="DIF")
+    axm.plot(x, dea.values[start:], color="#2980b9", lw=1.0, label="DEA")
+    axm.axhline(0, color="#999", lw=0.6)
+    axm.set_ylabel("MACD(10,20,5)", fontsize=f_y - 1)
+    axm.grid(True, ls=":", color="#cccccc", alpha=0.5)
+    axm.tick_params(labelsize=f_tick)
+    axm.legend(loc="upper left", fontsize=f_tick, framealpha=0.85, ncol=2)
+    step = max(nv // 12, 1)
+    idxs = list(range(0, nv, step))
+    dates = view["dt"].dt.strftime("%m-%d").values
+    axm.set_xticks(idxs)
+    axm.set_xticklabels([dates[i] for i in idxs], fontsize=f_tick)
+    axm.set_xlim(-2, nv + 1)
+
+
+def _audit_stack(fig):
+    """版面自检：报「文字 bbox 与任何坐标轴区域重叠」以及「出画布」的文字。
+
+    2026-11-14 大佬：「这个图和那个字都重合了」→ 加一个可复现的检查，
+    不再靠肉眼。CHAN_AUDIT=1 时生效，只打印不抛异常。
+    """
+    try:
+        fig.canvas.draw()
+        r = fig.canvas.get_renderer()
+        axes_boxes = []
+        for ax in fig.axes:
+            try:
+                axes_boxes.append((ax, ax.get_window_extent(r)))
+            except Exception:
+                pass
+        bad = 0
+        fig_box = fig.bbox
+        for ax in fig.axes:
+            texts = [ax.title] if ax.title.get_text() else []
+            texts += [t for t in ax.texts]
+            for t in texts:
+                if not t.get_text().strip():
+                    continue
+                try:
+                    tb = t.get_window_extent(r)
+                except Exception:
+                    continue
+                if (tb.x0 < fig_box.x0 - 2 or tb.x1 > fig_box.x1 + 2
+                        or tb.y0 < fig_box.y0 - 2 or tb.y1 > fig_box.y1 + 2):
+                    print("[audit] 出画布：%r" % t.get_text()[:40], flush=True)
+                    bad += 1
+                    continue
+                for other, ob in axes_boxes:
+                    if other is ax:
+                        continue
+                    ov = (min(tb.x1, ob.x1) - max(tb.x0, ob.x0)) > 4 and \
+                         (min(tb.y1, ob.y1) - max(tb.y0, ob.y0)) > 4
+                    if ov:
+                        print("[audit] 文字压到别的子图：%r" % t.get_text()[:40], flush=True)
+                        bad += 1
+                        break
+        # 文字 vs 文字（标题/口径说明会互相压）
+        all_t = []
+        for ax in fig.axes:
+            if ax.title.get_text().strip():
+                all_t.append(ax.title)
+            all_t += [t for t in ax.texts if t.get_text().strip()]
+        if fig._suptitle and fig._suptitle not in fig.texts:
+            all_t.append(fig._suptitle)
+        all_t += [t for t in fig.texts if t.get_text().strip()]
+        boxes = []
+        for t in all_t:
+            try:
+                boxes.append((t, t.get_window_extent(r)))
+            except Exception:
+                pass
+        for i in range(len(boxes)):
+            for j in range(i + 1, len(boxes)):
+                (t1, b1), (t2, b2) = boxes[i], boxes[j]
+                if (min(b1.x1, b2.x1) - max(b1.x0, b2.x0)) > 4 and \
+                   (min(b1.y1, b2.y1) - max(b1.y0, b2.y0)) > 4:
+                    print("[audit] 文字互相重叠：%r ↔ %r"
+                          % (t1.get_text()[:24], t2.get_text()[:24]), flush=True)
+                    bad += 1
+        # 标题 vs 子图
+        for t in [fig._suptitle] if fig._suptitle else []:
+            try:
+                tb = t.get_window_extent(r)
+            except Exception:
+                continue
+            for other, ob in axes_boxes:
+                if (min(tb.x1, ob.x1) - max(tb.x0, ob.x0)) > 4 and \
+                   (min(tb.y1, ob.y1) - max(tb.y0, ob.y0)) > 4:
+                    print("[audit] 总标题压到子图", flush=True)
+                    bad += 1
+                    break
+        print("[audit] 重叠/溢出 %d 处" % bad, flush=True)
+    except Exception as e:
+        print("[audit] 自检失败:", str(e)[:150], flush=True)
+
+
+def draw_stack(pairs, out=None, n_show=160, row_h=8.0, width=12.0, dpi=150):
+    """多指数**纵向堆叠**：一个指数一块（上价格 + 下 MACD），画布固定宽、往下垒。
+
+    大佬 2026-11-14 23:13：「我就不明白，你就把这几个子图粘到一块就行了，为什么要压缩呀？
+    …你要能力不行，还是恢复到以前，一个指数一个图吧。」
+
+    → 上一版是 5 列并排（figsize 10.2*ncol × 11.2 英寸），每列被压成约 11:1 的窄条，
+      字和图挤在一起。本函数改成「宽度不变、往下垒」：
+      画布宽 width 英寸固定，每指数占 row_h 英寸高，单块内价格:MACD = 3.4:1，
+      子图宽高比 ≈ 1.5:1（接近单图 16×10 的观感），字号按单图比例放大。
+
+    口径与 draw() 完全一致（同一 chan_geometry / MACD 常量 / 买卖点样式）。
+    """
+    nrow = len(pairs)
+    fig = plt.figure(figsize=(width, row_h * nrow), facecolor="white")
+    # 顶部留 1.15 英寸给「大标题 + 口径说明」，避免标题压第一行子图
+    _h = row_h * nrow
+    gs = fig.add_gridspec(nrow, 1, hspace=0.30,
+                          left=0.052, right=0.988,
+                          top=1 - 1.15 / _h,
+                          bottom=0.030)
+    for ri, (name, code) in enumerate(pairs):
+        df = _index_day(code)
+        if df is None or len(df) < 60:
+            raise RuntimeError("%s(%s) 数据不足" % (name, code))
+        total = len(df)
+        start = max(0, total - n_show)
+        nv = min(n_show, total)
+        geo = chan_geometry(df)
+        ck = geo["ck"]
+        zs = geo["zs"]
+        P = float(df["close"].iloc[-1])
+        last_ts = df["dt"].iloc[-1]
+        sub = gs[ri, 0].subgridspec(2, 1, height_ratios=[3.4, 1.0], hspace=0.06)
+        ax = fig.add_subplot(sub[0, 0])
+        axm = fig.add_subplot(sub[1, 0], sharex=ax)
+        _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts)
+    fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）", fontsize=21,
+                 y=1 - 0.42 / _h, va="center")
+    fig.text(0.5, 1 - 0.86 / _h,
+             "口径：包含处理→顶底分型→笔→中枢(ZG/ZD)→背驰　｜　★买点 ▼卖点　"
+             "黄框=最近中枢　蓝线=笔",
+             ha="center", va="center", fontsize=14.5, color="#444444")
+    if os.environ.get("CHAN_AUDIT"):
+        _audit_stack(fig)
+    os.makedirs(OUT_DIR, exist_ok=True)
+    if not out:
+        d8 = datetime.now().strftime("%Y%m%d")
+        out = os.path.join(OUT_DIR, "chan_stack_%s.png" % d8)
+    fig.savefig(out, dpi=dpi, facecolor="white")
+    plt.close(fig)
+    return out
+
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--index", default="中证500", choices=[x[0] for x in C.IDX])
@@ -510,6 +772,11 @@ def main():
                     help="多指数并排对比（日线）：逗号分隔的名称或代码，如 上证50,沪深300")
     ap.add_argument("--compare-n", type=int, default=160,
                     help="对比图显示最近多少根K线（判定仍用全量）")
+    ap.add_argument("--stack", default=None,
+                    help="多指数**纵向堆叠**（一指数一行，不压缩宽度）：逗号分隔名称或代码")
+    ap.add_argument("--stack-n", type=int, default=160,
+                    help="堆叠图显示最近多少根K线")
+    ap.add_argument("--row-h", type=float, default=8.0, help="堆叠图每行高度（英寸）")
     a = ap.parse_args()
 
     if a.all:
@@ -522,6 +789,24 @@ def main():
             except Exception as e:
                 print("[ERR]", nm, str(e)[:200], flush=True)
         return 0 if paths else 1
+
+    if a.stack:
+        pairs = []
+        for seg in a.stack.split(","):
+            seg = seg.strip()
+            if not seg:
+                continue
+            r = _resolve_index(seg)
+            if r is None:
+                print("[ERR] 无法识别的指数：%s" % seg, flush=True)
+                return 2
+            pairs.append(r)
+        if not pairs:
+            print("[ERR] --stack 至少需要一个指数", flush=True)
+            return 2
+        p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h)
+        print("[OK]", p)
+        return 0
 
     if a.compare:
         pairs = []
