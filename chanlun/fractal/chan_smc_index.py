@@ -61,6 +61,9 @@ from chanlun_backtest import structure_indicators as LI  # noqa: E402
 # ─────────── 机会/风险 判定参数（2026-10-22 用户要求：只给真买卖点打图标）───────────
 NEAR = float(os.environ.get("CHAN_NEAR_PCT", "3"))     # 现价与买卖点 ±NEAR% 内 = 「就在点位上」
 MAX_AGE = {"h1": 30, "day": 25, "week": 12}            # 买卖点新鲜度（多少根K线内还算数）
+# 2026-11-15：卖点「头顶压力」上界。原来写死 3%，沪深300 三卖恰好 3.0005% 被卡掉，
+# 而 361 根前的二买却进了机会榜 → 报告自相矛盾。改为可配（默认 5%）。
+SELL_ABOVE = float(os.environ.get("CHAN_SELL_ABOVE_PCT", "5"))
 BUY_STARS = {"一买": 3, "二买": 2, "三买": 1}           # 买点强度 → 月亮数
 SELL_STARS = {"一卖": 3, "二卖": 2, "三卖": 1}          # 卖点强度 → 星星数
 
@@ -638,11 +641,42 @@ def collect(include_h1=True):
     return rows
 
 
-def _signals(r, include_h1=True):
+def _stage_dir(ck):
+    """该级别的**方向**：由缠论阶段（stage）决定 → True=买方向 / False=卖方向 / None=中性。
+
+    ⚠️ 2026-11-15 关键修正：一开始想用「最新信号 age 最小」定方向，结果科创50 翻车 ——
+    它有两个 260/271 根前的旧买点，比 279/294 根前的旧卖点「更新」，
+    于是被判成「🌙买点方向」，而同一行的阶段明明写着「⭐三卖结构」。拿信号年龄当方向
+    是错的：**阶段才是引擎对当下的结构结论**，买卖点清单只是历史路标。
+    """
+    stg = (ck or {}).get("stage") or ""
+    if not stg:
+        return None
+    if ("卖" in stg) or ("下跌" in stg) or ("趋势破坏" in stg):
+        return False
+    if ("买" in stg) or ("上升" in stg) or ("突破" in stg):
+        return True
+    return None
+
+
+def _signals(r, include_h1=True, arb=None):
     """把一个指数拆成 (机会列表, 风险列表)。
     机会 = 缠论真买点（一买/二买/三买，且新鲜）｜风险 = 缠论真卖点 + SMC 结构性破位
     2026-10-22 用户口径：只有「到了几买/几卖」才给 🌙/⭐，上轨下轨这类参考线不配图标。
-    include_h1=False → 榜单只看日线（大盘报告不含小时级别）"""
+    include_h1=False → 榜单只看日线（大盘报告不含小时级别）
+
+    ⚠️ 2026-11-15 大佬：「一会说沪深300有买点，一会说沪深300是三卖」——报告自相矛盾。
+    根因两个，一起修：
+      ① 方向不仲裁：`sustained`（长期未破）让 **361 根前的二买** 也能进机会榜，
+         而 **5 根前的新鲜三卖** 却因 3.0005% > 3% 的边界被卡出风险榜。
+         → 同一指数同一级别**只认最新信号的方向**；更早的反方向信号 = 历史记录，
+           不再当作当下的机会/风险（否则就是拿 1.5 年前的买点对冲今天的卖点）。
+      ② 边界太脆：卖点上方阈值写死 3%，恰好被 3.0005% 卡住。
+         → 上界改为 SELL_ABOVE（默认 5%，CHAN_SELL_ABOVE_PCT 可调），
+           并把「就在头顶」这类反抽压力正常纳入风险。
+
+    arb：可选 list，传入时追加「哪些旧信号被仲裁掉」的说明（不传则完全兼容旧行为）。
+    """
     opp, risk = [], []
     P = r["P"]
     levels = (("日线", r.get("cd")),) if not include_h1 else (
@@ -650,52 +684,92 @@ def _signals(r, include_h1=True):
     for lv_name, ck in levels:
         if not ck or not ck.get("ok"):
             continue
+
+        # ── ① 方向仲裁：先收集该级别所有「仍有效」的信号，按 age 升序取最新方向的 ±──
+        cand_buy, cand_sell = [], []
         for b in ck.get("buy_list", []):
-            # ⚠️ 2026-11-08 大佬定稿：小时线**只认三买**，一买/二买只有日线才算数
             if lv_name == "小时线60m" and b["tag"] not in H1_ALLOWED_BUY:
                 continue
-            # ⚠️ 2026-11-08：不能只认新鲜信号。长期没破的买点（sustained）同样是有效信号，
-            #   否则会漏掉「多头排列持续很久」这类行情（均线版实测漏 100%）。
             if not (b["fresh"] or b.get("sustained")):
                 continue
-            n = BUY_STARS.get(b["tag"], 1)
-            if n <= 0:
+            if BUY_STARS.get(b["tag"], 0) <= 0:
                 continue
-            d = (P - b["level"]) / b["level"] * 100
-            # 一买必须现价不能离低点太远（跌破 = 买点失效）
-            if b["tag"] == "一买" and d < -1.5:
+            cand_buy.append(b)
+        for sl in ck.get("sell_list", []):
+            if lv_name == "小时线60m" and sl["tag"] not in H1_ALLOWED_SELL:
                 continue
-            # ⚠️ 长期延续信号：现价必须真站在买点之上，跌破的不算机会（只是历史记录）
-            if not b["fresh"] and d < 0:
+            if not (sl["fresh"] or sl.get("sustained")):
                 continue
-            # 机会只看「现价附近的」：买点最多在上面 3% 内（再远就不算已经到了）
-            if d < -1.5 or d > 3:
-                continue
-            opp.append({"name": r["name"], "level_tag": lv_name, "tag": b["tag"],
-                        "stars": n, "level": b["level"], "age": b["age"],
-                        "dist": d, "active": abs(d) <= 1.0,   # 用收盘价重算，别用 chan_read 的高点
-                        "score": n * 100 - abs(d) - b["age"] * 0.5})
-    for lv_name, ck in levels:
-        if not ck or not ck.get("ok"):
-            continue
-        for s in ck.get("sell_list", []):
-            # 小时线只认三卖（对称口径）
-            if lv_name == "小时线60m" and s["tag"] not in H1_ALLOWED_SELL:
-                continue
-            if not (s["fresh"] or s.get("sustained")):
-                continue
-            n = SELL_STARS.get(s["tag"], 1)
-            d = (s["level"] - P) / P * 100          # 现价距卖点还有多少
-            # 长期延续卖点：现价必须在卖点之下，涨破的不算风险
-            if not s["fresh"] and d < 0:
-                continue
-            # 风险只看「现价附近的」：卖点在下方 1% 内（已跌破）或上方 3% 内（就在头顶）
-            if not (-6 <= d <= 3):
-                continue
-            risk.append({"name": r["name"], "level_tag": lv_name, "tag": s["tag"],
-                         "stars": n, "level": s["level"], "age": s["age"],
-                         "dist": d, "active": abs(d) <= 1.0,
-                         "score": n * 100 - abs(d) - s["age"] * 0.5})
+            cand_sell.append(sl)
+
+        # 方向 = 缠论阶段说了算（不是信号年龄）。
+        arb_dir = _stage_dir(ck)
+        if arb:
+            for b in cand_buy:
+                if arb_dir is False and not b["fresh"]:
+                    arb.append({"name": r["name"], "level_tag": lv_name,
+                                "drop_tag": b["tag"], "drop_age": b["age"],
+                                "keep_tag": (ck.get("stage") or "")[:14], "keep_age": None,
+                                "drop_is_buy": True})
+            for sl in cand_sell:
+                if arb_dir is True and not sl["fresh"]:
+                    arb.append({"name": r["name"], "level_tag": lv_name,
+                                "drop_tag": sl["tag"], "drop_age": sl["age"],
+                                "keep_tag": (ck.get("stage") or "")[:14], "keep_age": None,
+                                "drop_is_buy": False})
+
+        # ── ② 买点（方向与阶段相反、且不新鲜的 → 只是历史路标，不算当下机会）──
+        if arb_dir is not False:
+            for b in cand_buy:
+                if arb_dir is False and not b["fresh"]:
+                    continue
+                n = BUY_STARS.get(b["tag"], 1)
+                d = (P - b["level"]) / b["level"] * 100
+                # 一买必须现价不能离低点太远（跌破 = 买点失效）
+                if b["tag"] == "一买" and d < -1.5:
+                    continue
+                # 长期延续信号：现价必须真站在买点之上，跌破的不算机会（只是历史记录）
+                if not b["fresh"] and d < 0:
+                    continue
+                # ⚠️ 2026-11-15：**新鲜**信号一律纳入榜单（只标注是否「已跑远」），
+                #   否则会和「中枢表」里标出的 🌙 打架（同一份报告两处口径不同）。
+                #   只有 sustained（几十根、上百根前的旧点）才继续按距离窗口过滤。
+                if b["fresh"]:
+                    if d < -1.5:
+                        continue
+                else:
+                    if d < -1.5 or d > 3:
+                        continue
+                opp.append({"name": r["name"], "level_tag": lv_name, "tag": b["tag"],
+                            "stars": n, "level": b["level"], "age": b["age"],
+                            "dist": d, "active": abs(d) <= 1.0,   # 用收盘价重算，别用 chan_read 的高点
+                            "fresh": bool(b["fresh"]),
+                            "score": n * 100 - abs(d) - b["age"] * 0.5 - (0 if b["fresh"] else 300)})
+
+        # ── ③ 卖点（方向与阶段相反、且不新鲜的 → 历史路标）──
+        if arb_dir is not True:
+            for sl in cand_sell:
+                if arb_dir is True and not sl["fresh"]:
+                    continue
+                n = SELL_STARS.get(sl["tag"], 1)
+                d = (sl["level"] - P) / P * 100          # 现价距卖点还有多少
+                # 长期延续卖点：现价必须在卖点之下，涨破的不算风险
+                if not sl["fresh"] and d < 0:
+                    continue
+                # ⚠️ 2026-11-15：**新鲜**卖点一律纳入（3.0005% 那种边界值不再被卡掉，
+                #   也不会出现「中枢表标 ⭐三卖、风险榜写无」的自相矛盾）；
+                #   旧的延续卖点仍按窗口过滤：已跌破下方 6% / 头顶 SELL_ABOVE 以内。
+                if sl["fresh"]:
+                    if d < -6:
+                        continue
+                else:
+                    if not (-6 <= d <= SELL_ABOVE):
+                        continue
+                risk.append({"name": r["name"], "level_tag": lv_name, "tag": sl["tag"],
+                             "stars": n, "level": sl["level"], "age": sl["age"],
+                             "dist": d, "active": abs(d) <= 1.0,
+                             "fresh": bool(sl["fresh"]),
+                             "score": n * 100 - abs(d) - sl["age"] * 0.5 - (0 if sl["fresh"] else 300)})
         # SMC 结构性破位（只作风险提示，单独一段，不混进买卖点榜）
     return opp, risk
 
@@ -736,9 +810,14 @@ def _top_block(rows, include_h1=True):
                 st = "现价已站上买点 %.1f%%" % o["dist"]
             else:
                 st = "现价还在买点下方 %.1f%%（已破，需收回）" % abs(o["dist"])
-            L.append("%d. %s %s ｜%s %s %.2f ｜%s ｜%d根K线前" % (
+            # ⚠️ 2026-11-15 大佬：「一会说有买点，一会说是三卖」→ 必须一眼看出这个点是新是旧。
+            #   新鲜信号 = 当下机会；「延续」= 很久以前形成、至今没被跌破，只作参考，
+            #   不能和今天的新信号平起平坐（否则拿 1.5 年前的买点对冲今天的卖点）。
+            fresh = o.get("fresh", True)
+            tail = "" if fresh else "·延续（老信号，非当下买点）"
+            L.append("%d. %s %s ｜%s %s %.2f ｜%s ｜%d根K线前%s" % (
                 i, "🌙" * o["stars"], o["name"], o["level_tag"], o["tag"],
-                o["level"], st, o["age"]))
+                o["level"], st, o["age"], tail))
     else:
         L.append("今日无新鲜买点（5指数 × %s，均未到一买/二买/三买）" % ("小时/日线" if include_h1 else "日线"))
 
@@ -774,14 +853,17 @@ def _top_block(rows, include_h1=True):
                 st = "卖点就在上方 %.1f%%" % k["dist"]
             else:
                 st = "已跌破卖点 %.1f%%" % abs(k["dist"])
-            L.append("%d. %s %s ｜%s %s %.2f ｜%s ｜%d根K线前" % (
+            fresh = k.get("fresh", True)
+            tail = "" if fresh else "·延续（老信号，非当下卖点）"
+            L.append("%d. %s %s ｜%s %s %.2f ｜%s ｜%d根K线前%s" % (
                 i, "⭐" * k["stars"], k["name"], k["level_tag"], k["tag"],
-                k["level"], st, k["age"]))
+                k["level"], st, k["age"], tail))
     else:
         L.append("现价附近无新鲜卖点")
-    L.append("（本榜单口径：买点/卖点取现价 ±3%% 内、%s日线 25 根 / 周线 12 根以内、版本=缠论·分型版；"
-             "中枢上沿下沿只是参考线，不打图标。全篇仅分型版口径）"
-             % ("小时线 30 根 / " if include_h1 else ""))
+    L.append("（本榜单口径：**方向以缠论阶段为准**——阶段是买结构就只列买点、是卖结构就只列卖点，"
+             "反方向的老信号不进榜（否则会出现「一边报买点、一边报三卖」）；"
+             "新鲜=日线 25 根 / 周线 12 根以内，标「·延续」的是更早形成、至今未破的老信号，只作参考。"
+             "版本=缠论·分型版；中枢上沿下沿只是参考线，不打图标）")
     if notes:
         L += [""] + notes
     return "\n".join(L)
@@ -869,12 +951,27 @@ def build_text(include_h1=True):
             sl = [s for s in (ck.get("sell_list") or []) if s["fresh"] or s.get("sustained")]
             if ck.get("zs"):
                 bits.append("中枢=%.2f~%.2f" % ck["zs"])
+            # ⚠️ 2026-11-15：这里以前把买点卖点**并列全列**，导致同一行既「二买·延续」又「三卖」，
+            #   和上面榜单的口径打架。现在：最新方向标「当前方向」，反方向的老信号
+            #   一律打上「已失效」字样并挪到后面 —— 一行里能看出谁说了算。
+            _dir = _stage_dir(ck)      # 方向由阶段决定，不由信号年龄决定（见 _stage_dir 注释）
             if bl:
-                bits.append("买点 " + "、".join("🌙%s%.2f(%d根前)" % (
-                    b["tag"] + ("" if b["fresh"] else "·延续"), b["level"], b["age"]) for b in bl))
+                rs = []
+                for b in bl:
+                    _cur = (_dir is True and b["fresh"]) or (len(bl) == 1 and _dir is True)
+                    rs.append("🌙%s%.2f(%d根前%s)" % (
+                        b["tag"] + ("" if b["fresh"] else "·延续"), b["level"], b["age"],
+                        "" if (_dir is True) else "·已被卖点取代"))
+                bits.append("买点 " + "、".join(rs))
             if sl:
-                bits.append("卖点 " + "、".join("⭐%s%.2f(%d根前)" % (
-                    s["tag"] + ("" if s["fresh"] else "·延续"), s["level"], s["age"]) for s in sl))
+                rs = []
+                for s2 in sl:
+                    rs.append("⭐%s%.2f(%d根前%s)" % (
+                        s2["tag"] + ("" if s2["fresh"] else "·延续"), s2["level"], s2["age"],
+                        "" if (_dir is False) else "·已被买点取代"))
+                bits.append("卖点 " + "、".join(rs))
+            if _dir is not None:
+                bits.append("**当前方向=%s**" % ("🌙买点" if _dir else "⭐卖点"))
             if ck.get("div"):
                 bits.append("背驰=%s" % ck["div"])
             else:
