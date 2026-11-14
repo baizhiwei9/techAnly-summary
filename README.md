@@ -18,6 +18,29 @@
 | `misc/engine/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
 | `chanlun/ma/chan_ma_chart.py` | **缠论·均线版单标的出图**（只画均线版一层，图大结构清楚） |
 
+### charts · 统一画图模块（2026-11-14）
+
+所有画图功能统一收进 `charts/`，按口径分子模块；原入口文件保留为转发 shim，旧 import 照常可用：
+
+| 模块 | 内容 |
+|---|---|
+| `charts/chan_fractal.py` | 缠论·分型版 K线图（K线 + 笔 + 中枢 + 买卖点 + MACD） |
+| `charts/chan_vwap.py` | 缠论·分型版 + VWAP 单子图（K线 + 笔 + 中枢 + VWAP ±1σ/±2σ） |
+| `charts/chan_ma.py` | 缠论·均线版 K线图（MA10/20/160 + 笔 + 线段 + 中枢 + 走势类型底色） |
+| `charts/buypoint.py` | 买点三面板大图 + 成分股网格（日线/小时线/均线版） |
+| `charts/topology.py` | SPD 流形图（`plot_spd` / `plot_phase` / `plot_multi`） |
+| `charts/terrain.py` | 黎曼流形地形图（`build`） |
+| `charts/compare.py` | 笔/分型 引擎对比图 |
+| `charts/common.py` | 共享：仓库根探测 / sys.path / 网络出口 / 中文字体 / Agg |
+
+统一入口（惰性导入，`import charts` 不会拉起 mplfinance/ripser）：
+
+```python
+from charts import draw_chan_fractal, draw_chan_ma, draw_chan_vwap
+from charts import draw_buypoint_chart, draw_stock_grid
+from charts import plot_spd, plot_phase, plot_multi, draw_terrain
+```
+
 ### topology · 拓扑流形（SPD 流形 + TDA + 里奇曲率）
 
 对 **指数 / 行业 / 概念 / 板块** 做成分股协方差 SPD 流形分析，用
