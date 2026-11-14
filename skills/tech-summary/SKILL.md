@@ -337,9 +337,14 @@ out.sort(key=lambda x: (not x["accept"], x["pri"], x.get("age", 0)))
 **所有画图统一走 `misc/charts/run.py`**（登记表在 `misc/charts/registry.py`，新增图只改那张表）：
 
 ```bash
-python3 misc/charts/run.py --list        # 列出全部可画的图
+python3 misc/charts/run.py --list        # 列出全部可画的图（末尾附路由口诀）
 python3 misc/charts/run.py <name> [原脚本参数...]
+python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直接说人话，按 keywords 反查
 ```
+
+> **「说人话」路由已实装**：`registry.py` 每条带 `keywords`，`run.py` 用最长匹配反查。
+> 说「画拓扑结构图 / 拓扑图」→ `topology-manifold`；说「画流形图 / 流形结构图」→ `topology-spd`；
+> 说「画地形图 / 黎曼地形图」→ `topology-terrain`。
 
 | 大佬说（关键词） | 走哪张图 | 命令 |
 |---|---|---|

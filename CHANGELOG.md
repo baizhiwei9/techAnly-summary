@@ -6,6 +6,51 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-14 15:10
+
+**feat(charts): 画图入口支持「说人话」路由 —— 老板原话直接当图名即可**
+
+老板定调（13:52 群消息）：「我要说画拓扑结构图，你就用这个算法来调用这个画图；
+我要说画流形结构图或者画流形图，你就调用那个 SPD 那里边那个开头的那个画图的。」
+
+之前 `misc/charts/run.py` 只认英文/中划线图名（`topology-manifold` / `topology-spd`），
+必须人工翻译一次才能调用 —— 本轮把这一步去掉。
+
+### 改动
+
+- `misc/charts/registry.py`
+  - 每条登记项新增 `keywords` 字段（自然语言话题词）。
+  - 新增 `resolve(text)`：最长关键词优先匹配，`text` 恰好等于 `name` 时直接命中。
+    例：「画拓扑结构图」→ `topology-manifold`；「画流形图」/「流形结构图」→ `topology-spd`；
+    「画地形图」/「黎曼地形图」→ `topology-terrain`。
+- `misc/charts/run.py`
+  - 图名命中失败时先走 `registry.resolve()`，命中打印 `[charts] 「画流形图」→ topology-spd`；
+  - `--list` 每条多打一行「话题词：…」，末尾追加**路由口诀**三行；
+  - 用法提示补一条 `python3 misc/charts/run.py "画流形图" --target 沪深300`。
+- `misc/charts/README.md`：新增「说人话也能路由」小节 + 三张拓扑图不许串的对照表。
+- `skills/tech-summary/SKILL.md`：3.0.1 画图路由节补「说人话」用法与已实装说明
+  （工作区副本 `~/.openclaw/workspace/skills/tech-summary/SKILL.md` 同步）。
+
+### 实测
+
+```
+python3 misc/charts/run.py "画拓扑结构图" --target 科创50   → topology-manifold
+python3 misc/charts/run.py "画流形图"     --target 沪深300   → topology-spd
+python3 misc/charts/run.py "流形结构图"   …               → topology-spd
+python3 misc/charts/run.py "画地形图"     …               → topology-terrain
+python3 misc/charts/run.py "拓扑图"       …               → topology-manifold
+```
+
+`python3 -c "import registry; registry.resolve('画拓扑结构图')"` → `topology-manifold`（5 例全对）。
+
+### 说明 · 与远端 12:22 那次重构的关系
+
+远端 `fc494e0` 已把画图统一收进 `misc/charts/`（`registry.py` + `run.py` + `README.md`），
+本次**在其之上**追加 keywords 路由，不另建入口、不改脚本实现，也不动 `charts/`（那是画图实现模块，
+`misc/charts/` 是调用入口，两者分工已由远端定稿）。
+
+影响文件：`misc/charts/{registry.py,run.py,README.md}`、`skills/tech-summary/SKILL.md`、`CHANGELOG.md`。
+
 ## 2026-11-14 13:40
 
 **feat(topology+misc): 结构分不再冒充方向（标签改名）+ 新增「趋势层（含方向）」一行 + 建库内唯一画图入口**

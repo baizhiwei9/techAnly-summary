@@ -23,3 +23,24 @@ python3 misc/charts/run.py chan-fractal --index 中证500 --level h1 --n 120
 
 只改 `registry.py`，加一条 dict（`name / desc / module / default_out / out_kind / kind / entry`），
 别的地方不用动。`module` 写**相对仓库根的路径**，`out_kind` 用 `"file"` 或 `"dir"`。
+
+## 说人话也能路由（2026-11-14 追加）
+
+老板的原话是「我要说画拓扑结构图，你就用这个算法调用画图；我要说画流形图，就调 SPD 那个」——
+所以入口支持**直接用自然语言当图名**，靠 `registry.py` 里每条的 `keywords` 反查（最长匹配优先）：
+
+```bash
+python3 misc/charts/run.py "画拓扑结构图" --target 科创50    # → topology-manifold
+python3 misc/charts/run.py "画流形图"     --target 沪深300    # → topology-spd
+python3 misc/charts/run.py "画地形图"     --target 沪深300    # → topology-terrain
+```
+
+路由对照（三张拓扑图**不许串**）：
+
+| 老板说 | 走哪个 | 算法 |
+|---|---|---|
+| 画拓扑结构图 / 拓扑图 / 画拓扑 | `topology-manifold` | UMAP 2D 嵌入 + Ollivier-Ricci 曲率网络（看结构状态、咽喉股） |
+| 画流形图 / 流形结构图 / SPD 流形 | `topology-spd` | SPD 协方差流形（Log-Euclidean 测地距离）+ TDA + 二维相位图 |
+| 画地形图 / 黎曼地形图 | `topology-terrain` | 黎曼地形曲面 + 持续同调条码 |
+
+`python3 misc/charts/run.py --list` 末尾会把这套口诀打出来。

@@ -62,11 +62,18 @@ def _print_list():
         print("%s└ 默认输出：%s%s" % (
             pad, r["default_out"],
             "" if r.get("out_kind") else "（该脚本自带固定输出目录，--out 不一定生效）"))
+        if r.get("keywords"):
+            print("%s话题词：%s" % (pad, " / ".join(r["keywords"])))
     print("=" * 76)
     print("用法：python3 misc/charts/run.py --list")
-    print("      python3 misc/charts/run.py %s --help" % rows[-1]["name"])
     print("      python3 misc/charts/run.py <name> [原脚本参数...]")
-    print("新增图：编辑 misc/charts/registry.py 加一条 dict（name/desc/module/default_out）。")
+    print("      python3 misc/charts/run.py \"画流形图\" --target 沪深300   # 也可以直接说人话")
+    print("新增图：编辑 misc/charts/registry.py 加一条 dict（name/desc/module/default_out/keywords）。")
+    print()
+    print("路由口诀（说哪句话 → 走哪张图）：")
+    print("  「画拓扑结构图 / 拓扑图 / 画拓扑」  → topology-manifold（UMAP 结构 + 里奇曲率）")
+    print("  「画流形图 / 流形结构图」          → topology-spd（SPD 流形 + TDA + 相位图）")
+    print("  「画地形图 / 黎曼地形图」          → topology-terrain")
 
 
 def _target_tag(extra):
@@ -99,6 +106,13 @@ def main(argv=None):
 
     name, extra = argv[0], argv[1:]
     item = registry.get(name)
+    if item is None:
+        # 支持直接说人话（「画流形图」「拓扑结构图」）→ 按 registry.keywords 反查
+        hit = registry.resolve(name)
+        if hit:
+            print("[charts] 「%s」→ %s" % (name, hit))
+            name = hit
+            item = registry.get(name)
     if item is None:
         sys.stderr.write("未知图名：%s\n可用：%s\n（先跑 --list 看清单）\n"
                          % (name, ", ".join(registry.names())))

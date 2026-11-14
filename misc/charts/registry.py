@@ -18,6 +18,7 @@
 CHARTS = [
     dict(
         name="chan-fractal",
+        keywords=["缠论分型版", "分型版K线", "画缠论图", "缠论图"],
         desc="缠论·分型版单标的出图（包含→分型→笔→中枢→背驰，K线+MACD）",
         module="chanlun/fractal/chan_chart.py",
         default_out="reports/charts/chan-fractal",
@@ -27,6 +28,7 @@ CHARTS = [
     ),
     dict(
         name="chan-ma",
+        keywords=["缠论均线版", "均线版K线", "画均线版"],
         desc="缠论·均线版单标的出图（MA5/10 双穿 MA20 → 笔/线段/走势类型）",
         module="chanlun/ma/chan_ma_chart.py",
         default_out="reports/charts/chan-ma",
@@ -36,6 +38,7 @@ CHARTS = [
     ),
     dict(
         name="buypoint",
+        keywords=["买点图", "买点三联图", "成分股网格"],
         desc="买点个股三联图（日线 + 小时线 + 缠论均线版）。"
              "⚠️ 没有独立 CLI/main，只能当库调用："
              "draw_stock_grid(picks, out_path, n_show=120, ...) / "
@@ -49,6 +52,7 @@ CHARTS = [
     ),
     dict(
         name="simple",
+        keywords=["单图速览", "一张图看结构"],
         desc="单图速览（缠论分型版笔/中枢 + VWAP 六轨，K线一屏）。"
              "⚠️ 无 CLI 参数：__main__ 是写死的样板（极米科技）；"
              "要换标的请 import：draw_stock(code, name, d, n_show=120, out=None)",
@@ -60,6 +64,7 @@ CHARTS = [
     ),
     dict(
         name="topology-spd",
+        keywords=["流形图", "流形结构图", "画流形", "SPD流形", "相位图"],
         desc="拓扑·SPD 流形四合一图 + 多标的二维相位图（H1 环寿命 × 平均相关性）",
         module="topology/run.py",
         default_out="reports/charts/topology-spd",
@@ -69,6 +74,7 @@ CHARTS = [
     ),
     dict(
         name="topology-terrain",
+        keywords=["地形图", "黎曼地形图", "黎曼流形地形图"],
         desc="拓扑·黎曼流形地形图（左：地形 + 持续同调条码 / 右：相关矩阵曲面）",
         module="topology/terrain.py",
         default_out="reports/charts/topology-terrain",
@@ -78,6 +84,7 @@ CHARTS = [
     ),
     dict(
         name="topology-manifold",
+        keywords=["拓扑结构图", "拓扑图", "画拓扑", "拓扑流形图", "里奇曲率"],
         desc="拓扑·流形图（左：UMAP 结构位置 / 右：里奇曲率网络）。"
              "标题分两块：结构研判（不含方向）+ 趋势层（含方向）",
         module="topology/manifold_topo.py",
@@ -87,6 +94,24 @@ CHARTS = [
         entry=None,
     ),
 ]
+
+
+def resolve(text):
+    """按自然语言关键词找图名（最长关键词优先）。找不到返回 None。
+
+    例：「画拓扑结构图」→ topology-manifold ；「画流形图」→ topology-spd
+    """
+    t = str(text or "").strip()
+    if not t:
+        return None
+    best, best_len = None, -1
+    for c in CHARTS:
+        if t == c["name"]:
+            return c["name"]
+        for kw in c.get("keywords") or []:
+            if kw in t and len(kw) > best_len:
+                best, best_len = c["name"], len(kw)
+    return best
 
 
 def names():
