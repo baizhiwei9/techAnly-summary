@@ -5,16 +5,17 @@
 把散落在 chanlun/、misc/、topology/ 的画图功能收拢到这一个目录，按口径分子模块：
 
   charts.chan_fractal   缠论·分型版 K线图（K线 + 笔 + 中枢 + 买卖点 + MACD）
+                         —— draw() 单指数；draw_compare() 多指数并排对比
   charts.chan_vwap      缠论·分型版 + VWAP 单子图（K线 + 笔 + 中枢 + VWAP ±1σ/±2σ）
   charts.chan_ma        缠论·均线版 K线图（MA + 笔 + 线段 + 中枢 + 走势类型底色）
   charts.buypoint       买点三面板大图 + 成分股网格（日线/小时线/均线版）
   charts.topology       SPD 流形图（plot_spd / plot_phase / plot_multi）
   charts.terrain        黎曼流形地形图（build）
-  charts.compare        笔/分型 引擎对比图（candles / draw_pens / draw_zones）
+  charts.compare        笔/分型 引擎差异对比图（draw_engine_compare）
 
 统一入口（惰性导入，避免 import charts 时把 mplfinance/ripser/chan_smc_index 全拉起来）：
 
-    from charts import draw_chan_fractal, draw_chan_ma, draw_chan_vwap
+    from charts import draw_chan_fractal, draw_compare, draw_chan_ma, draw_chan_vwap
     from charts import draw_buypoint_chart, draw_stock_grid
     from charts import plot_spd, plot_phase, plot_multi, draw_terrain
 
@@ -31,6 +32,7 @@ _LAZY = {
     # chan_fractal
     "chan_geometry": ("chan_fractal", "chan_geometry"),
     "draw_chan_fractal": ("chan_fractal", "draw"),
+    "draw_compare": ("chan_fractal", "draw_compare"),
     # chan_vwap
     "draw_chan_vwap": ("chan_vwap", "draw_stock"),
     # chan_ma
@@ -46,8 +48,8 @@ _LAZY = {
     "color_for": ("topology", "color_for"),
     # terrain
     "draw_terrain": ("terrain", "build"),
-    # compare
-    "draw_compare": ("compare", "main"),
+    # compare（笔/中枢引擎差异对比）
+    "draw_engine_compare": ("compare", "main"),
 }
 
 __all__ = list(_LAZY.keys()) + [

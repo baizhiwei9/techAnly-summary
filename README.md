@@ -24,7 +24,7 @@
 
 | 模块 | 内容 |
 |---|---|
-| `charts/chan_fractal.py` | 缠论·分型版 K线图（K线 + 笔 + 中枢 + 买卖点 + MACD） |
+| `charts/chan_fractal.py` | 缠论·分型版 K线图（K线 + 笔 + 中枢 + 买卖点 + MACD）｜单指数 `draw` + 多指数并排对比 `draw_compare` |
 | `charts/chan_vwap.py` | 缠论·分型版 + VWAP 单子图（K线 + 笔 + 中枢 + VWAP ±1σ/±2σ） |
 | `charts/chan_ma.py` | 缠论·均线版 K线图（MA10/20/160 + 笔 + 线段 + 中枢 + 走势类型底色） |
 | `charts/buypoint.py` | 买点三面板大图 + 成分股网格（日线/小时线/均线版） |
@@ -36,9 +36,17 @@
 统一入口（惰性导入，`import charts` 不会拉起 mplfinance/ripser）：
 
 ```python
-from charts import draw_chan_fractal, draw_chan_ma, draw_chan_vwap
+from charts import draw_chan_fractal, draw_compare, draw_chan_ma, draw_chan_vwap
 from charts import draw_buypoint_chart, draw_stock_grid
 from charts import plot_spd, plot_phase, plot_multi, draw_terrain
+```
+
+缠论·分型版多指数并排对比（每列一个指数：上=价格面板，下=MACD 面板；判定用全量K线）：
+
+```bash
+python3 charts/chan_fractal.py --compare 上证50,沪深300          # 按名称，逗号分隔
+python3 charts/chan_fractal.py --compare 000016.SH,000300.SH    # 按代码
+python3 charts/chan_fractal.py --compare 上证50,沪深300,中证500 --compare-n 160
 ```
 
 ### topology · 拓扑流形（SPD 流形 + TDA + 里奇曲率）
