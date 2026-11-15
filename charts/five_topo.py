@@ -107,8 +107,10 @@ def topo_calc(close, index_code=None, days=60):
     dmat = np.sqrt(np.maximum(0.0, 2.0 * (1.0 - corr)))
     np.fill_diagonal(dmat, 0.0)
     emb = MT.umap_embed(dmat, n_neighbors=10, min_dist=0.3)
+    flow = MT.ricci_flow_series(close, k=5)
     return dict(emb=emb, mom5=mom5, curv=curv, deg=deg, corr=corr, mkt=mkt,
-                trend=trend, b0=b0, b1=b1, n=len(codes), codes=codes, days=days)
+                trend=trend, b0=b0, b1=b1, n=len(codes), codes=codes, days=days,
+                flow=flow)
 
 
 def verdict(trend, mkt):
@@ -155,7 +157,7 @@ def draw_row(fig, row_gs, ri, name, T, gs=None):
     colmap = {0: "#2eb872", 1: "#e05252", 2: "#3b6fd4"}
     mr = pd.Series(mom5).rank(pct=True).values
     ax.scatter(emb[:, 0], emb[:, 1], s=70 + 520 * mr,
-               c=[colmap[c] for c in cls], alpha=0.78,
+               c=[colmap[c] for c in cls], alpha=0.95,
                edgecolors="white", linewidths=0.9, zorder=3)
     for sp in ax.spines.values():
         sp.set_visible(False)
@@ -181,9 +183,9 @@ def draw_row(fig, row_gs, ri, name, T, gs=None):
                 G.add_edge(i, int(j), w=float(sim[i, j]))
     pos = nx.spring_layout(G, weight="w", seed=11, k=1.9 / np.sqrt(n), iterations=200)
     for u, v, dd in G.edges(data=True):
-        a = float(np.clip((dd["w"] - 0.2) / 0.7, 0.08, 0.72))
+        a = float(np.clip((dd["w"] - 0.1) / 0.6, 0.42, 0.95))
         ax2.plot([pos[u][0], pos[v][0]], [pos[u][1], pos[v][1]],
-                 color="#9aa7bb", lw=0.8 + 2.0 * max(0.0, dd["w"] - 0.3), alpha=a, zorder=1)
+                 color="#9aa7bb", lw=0.8 + 2.0 * max(0.0, dd["w"] - 0.25), alpha=a, zorder=1)
     rk = pd.Series(curv).rank(method="average").values
     rkn = (rk - 1) / max(1.0, (len(rk) - 1))
     sizes = 220 + 12 * T["deg"]
@@ -219,6 +221,26 @@ def draw_row(fig, row_gs, ri, name, T, gs=None):
         ph.set_fontsize(_fs)
         fig.canvas.draw()
         _r = fig.canvas.get_renderer()
+    # ═══ ②·附：里奇流（曲率随时间的流动）小图 ═══
+    _flow = T.get("flow")
+    if _flow is not None and len(_flow) >= 3:
+        fax = ax2.inset_axes([0.70, 0.72, 0.28, 0.22])
+        fax.set_facecolor("#f6f8fb")
+        fax.plot(_flow, color=NAVY, lw=1.6)
+        fax.scatter([len(_flow) - 1], [_flow[-1]], s=24, color="#d92b2b", zorder=5)
+        fax.annotate("", xy=(len(_flow) - 1, _flow[-1]),
+                     xytext=(len(_flow) - 3, _flow[-3]),
+                     arrowprops=dict(arrowstyle="-|>", color="#d92b2b", lw=1.4))
+        fax.axhline(0.0, color="#c8c8c8", lw=0.8, ls="--")
+        fax.set_title("里奇流（曲率流动）", fontsize=FS["choke"] - 6, color=INK, pad=3)
+        fax.set_xticks([])
+        fax.tick_params(labelsize=7.5, colors=MUTED)
+        for _s in fax.spines.values():
+            _s.set_color("#c8c8c8"); _s.set_linewidth(0.8)
+        _dir = "收敛" if _flow[-1] >= _flow[0] else "发散"
+        fax.text(0.03, 0.04, "流向：%s" % _dir, transform=fax.transAxes,
+                 fontsize=8, color=("#d92b2b" if _flow[-1] >= _flow[0] else "#3b6fd4"))
+
     ax2.margins(0.14)
     ax2.set_xticks([]); ax2.set_yticks([])
     for sp in ax2.spines.values():
