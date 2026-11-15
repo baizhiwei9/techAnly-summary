@@ -105,6 +105,20 @@ CHARTS = [
         entry=None,
     ),
     dict(
+        name="rmt-rc",
+        keywords=["RMT图", "RMT监控图", "RMT+RC", "outlier_energy", "特征值吸收率",
+                  "双Y轴RMT", "λ1/λ2"],
+        desc="RMT + RC 联合监控图（60 日滚动窗口）。单图/多图都行："
+             "--targets 科创50 出一张；--targets 沪深300,科创50 出并排两张；"
+             "左内轴 outlier_energy、右外轴 λ1/λ2、右轴 AR5/λ1Σλ/RC；"
+             "页脚多行图例（大字号）+ 历史分位一行；--alert 分位>90% 可发邮件",
+        module="charts/rmt_rc.py",
+        default_out="reports/charts/rmt",
+        out_kind="file",
+        kind="script",
+        entry=None,
+    ),
+    dict(
         name="topology-manifold",
         keywords=["拓扑结构图", "拓扑图", "画拓扑", "拓扑流形图", "里奇曲率"],
         desc="拓扑·流形图（左：UMAP 结构位置 / 右：里奇曲率网络）。"
