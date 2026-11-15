@@ -219,6 +219,26 @@ def draw_row(fig, row_gs, ri, name, T, gs=None):
         ph.set_fontsize(_fs)
         fig.canvas.draw()
         _r = fig.canvas.get_renderer()
+    # ═══ ②·附：里奇流（曲率随时间的流动）小图 ═══
+    _flow = T.get("flow")
+    if _flow is not None and len(_flow) >= 3:
+        fax = ax2.inset_axes([0.70, 0.72, 0.28, 0.22])
+        fax.set_facecolor("#f6f8fb")
+        fax.plot(_flow, color=NAVY, lw=1.6)
+        fax.scatter([len(_flow) - 1], [_flow[-1]], s=24, color="#d92b2b", zorder=5)
+        fax.annotate("", xy=(len(_flow) - 1, _flow[-1]),
+                     xytext=(len(_flow) - 3, _flow[-3]),
+                     arrowprops=dict(arrowstyle="-|>", color="#d92b2b", lw=1.4))
+        fax.axhline(0.0, color="#c8c8c8", lw=0.8, ls="--")
+        fax.set_title("里奇流（曲率流动）", fontsize=FS["choke"] - 6, color=INK, pad=3)
+        fax.set_xticks([])
+        fax.tick_params(labelsize=7.5, colors=MUTED)
+        for _s in fax.spines.values():
+            _s.set_color("#c8c8c8"); _s.set_linewidth(0.8)
+        _dir = "收敛" if _flow[-1] >= _flow[0] else "发散"
+        fax.text(0.03, 0.04, "流向：%s" % _dir, transform=fax.transAxes,
+                 fontsize=8, color=("#d92b2b" if _flow[-1] >= _flow[0] else "#3b6fd4"))
+
     ax2.margins(0.14)
     ax2.set_xticks([]); ax2.set_yticks([])
     for sp in ax2.spines.values():
@@ -235,6 +255,11 @@ def draw_row(fig, row_gs, ri, name, T, gs=None):
     axh.text(0.34, 0.80, "　%s　" % lab, fontsize=FS["sub_label"], color="white",
              weight="bold", va="center", ha="left",
              bbox=dict(boxstyle="round,pad=0.40", fc=col, ec="none"))
+    _ts = T.get("tear_state")
+    if _ts:
+        axh.text(0.60, 0.80, "　%s　" % _ts[0], fontsize=FS["sub_label"], color="white",
+                 weight="bold", va="center", ha="left",
+                 bbox=dict(boxstyle="round,pad=0.40", fc=_ts[1], ec="none"))
     axh.text(0.0, 0.36,
              "结构分 %+.2f ｜ %s ｜ 簇 %s ｜ 闭环 %s ｜ 均曲率 %+.3f ｜ 样本 %d 只 · 近 %d 日"
              % (mkt.get("score", float("nan")), sup,
@@ -246,6 +271,90 @@ def draw_row(fig, row_gs, ri, name, T, gs=None):
 
 
 _NAMES_CACHE = {}
+
+
+# ─────────────────────── 撕裂 / 聚集 判别（topo_v2 口径）───────────────────────
+def _fiedler_gap(corr: np.ndarray):
+    """谱二分（Fiedler 向量）→ 簇内-簇间相关差 gap（撕裂度）+ sync（同步度）。
+
+    纯 numpy，不依赖 sklearn。与群云盘 topo_v2/topo_core.py 的 fiedler_split 同口径：
+      · sync = 平均两两相关（越高越抱团/聚集）
+      · gap  = 簇内平均相关 − 簇间平均相关（越大越撕裂，阵营分明）
+    """
+    n = corr.shape[0]
+    D = np.sqrt(np.maximum(2 * (1 - corr), 0))
+    np.fill_diagonal(D, 0.0)
+    J = np.eye(n) - np.ones((n, n)) / n
+    B = -0.5 * J @ (D ** 2) @ J
+    w, V = np.linalg.eigh(B)
+    f = V[:, np.argsort(w)[::-1][1]]
+    lab = (f > 0).astype(int)
+    frac = max(lab.mean(), 1 - lab.mean())
+    if frac > 0.85:                      # 不平衡 → 用中位数强制平衡
+        lab = (f > np.median(f)).astype(int)
+    a, b = lab == 0, lab == 1
+    iu = np.triu_indices(n, 1)
+    sync = float(corr[iu].mean())
+    if a.sum() and b.sum():
+        tear = float(corr[np.ix_(a, b)].mean())
+        w_in = np.r_[corr[np.ix_(a, a)][np.triu_indices(a.sum(), 1)],
+                     corr[np.ix_(b, b)][np.triu_indices(b.sum(), 1)]]
+        gap = float(w_in.mean() - tear) if len(w_in) else 0.0
+    else:
+        gap = 0.0
+    return sync, gap
+
+
+def _rolling_sync_gap(close: pd.DataFrame, win: int = 60, step: int = 5):
+    """滚动窗口的 (sync, gap) 序列，用于跨指数池化做历史分位。
+
+    返回 shape (m, 2) 的 np.ndarray；样本不足返回 (0, 2)。
+    """
+    ret = close.pct_change().iloc[1:].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    R = ret.values
+    m = R.shape[0] - win + 1
+    if m < 1:
+        return np.zeros((0, 2), dtype=float)
+    out = []
+    for w in range(0, m, step):
+        c = np.nan_to_num(np.corrcoef(R[w:w + win], rowvar=False), nan=0.0)
+        out.append(_fiedler_gap(c))
+    return np.array(out, dtype=float)
+
+
+def _ricci_flow(close: pd.DataFrame, k: int = 5, win: int = None, step: int = None):
+    """里奇流（Ricci flow）：滚动窗口的平均 Ollivier-Ricci 曲率序列。
+
+    单快照里奇曲率只回答「当前脆不脆」；里奇流补上时间维度 ——
+    逐窗算平均曲率，看「曲率如何随时间流动」：
+      曲线向上 → 里奇流收敛（结构聚合）；向下 → 里奇流发散（结构撕裂）。
+    窗口默认取收益样本的 1/3（至少 20）、步长取窗口 1/6，控制算量。
+    """
+    ret = np.log(close / close.shift(1)).dropna()
+    T = ret.shape[0]
+    if T < 16:
+        return np.array([], dtype=float)
+    win = int(np.clip(win or max(20, T // 3), 10, T))
+    step = int(max(1, step or max(1, win // 6)))
+    vals = []
+    for w in range(0, T - win + 1, step):
+        c = np.nan_to_num(np.corrcoef(ret.iloc[w:w + win].values, rowvar=False), nan=0.0)
+        curv, _, _, _ = MT.ollivier_ricci(c, k=k)
+        vals.append(float(np.mean(curv)))
+    return np.array(vals, dtype=float)
+
+
+def _tear_state(sync: float, gap: float, sync_pct: float, gap_pct: float):
+    """五态判定（撕裂 / 聚集 / 抱团分化 / 散乱 / 过渡），topo_v2 口径。"""
+    if gap_pct >= 75 and sync_pct <= 50:
+        return "撕裂", "#e05252"
+    if sync_pct >= 75 and gap_pct <= 50:
+        return "聚集", "#e08a1e"
+    if sync_pct >= 75 and gap_pct >= 75:
+        return "抱团分化", "#8e6fd4"
+    if sync_pct <= 50 and gap_pct <= 50:
+        return "散乱", "#8a8a8a"
+    return "过渡", "#2e9cc8"
 
 
 def _names(codes, tries=3):
@@ -296,17 +405,25 @@ def _audit_layout(fig):
 
 def build(out=None, panel_dir=None, days=60):
     rows = []
+    tg = []                      # (name, sync_gap_seq) 供跨指数池化分位
     for name, code in INDICES:
         hits = components(code)
+        close_long = None
         if panel_dir:
             dates, close = panel_from_csv_dir(panel_dir, hits, days + 1)
         else:
             from topology import data_loader as DL
-            dates, close = DL.close_panel(hits, days)
-            if close is None:
+            # 撕裂/聚集判别需要更长历史做分位：取 ~250 天；原图仍只画最后 days 天
+            dates, close_long = DL.close_panel(hits, max(days, 250))
+            if close_long is None:
                 raise RuntimeError("取不到成分股日线面板：%s" % name)
+            close = close_long.tail(days + 1)
         T = topo_calc(close, code, days)
         T["names"] = _names(T["codes"])
+        if close_long is not None and len(close_long) >= 40:
+            T["sg"] = _rolling_sync_gap(close_long, win=min(60, days), step=5)
+            tg.append((name, T["sg"]))
+        T["flow"] = _ricci_flow(close, k=5)
         _o = np.argsort(T["curv"])[:3]
         print("[five-topo][choke] %s 咽喉TOP3: %s" % (
             name, " / ".join("%s %.3f" % (T["names"].get(T["codes"][i], T["codes"][i]),
@@ -314,6 +431,22 @@ def build(out=None, panel_dir=None, days=60):
         rows.append((name, T))
         print("[five-topo] %s 完成（成分 %d · 簇%s 环%s 结构分%+0.2f）"
               % (name, T["n"], T["b0"], T["b1"], T["mkt"].get("score", 0)), flush=True)
+
+    # ── 跨指数池化：五态「撕裂/聚集」判定 ──
+    if tg:
+        pool_sync = np.concatenate([sg[:, 0] for _, sg in tg])
+        pool_gap = np.concatenate([sg[:, 1] for _, sg in tg])
+        for name, T in rows:
+            sg = T.get("sg")
+            if sg is None or len(sg) == 0:
+                T["tear_state"] = None
+                continue
+            sync_now, gap_now = float(sg[-1, 0]), float(sg[-1, 1])
+            sp = float((pool_sync < sync_now).mean() * 100)
+            gp = float((pool_gap < gap_now).mean() * 100)
+            T["tear_state"] = _tear_state(sync_now, gap_now, sp, gp)
+            print("[five-topo][tear] %s SYNC %.3f(%.0f%%) GAP %.3f(%.0f%%) → %s"
+                  % (name, sync_now, sp, gap_now, gp, T["tear_state"][0]), flush=True)
 
     nrow = len(rows)
     fig_h = ROW_H * nrow + 1.1 * (nrow - 1) + 2.0
@@ -334,6 +467,7 @@ def build(out=None, panel_dir=None, days=60):
              "每个指数一块：结论条在上，左 ① UMAP 结构位置 ／ 右 ② 里奇曲率联动网络",
              fontsize=FS["fig_note"], color=MUTED, va="top")
     fig.text(0.020, 0.22 / fig_h,
+             "撕裂/聚集＝谱二分簇内-簇间落差 × 同步度（5 指数 × 滚动窗池化分位）：撕裂=抗跌、聚集=抱团阴跌　｜　"
              "方向票＝近5日/近10日/vs MA60 三票制　｜　结构分只看「抱团还是散开」，不是涨跌预测"
              "　｜　窗口 %d 个交易日　｜　纯 Python · 0 token" % days,
              fontsize=FS["fig_foot"], color=MUTED, va="bottom")
