@@ -64,7 +64,7 @@ CHARTS = [
     ),
     dict(
         name="topology-spd",
-        keywords=["流形图", "流形结构图", "画流形", "SPD流形", "相位图"],
+        keywords=["流形图", "画流形", "SPD流形", "相位图"],
         desc="拓扑·SPD 流形四合一图 + 多标的二维相位图（H1 环寿命 × 平均相关性）",
         module="topology/run.py",
         default_out="reports/charts/topology-spd",
@@ -95,7 +95,8 @@ CHARTS = [
     ),
     dict(
         name="five-topo",
-        keywords=["五大宽基拓扑", "五个指数拓扑", "宽基拓扑结构", "五大宽基里奇曲率", "拓扑结构总览"],
+        keywords=["拓扑结构图", "拓扑结构", "拓扑图", "画拓扑", "拓扑结构总览",
+                  "五大宽基拓扑", "五个指数拓扑", "宽基拓扑结构", "五大宽基里奇曲率"],
         desc="拓扑结构总览图（独立程序，--targets 传任意 指数/行业/概念/板块，一个标的一行，多标的凑一张）。"
              "每行：左=UMAP 结构位置，右=里奇曲率联动网络（含里奇流小图），结论条含多空 + 撕裂/聚集五态判定。"
              "**不掺缠论**；默认五大宽基，晚任务只需 "
@@ -122,8 +123,8 @@ CHARTS = [
     ),
     dict(
         name="topology-manifold",
-        keywords=["拓扑结构图", "拓扑图", "画拓扑", "拓扑流形图", "里奇曲率"],
-        desc="拓扑·流形图（左：UMAP 结构位置 / 右：里奇曲率网络）。"
+        keywords=["流形拓扑图", "拓扑流形图", "流形结构图", "流形拓扑", "里奇曲率", "UMAP结构"],
+        desc="流形拓扑图（左：UMAP 结构位置 / 右：里奇曲率网络）。"
              "标题分两块：结构研判（不含方向）+ 趋势层（含方向）",
         module="topology/manifold_topo.py",
         default_out="reports/charts/topology-manifold",
@@ -137,7 +138,7 @@ CHARTS = [
 def resolve(text):
     """按自然语言关键词找图名（最长关键词优先）。找不到返回 None。
 
-    例：「画拓扑结构图」→ topology-manifold ；「画流形图」→ topology-spd
+    例：「画拓扑结构图」→ five-topo ；「画流形拓扑图」→ topology-manifold ；「画流形图」→ topology-spd
     """
     t = str(text or "").strip()
     if not t:
