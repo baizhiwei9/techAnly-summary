@@ -360,33 +360,6 @@ def avg_curvature(corr: np.ndarray, k: int = 5):
         return None, None, None, None, None
 
 
-def ricci_flow_series(close: pd.DataFrame, k: int = 5, win: int = None, step: int = None):
-    """里奇流（Ricci flow）：滚动窗口的平均 Ollivier-Ricci 曲率序列。
-
-    单快照的里奇曲率只回答「当前结构脆不脆」；里奇流补上时间维度 ——
-    把每个滚动子窗口的相关矩阵当成流形演化的一步，逐窗算平均曲率，
-    得到「曲率如何随时间流动」：
-      · 曲线向上 → 里奇流收敛（结构聚合 / 抱团）
-      · 曲线向下 → 里奇流发散（结构撕裂 / 分化）
-      · 越负 = 越脆弱，越正 = 越稳固
-
-    窗口默认取「收益样本的 1/3（至少 20）」、步长取窗口的 1/6，控制算量。
-    """
-    ret = np.log(close / close.shift(1)).dropna()
-    T = ret.shape[0]
-    if T < 16:
-        return np.array([], dtype=float)
-    win = int(np.clip(win or max(20, T // 3), 10, T))
-    step = int(max(1, step or max(1, win // 6)))
-    vals = []
-    for w in range(0, T - win + 1, step):
-        Rw = ret.iloc[w:w + win]
-        c = np.nan_to_num(np.corrcoef(Rw.values, rowvar=False), nan=0.0)
-        curv, _, _, _ = ollivier_ricci(c, k=k)
-        vals.append(float(np.mean(curv)))
-    return np.array(vals, dtype=float)
-
-
 def hermer2_score(b0, b1, curv_mean, b0_prev, b0_now):
     """hermer2 口径打分（−2 风险 … +2 机会）。
 
@@ -743,7 +716,7 @@ def zs(x: np.ndarray) -> np.ndarray:
 
 # ─────────────────────── 画图 ───────────────────────
 def plot(emb, mom5, curv, deg, corr, close, codes, names, index_code, index_name, out_path,
-         k=5, mkt=None, diag=None, pcp=None, trend=None, flow=None):
+         k=5, mkt=None, diag=None, pcp=None, trend=None):
     n = len(codes)
     # 颜色分类：动量 × 结构位置
     combo = 0.6 * zs(mom5) + 0.4 * zs(curv)  # 曲率越负越脆 → 负向贡献
@@ -924,24 +897,6 @@ def plot(emb, mom5, curv, deg, corr, close, codes, names, index_code, index_name
              color="#4a4a4a", va="bottom", ha="left", linespacing=1.65,
              bbox=dict(boxstyle="round,pad=0.55", fc="white", ec="#e0e0e0",
                        lw=0.9, alpha=0.94), zorder=7)
-
-    # ═══════════ 里奇流（曲率随时间的流动）小图 ═══════════
-    if flow is not None and len(flow) >= 3:
-        fax = ax2.inset_axes([0.68, 0.70, 0.30, 0.24])
-        fax.set_facecolor("#f6f8fb")
-        fax.plot(flow, color=NAVY, lw=1.6)
-        fax.scatter([len(flow) - 1], [flow[-1]], s=26, color=TITLE_RED, zorder=5)
-        fax.annotate("", xy=(len(flow) - 1, flow[-1]), xytext=(len(flow) - 3, flow[-3]),
-                     arrowprops=dict(arrowstyle="-|>", color=TITLE_RED, lw=1.4))
-        fax.axhline(0.0, color="#c8c8c8", lw=0.8, ls="--")
-        fax.set_title("里奇流（曲率流动）", fontsize=10.5, color=INK, pad=4)
-        fax.set_xticks([])
-        fax.tick_params(labelsize=8, colors=MUTED)
-        for _s in fax.spines.values():
-            _s.set_color("#c8c8c8"); _s.set_linewidth(0.8)
-        _dir = "收敛" if flow[-1] >= flow[0] else "发散"
-        fax.text(0.03, 0.06, "流向：%s" % _dir, transform=fax.transAxes,
-                 fontsize=9, color=("#b3202e" if flow[-1] >= flow[0] else "#2e6fbf"))
 
     # ═══════════ 标题区 ═══════════
     fig.text(0.045, 0.982, "%s 成分股结构图（左：位置与动能 / 右：联动与脆弱点）"
@@ -1654,20 +1609,12 @@ def main():
     emb = umap_embed(dmat, n_neighbors=10, min_dist=0.3)
     print("[manifold] UMAP done %.1fs" % (time.time() - t0))
 
-    flow = ricci_flow_series(close, k=a.k)
-    if len(flow):
-        print("[manifold] 里奇流 %d 窗：%.3f → %.3f（%s）"
-              % (len(flow), flow[0], flow[-1],
-                 "收敛" if flow[-1] >= flow[0] else "发散"))
-    else:
-        print("[manifold] 里奇流：样本不足，跳过")
-
     out = a.out or os.path.join(
         _WS, "reports", "topology",
         "%s_流形拓扑图_%s.png" % (index_name, datetime.now().strftime("%Y%m%d")),
     )
     info = plot(emb, mom5, curv, deg, corr, close, codes, names, index_code, index_name, out,
-                k=a.k, mkt=mkt, diag=diag, pcp=pcp, trend=trend, flow=flow)
+                k=a.k, mkt=mkt, diag=diag, pcp=pcp, trend=trend)
     print("[manifold] 输出：%s" % out)
     print("[manifold] %s" % info)
     print("[manifold] 总耗时 %.1fs" % (time.time() - t0))
