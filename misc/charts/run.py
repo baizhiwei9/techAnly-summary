@@ -87,6 +87,10 @@ def _target_tag(extra):
             val = extra[i + 1]
         elif a.startswith("--target="):
             val = a.split("=", 1)[1]
+        elif a == "--targets" and i + 1 < len(extra):
+            val = extra[i + 1]
+        elif a.startswith("--targets="):
+            val = a.split("=", 1)[1]
         elif a in ("--index", "--name") and i + 1 < len(extra) and not val:
             val = extra[i + 1]
         if val:

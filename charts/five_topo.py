@@ -25,8 +25,13 @@
     其余            → 结构中性的
 
 用法：
-  python3 charts/five_topo.py --out reports/charts/five_topo/five_topo.png
+  python3 charts/five_topo.py                                   # 默认五大宽基
+  python3 charts/five_topo.py --targets 沪深300,科创50          # 指定指数
+  python3 charts/five_topo.py --targets 行业:电子,概念:人工智能 # 行业 / 概念 / 板块
   python3 charts/five_topo.py --panel /root/.cache/topo5 --days 60
+
+「拓扑结构图」是独立程序：输入任意 指数/行业/概念/板块，一个标的画一行，
+凑成一张总览图。晚上任务只需 `--targets 沪深300,中证500,中证1000,创业板指,科创50`。
 """
 from __future__ import annotations
 
@@ -56,7 +61,35 @@ from matplotlib.lines import Line2D
 import networkx as nx
 
 import topology.manifold_topo as MT
-from charts.five_index import INDICES, components, panel_from_csv_dir, index_daily
+from topology import data_loader as DL
+from topology import targets as TT
+
+# 默认标的：晚上任务传五大宽基（本程序对任意 指数/行业/概念/板块 通用）
+DEFAULT_TARGETS = ["沪深300", "中证500", "中证1000", "创业板指", "科创50"]
+
+
+def panel_from_csv_dir(dirpath, codes, n_days=61):
+    """全市场逐日 CSV（close_YYYYMMDD.csv: ts_code,close）→ 收盘面板。
+
+    自包含实现（不再依赖 charts.five_index，避免拖进缠论画图链）。
+    """
+    import glob
+    fs = sorted(glob.glob(os.path.join(dirpath, "close_*.csv")))
+    if len(fs) < n_days + 1:
+        raise RuntimeError("面板 CSV 不足：%d 个 < %d" % (len(fs), n_days + 1))
+    fs = fs[-(n_days + 1):]
+    want = set(str(c) for c in codes)
+    frames = []
+    for f in fs:
+        d8 = os.path.basename(f)[6:14]
+        d = pd.read_csv(f, usecols=["ts_code", "close"])
+        d = d[d.ts_code.isin(want)]
+        s = d.set_index("ts_code")["close"]
+        s.name = d8
+        frames.append(s)
+    panel = pd.concat(frames, axis=1).T          # 行=日期，列=代码
+    panel = panel.dropna(axis=1, how="any")
+    return list(panel.index), panel
 
 RED, GRN = "#d62728", "#2ca02c"
 INK, MUTED, GRID = "#2b2b2b", "#7a7a7a", "#e6e6e6"
@@ -403,22 +436,42 @@ def _audit_layout(fig):
         print("[five-topo][audit] 跳过（%s）" % str(e)[:60], flush=True)
 
 
-def build(out=None, panel_dir=None, days=60):
+def _resolve_targets(raws):
+    """原始输入 → Target 列表（支持 指数/行业/概念/板块，可逗号/显式前缀）。"""
+    idx_boards = DL.board_list("行业")
+    cpt_boards = DL.board_list("概念")
+    out = []
+    for raw in raws:
+        t = TT.resolve(raw, idx_boards, cpt_boards)
+        out.append(t)
+    return out
+
+
+def build(out=None, panel_dir=None, days=60, targets=None):
     rows = []
-    tg = []                      # (name, sync_gap_seq) 供跨指数池化分位
-    for name, code in INDICES:
-        hits = components(code)
+    skipped = []
+    tg = []                      # (name, sync_gap_seq) 供跨标的池化分位
+    for t in targets or []:
+        if t.kind in ("stock", "unknown"):
+            skipped.append((t.raw, "无法识别 / 个股无成分股"))
+            continue
+        name = t.name or t.raw
+        hits = DL.components(t)
+        if not hits:
+            skipped.append((name, "取不到成分股"))
+            continue
+        index_code = t.code if t.kind == "index" else None
         close_long = None
         if panel_dir:
             dates, close = panel_from_csv_dir(panel_dir, hits, days + 1)
         else:
-            from topology import data_loader as DL
             # 撕裂/聚集判别需要更长历史做分位：取 ~250 天；原图仍只画最后 days 天
             dates, close_long = DL.close_panel(hits, max(days, 250))
             if close_long is None:
-                raise RuntimeError("取不到成分股日线面板：%s" % name)
+                skipped.append((name, "成分股日线面板取数失败"))
+                continue
             close = close_long.tail(days + 1)
-        T = topo_calc(close, code, days)
+        T = topo_calc(close, index_code, days)
         T["names"] = _names(T["codes"])
         if close_long is not None and len(close_long) >= 40:
             T["sg"] = _rolling_sync_gap(close_long, win=min(60, days), step=5)
@@ -432,7 +485,13 @@ def build(out=None, panel_dir=None, days=60):
         print("[five-topo] %s 完成（成分 %d · 簇%s 环%s 结构分%+0.2f）"
               % (name, T["n"], T["b0"], T["b1"], T["mkt"].get("score", 0)), flush=True)
 
-    # ── 跨指数池化：五态「撕裂/聚集」判定 ──
+    for raw, why in skipped:
+        print("[five-topo][skip] %s：%s" % (raw, why), flush=True)
+
+    if not rows:
+        raise RuntimeError("没有任何可画的标的")
+
+    # ── 跨标的池化：五态「撕裂/聚集」判定 ──
     if tg:
         pool_sync = np.concatenate([sg[:, 0] for _, sg in tg])
         pool_gap = np.concatenate([sg[:, 1] for _, sg in tg])
@@ -461,13 +520,13 @@ def build(out=None, panel_dir=None, days=60):
         draw_row(fig, sub, i, name, T)
 
     fig.text(0.020, 1 - 0.30 / fig_h,
-             "五大宽基 · 拓扑结构总览",
+             "拓扑结构总览 · 每行一个标的",
              fontsize=FS["fig_title"], color=NAVY, weight="bold", va="top")
     fig.text(0.020, 1 - 0.86 / fig_h,
-             "每个指数一块：结论条在上，左 ① UMAP 结构位置 ／ 右 ② 里奇曲率联动网络",
+             "每个标的一块：结论条在上（多空 + 撕裂/聚集），左 ① UMAP 结构位置 ／ 右 ② 里奇曲率联动网络",
              fontsize=FS["fig_note"], color=MUTED, va="top")
     fig.text(0.020, 0.22 / fig_h,
-             "撕裂/聚集＝谱二分簇内-簇间落差 × 同步度（5 指数 × 滚动窗池化分位）：撕裂=抗跌、聚集=抱团阴跌　｜　"
+             "撕裂/聚集＝谱二分簇内-簇间落差 × 同步度（全标的 × 滚动窗池化分位）：撕裂=抗跌、聚集=抱团阴跌　｜　"
              "方向票＝近5日/近10日/vs MA60 三票制　｜　结构分只看「抱团还是散开」，不是涨跌预测"
              "　｜　窗口 %d 个交易日　｜　纯 Python · 0 token" % days,
              fontsize=FS["fig_foot"], color=MUTED, va="bottom")
@@ -481,13 +540,21 @@ def build(out=None, panel_dir=None, days=60):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--targets", default="",
+                    help="逗号分隔，指数/行业/概念/板块（默认五大宽基）；"
+                         "行业/概念可加前缀：行业:电子、概念:人工智能")
     ap.add_argument("--out", default=os.path.join(
         WS, "reports", "charts", "five_topo",
-        "五大宽基_拓扑结构_%s.png" % datetime.now().strftime("%Y%m%d")))
+        "拓扑结构_%s.png" % datetime.now().strftime("%Y%m%d")))
     ap.add_argument("--panel", default="")
     ap.add_argument("--days", type=int, default=60)
     a = ap.parse_args()
-    build(a.out, a.panel or None, a.days)
+
+    raws = [s.strip() for s in a.targets.split(",") if s.strip()] or DEFAULT_TARGETS
+    targets = _resolve_targets(raws)
+    for raw, t in zip(raws, targets):
+        print("[five-topo][resolve] %s → %s(%s)" % (raw, t.name, t.kind), flush=True)
+    build(a.out, a.panel or None, a.days, targets)
 
 
 if __name__ == "__main__":
