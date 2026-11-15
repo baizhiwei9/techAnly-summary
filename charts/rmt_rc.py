@@ -221,6 +221,8 @@ def pct_rank(s, v):
     return float((s <= v).mean() * 100)
 
 
+FSZ = 1.45         # 全局字号倍数：聊天窗按宽度缩放显示，字号/画布宽 的比值才决定可读性
+
 METRICS = [("oe", "outlier_energy"), ("ar5", "AR5"), ("l1l2", "λ1/λ2"),
            ("l1s", "λ1/Σλ"), ("rc", "RC")]
 
@@ -238,7 +240,7 @@ def metrics_now(full, show_from):
 # ───────────────────────── 出图 ─────────────────────────
 def _style_axis_y(ax, color, label, size=15):
     ax.set_ylabel(label, fontsize=size, color=color)
-    ax.tick_params(axis="y", colors=color, labelsize=13)
+    ax.tick_params(axis="y", colors=color, labelsize=13*FSZ)
     ax.spines["left"].set_color(color)
 
 
@@ -255,11 +257,11 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
         ax0.set_xlim(-1, len(px))
         span = px.max() - px.min()
         ax0.yaxis.set_major_locator(MultipleLocator(max(1e-3, np.round(span / 6, 3))))
-        ax0.legend(loc="upper left", fontsize=14, framealpha=0.25)
-    ax0.set_ylabel("%s 收盘价（元）" % etfname, fontsize=14.5, color=GOLD)
-    ax0.tick_params(axis="y", colors=GOLD, labelsize=12.5)
+        ax0.legend(loc="upper left", fontsize=14*FSZ, framealpha=0.25)
+    ax0.set_ylabel("%s 收盘价（元）" % etfname, fontsize=14.5*FSZ, color=GOLD)
+    ax0.tick_params(axis="y", colors=GOLD, labelsize=12.5*FSZ)
     ax0.spines["left"].set_color(GOLD)
-    ax0.set_title("%s · 对应 ETF（%s %s）" % (name, etfname, etf), fontsize=19, pad=9, color=GOLD)
+    ax0.set_title("%s · 对应 ETF（%s %s）" % (name, etfname, etf), fontsize=19*FSZ, pad=9, color=GOLD)
     ax0.grid(alpha=0.22, axis="y")
     ax0.set_xticklabels([])
 
@@ -283,13 +285,13 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
     ax1.plot(x, d.rc.values, color=ORANGE, lw=1.8, marker="s", ms=3, alpha=0.85,
              label="RC = σ20/σ60")
     ax1.set_ylim(0, 1.6)
-    ax1.set_ylabel("AR5 ｜ λ1/Σλ ｜ RC（右轴）", fontsize=15)
+    ax1.set_ylabel("AR5 ｜ λ1/Σλ ｜ RC（右轴）", fontsize=15*FSZ)
     ax1.yaxis.set_major_locator(MultipleLocator(0.2))
-    ax1.tick_params(labelsize=13)
+    ax1.tick_params(labelsize=13*FSZ)
     for yv, c, txt in [(0.30, GREEN, "AR5 0.30"), (0.50, RED, "AR5 0.50 危险"),
                        (1.00, ORANGE, "RC 1.0"), (1.20, GOLD, "RC 1.2 警戒")]:
         ax1.axhline(yv, color=c, ls="--", lw=0.85, alpha=0.42)
-        ax1.text(len(d) - 0.5, yv, txt, fontsize=11.5, color=c, alpha=0.9,
+        ax1.text(len(d) - 0.5, yv, txt, fontsize=11.5*FSZ, color=c, alpha=0.9,
                  ha="right", va="bottom")
 
     axr = ax.twinx()
@@ -298,9 +300,9 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
              label="λ1/λ2（右外轴）")
     lmax = max(4.0, np.ceil(float(np.nanmax(d.l1l2)) * 1.12))
     axr.set_ylim(0, lmax)
-    axr.set_ylabel("λ1 / λ2", fontsize=15, color=RED)
+    axr.set_ylabel("λ1 / λ2", fontsize=15*FSZ, color=RED)
     axr.yaxis.set_major_locator(MultipleLocator(1 if lmax <= 10 else 2))
-    axr.tick_params(axis="y", colors=RED, labelsize=13)
+    axr.tick_params(axis="y", colors=RED, labelsize=13*FSZ)
     axr.spines["right"].set_color(RED)
 
     ax.axvline(len(d) - 1, color="white", ls=":", lw=1, alpha=0.5)
@@ -308,25 +310,25 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
     step = max(1, len(d) // 12)
     ax.set_xticks(x[::step])
     ax.set_xticklabels([d.index[i][4:6] + "/" + d.index[i][6:] for i in range(0, len(d), step)],
-                       rotation=45, fontsize=13)
+                       rotation=45, fontsize=13*FSZ)
     ax.set_xlim(-1, len(d))
 
     h1, l1 = ax.get_legend_handles_labels()
     hr, lr = axr.get_legend_handles_labels()
     h2, l2 = ax1.get_legend_handles_labels()
-    ax.legend(h1 + hr + h2, l1 + lr + l2, loc="upper left", fontsize=13,
+    ax.legend(h1 + hr + h2, l1 + lr + l2, loc="upper left", fontsize=13*FSZ,
               framealpha=0.32, ncol=2)
 
     ax.set_title("%s 成分股相关矩阵 · RMT 结构（N=%d，%d 日窗口，%d 个窗口）"
-                 % (name, int(last.N), win, len(d)), fontsize=18, pad=9)
-    ax.set_xlabel("窗口结束日（%s ~ %s）" % (d.index[0], d.index[-1]), fontsize=14)
+                 % (name, int(last.N), win, len(d)), fontsize=18*FSZ, pad=9)
+    ax.set_xlabel("窗口结束日（%s ~ %s）" % (d.index[0], d.index[-1]), fontsize=14*FSZ)
 
     # 右上角：只放数值（分位在页脚）
     ax1.text(0.995, 0.985,
              "最新 %s　outlier_energy = %.4f　|　AR5=%.3f　λ1/λ2=%.2f　λ1/Σλ=%.3f　RC=%.2f"
              % (d.index[-1][4:6] + "/" + d.index[-1][6:], last.oe, last.ar5,
                 last.l1l2, last.l1s, last.rc),
-             transform=ax1.transAxes, ha="right", va="top", fontsize=13.5,
+             transform=ax1.transAxes, ha="right", va="top", fontsize=13.5*FSZ,
              color="#e2e8f0", bbox=dict(boxstyle="round,pad=0.34", fc="#0f1a2c",
                                        ec=GRIDC, alpha=0.95))
 
@@ -335,13 +337,13 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
             "outlier_energy：区间 %.4f~%.4f｜中位 %.4f｜当前 %.4f（MP 上界 %.2f，超阈值 λ 共 %d 个）"
             % (float(np.nanmin(d.oe)), float(np.nanmax(d.oe)),
                float(np.nanmedian(d.oe)), last.oe, thr, int(last.oc)),
-            transform=ax.transAxes, ha="left", va="bottom", fontsize=12.5,
+            transform=ax.transAxes, ha="left", va="bottom", fontsize=12.5*FSZ,
             color=BLUE, alpha=0.92)
     return ax, ax1
 
 
 def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
-           dpi=115, force=False, lookback=420):
+           dpi=150, force=False, lookback=420):
     """出图主函数：单标的=1 列，多标的=多列（每列一个指数，上下两行）。"""
     dh = _datahub()
     end = end or datetime.now().strftime("%Y%m%d")
@@ -384,7 +386,8 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
                  last.l1s, last.rc), flush=True)
 
     n = len(targets)
-    ncol = cols or (1 if n <= 2 else 2)
+    ncol = cols or 1        # 默认纵向堆叠：并排会把画布拉宽 → 字被同比缩小
+                            # 想要并排就显式给 --cols 2
     ncol = max(1, min(ncol, n))
     nblk = int(np.ceil(n / ncol))
 
@@ -396,7 +399,7 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
         (PURPLE, "L1/SUM（右轴·紫）：第一大特征值 ÷ 前 50 个之和，与 AR5 同分母"),
         (ORANGE, "RC（右轴·橙）：20 日组合波动 ÷ 60 日组合波动（波动率级联比）"),
     ]
-    lh = 0.62                                     # 每行高度（英寸）
+    lh = 0.62 * FSZ                               # 每行高度（英寸，随字号放大）
     foot_h = lh * len(foot_lines) + 1.05          # 图例区总高
     fig_w = 13.2 * ncol if ncol > 1 else 13.6
     fig_h = 7.0 * nblk + (1.2 if nblk > 1 else 2.6) + foot_h
@@ -422,12 +425,12 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
              % (win, datetime.strptime(show_from, "%Y%m%d").strftime("%Y-%m-%d")))
     if n > 1:
         title += " ｜ " + " · ".join(targets)
-    fig.suptitle(title, fontsize=24 if n <= 2 else 21, color="#e2e8f0",
+    fig.suptitle(title, fontsize=24*FSZ if n <= 2 else 21, color="#e2e8f0",
                  y=1 - 0.26 / fig_h)
 
     # ---- 底部：多行大字号图例 ----
     # 字号 ≈ 图宽 1.9%：这样哪怕被聊天窗压到 700px 宽，字仍有 ~13px
-    fs_foot = 19 if ncol > 1 else 20
+    fs_foot = 19 * FSZ if ncol > 1 else 20 * FSZ
     y0 = (foot_h - 0.30) / fig_h
     dy = lh / fig_h
     for i, (col, txt) in enumerate(foot_lines):
@@ -518,7 +521,7 @@ def main(argv=None):
     ap.add_argument("--start", default="20260601", help="展示起始日 YYYYMMDD（默认 20260601）")
     ap.add_argument("--end", default=None, help="数据截止日 YYYYMMDD（默认今天）")
     ap.add_argument("--cols", type=int, default=None, help="多图列数（默认几个标的就几列）")
-    ap.add_argument("--dpi", type=int, default=115)
+    ap.add_argument("--dpi", type=int, default=150)
     ap.add_argument("--force", action="store_true", help="忽略面板缓存，重新抓数据")
     ap.add_argument("--lookback", type=int, default=420,
                     help="历史分位基准的回看天数（默认 420，面板起点＝展示起点−该天数）")

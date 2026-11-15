@@ -363,13 +363,15 @@ python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直�
 
 > **「说人话」路由已实装**：`registry.py` 每条带 `keywords`，`run.py` 用最长匹配反查。
 > 说「画拓扑结构图 / 拓扑图」→ `topology-manifold`；说「画流形图 / 流形结构图」→ `topology-spd`；
-> 说「画地形图 / 黎曼地形图」→ `topology-terrain`。
+> 说「画地形图 / 黎曼地形图」→ `topology-terrain`；
+> 说「画 RMT 矩阵图 / RMT 图 / 双 Y 轴 RMT / outlier_energy」→ `rmt-rc`。
 
 | 大佬说（关键词） | 走哪张图 | 命令 |
 |---|---|---|
 | **画拓扑结构图 / 拓扑结构 / 拓扑图** | **拓扑流形图**（左 UMAP 结构位置 + 右 里奇曲率网络；标题两行：结构研判·不含方向 + 趋势层·含方向） | `python3 misc/charts/run.py topology-manifold --target 科创50` |
 | **画流形结构图 / 流形图 / 流形** | **SPD 流形四合一图 + 二维相位图**（H1 环寿命 × 平均相关性） | `python3 misc/charts/run.py topology-spd --target 沪深300` |
 | 画地形图 / 黎曼地形图 | 黎曼流形地形图（地形 + 持续同调条码 + 相关矩阵曲面） | `python3 misc/charts/run.py topology-terrain --target 沪深300` |
+| **画 RMT 矩阵图 / RMT 监控图 / 双 Y 轴 RMT / outlier_energy** | **RMT + RC 联合监控图**（60 日滚动窗；左内 outlier_energy、右外 λ1/λ2、右轴 AR5/λ1Σλ/RC） | `python3 misc/charts/run.py rmt-rc --targets 沪深300,科创50`<br>单图：`--targets 科创50`；五大宽基：`--targets 沪深300,中证500,中证1000,创业板指,科创50 --cols 2` |
 | 缠论图（分型版 / 均线版） | chan-fractal / chan-ma | `python3 misc/charts/run.py chan-fractal --target 中证500`<br>`python3 misc/charts/run.py chan-ma --target 中证500` |
 
 > **「拓扑结构图」≠「流形图」，这两句分得很清，别串：**

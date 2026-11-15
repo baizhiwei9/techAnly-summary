@@ -33,6 +33,7 @@ python3 misc/charts/run.py chan-fractal --index 中证500 --level h1 --n 120
 python3 misc/charts/run.py "画拓扑结构图" --target 科创50    # → topology-manifold
 python3 misc/charts/run.py "画流形图"     --target 沪深300    # → topology-spd
 python3 misc/charts/run.py "画地形图"     --target 沪深300    # → topology-terrain
+python3 misc/charts/run.py "画RMT矩阵图"  --targets 沪深300,科创50  # → rmt-rc（RMT+RC 监控图）
 ```
 
 路由对照（三张拓扑图**不许串**）：
@@ -42,5 +43,6 @@ python3 misc/charts/run.py "画地形图"     --target 沪深300    # → topolo
 | 画拓扑结构图 / 拓扑图 / 画拓扑 | `topology-manifold` | UMAP 2D 嵌入 + Ollivier-Ricci 曲率网络（看结构状态、咽喉股） |
 | 画流形图 / 流形结构图 / SPD 流形 | `topology-spd` | SPD 协方差流形（Log-Euclidean 测地距离）+ TDA + 二维相位图 |
 | 画地形图 / 黎曼地形图 | `topology-terrain` | 黎曼地形曲面 + 持续同调条码 |
+| 画 RMT 矩阵图 / RMT 监控图 / 双 Y 轴 RMT | `rmt-rc` | 随机矩阵理论（迹=N 归一）+ 特征值谱：outlier_energy / λ1/λ2 / AR5 / λ1Σλ / RC |
 
 `python3 misc/charts/run.py --list` 末尾会把这套口诀打出来。
