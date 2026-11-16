@@ -513,9 +513,62 @@ def draw_compare(pairs, out=None, n_show=160):
 
 
 # ─────────── 多指数纵向堆叠（一指数一行，不压缩宽度） ───────────
+def _paint_pcr_panel(ax, view, nv, pcr_series, f_tick, f_y):
+    """薄面板：持仓量 PCR（认沽持仓量 ÷ 认购持仓量，剔到期≤5天合约）。
+
+    数据源唯一：/root/.openclaw/workspace/bin/opt_pcr_oi.py（不顺写第二套口径）。
+    画法：蓝紫实线 + 1.0 参考虚线（1.0 上方 = 认沽持仓多于认购，情绪偏空/对冲重）；
+    右侧淡填充 = 近 60 日分位带（0~100% → 翻转成高度），不挤主线；
+    右上角标最新值 + 60 日分位（文字锚在轴内，不跑出画布）。
+    """
+    x = np.arange(nv)
+    dates = [str(v) for v in view["dt"].dt.strftime("%Y%m%d").values]
+    vals = np.full(nv, np.nan)
+    if pcr_series is not None and len(pcr_series):
+        ser = pcr_series["PCR_OI"] if "PCR_OI" in pcr_series.columns else pcr_series.iloc[:, 0]
+        idx = [str(i) for i in ser.index]
+        ser = pd.Series(ser.values.astype(float), index=idx)
+        al = ser.reindex(ser.index.union(pd.Index(dates))).ffill().reindex(dates)
+        vals = al.values.astype(float)
+    if not np.isfinite(vals).any():
+        ax.text(0.5, 0.5, "持仓量 PCR 数据不可用", transform=ax.transAxes,
+                ha="center", va="center", fontsize=f_tick, color="#888")
+        ax.set_xticks([])
+        return None
+    # 纵轴范围：数据 + 1.0 参考线都要装得下，留 12% 空
+    fin = vals[np.isfinite(vals)]
+    lo = min(float(fin.min()), 1.0)
+    hi = max(float(fin.max()), 1.0)
+    pad = max((hi - lo) * 0.22, 0.02)
+    ax.set_ylim(lo - pad, hi + pad * 1.5)
+    ax.axhline(1.0, color="#999999", ls="--", lw=1.0, alpha=0.85, zorder=1)
+    # 低于 1.0 的面积淡色（视觉上「认购占优 / 偏空对冲轻」一块阴影）
+    ax.fill_between(x, ax.get_ylim()[0], vals, color=PCR_FILL, alpha=0.20,
+                    lw=0, zorder=0)
+    ax.plot(x, vals, color=PCR_LINE, lw=2.2, zorder=6, label="持仓量 PCR（剔到期≤5天）")
+    ax.set_ylabel("持仓量 PCR", fontsize=f_y - 3, color=PCR_LINE)
+    ax.tick_params(axis="y", colors=PCR_LINE, labelsize=f_tick - 1.5)
+    ax.tick_params(axis="x", labelsize=f_tick - 1.0)
+    ax.grid(True, ls=":", color="#cccccc", alpha=0.45)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.text(-1.6, 1.0, " 1.0", fontsize=f_tick - 2.5, color="#777", va="center", ha="left")
+    cur = float(fin[-1])
+    w = fin[-min(60, len(fin)):]
+    pct = round(float((w <= cur).sum()) / len(w) * 100) if len(w) else None
+    lab = "持仓量PCR %.4f" % cur + ("　｜　60日分位 %d%%" % pct if pct is not None else "")
+    ax.text(0.995, 0.90, lab, transform=ax.transAxes, ha="right", va="top",
+            fontsize=f_tick - 0.5, color="white", fontweight="bold",
+            bbox=dict(boxstyle="round,pad=0.26", fc=PCR_LINE, ec="white",
+                      alpha=0.90, lw=0.8), zorder=12)
+    globals().setdefault("_PCR_LAST", {})[id(ax)] = {"pcr_oi": cur, "pct": pct}
+    return cur, pct
+
+
 def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
                fs=None, sub="vol", rc_series=None, vol_series=None,
-               rc_ax=True, xtick_every=10):
+               rc_ax=True, xtick_every=10, vol_mode="vix",
+               pcr_ax=None, pcr_series=None):
     """在给定 axes 上画一个完整指数的一段行情（价格面板 + 副图）。
 
     `sub` 决定副图画什么：
@@ -696,7 +749,7 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
     #   · "kline"：日线 K 线（更早的临时方案，保留能力）
     if sub == "vol":
         _v, _s, _r = _paint_vol_panel(axm, view, nv, rc_series, vol_series,
-                                      f_tick, f_y)
+                                      f_tick, f_y, vol_mode=vol_mode)
         globals().setdefault("_VOL_LAST", {})[name] = {"vix": _v, "skew": _s, "rc": _r}
     elif sub == "kline":
         _paint_kline_panel(axm, view, nv, f_tick, f_y)
@@ -708,6 +761,20 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
         axm.set_xticks(idxs)
         axm.set_xticklabels([dates[i] for i in idxs], fontsize=f_tick)
         axm.set_xlim(-2, nv + 7)
+
+    # ── 第三块（很薄）：持仓量 PCR ───────────────────────────────
+    # 2026-11-16 大佬：「如果你这个 PCR 是持仓量 PCR，那你在这个子图上再画一下子」
+    if pcr_ax is not None:
+        _ok = _paint_pcr_panel(pcr_ax, view, nv, pcr_series, f_tick, f_y)
+        if _ok is not None:
+            # 日期刻度只留最底层（价格面板 / 期权面板都不显示）
+            plt.setp(ax.get_xticklabels(), visible=False)
+            plt.setp(axm.get_xticklabels(), visible=False)
+            axp_x = list(range(0, nv, max(nv // 12, 1)))
+            _xl = view["dt"].dt.strftime("%m-%d").values
+            pcr_ax.set_xticks(axp_x)
+            pcr_ax.set_xticklabels([_xl[i] for i in axp_x], fontsize=f_tick)
+            pcr_ax.set_xlim(-2, nv + 7)
 
 
 
@@ -793,6 +860,8 @@ VOL_VIX = "#1d4ed8"          # VIX 蓝
 VOL_SKEW = "#b45309"         # 偏度 琥珀
 VOL_YLIM = (0.0, 130.0)      # 左轴固定范围（偏度 SKEW 100 中轴 + VIX 20~40）
 RC_YLIM = (0.0, 2.0)         # 右轴固定范围（R_cascade 0.75~1.2 阈值都装得下）
+PCR_LINE = "#6d28d9"         # 持仓量 PCR 主线（紫）
+PCR_FILL = "#8b5cf6"         # 持仓量 PCR 淡填充
 
 
 def _vol_series_for(name):
@@ -809,7 +878,11 @@ def _vol_series_for(name):
         df = OV.series_for(name)
         if df is None or not len(df):
             return None
-        return df[["vix", "skew"]]
+        cols = [c for c in ("vix", "skew", "atm_iv") if c in df.columns]
+        out = df[cols].copy()
+        if "atm_iv" in out.columns and "iv" not in out.columns:
+            out["iv"] = out["atm_iv"]
+        return out
     except Exception as e:                                       # noqa: BLE001
         print("[WARN] %s VIX/偏度取数失败：%s" % (name, str(e)[:100]), flush=True)
         return None
@@ -840,13 +913,15 @@ def _rc_series_for(name, code=None, df=None):
     return out
 
 
-def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y, title_note=""):
+def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y,
+                     title_note="", vol_mode="vix"):
     """副图：R_cascade / 偏度 / VIX 三条线，**双 Y 轴**（2026-11-16 终稿）。
 
     大佬原话：「底下那坐标轴…还是双 Y 轴，一个是卡斯卡的，一个是偏度，
     一个是那个 VIX，就这仨在一块。就是，还是不要 MACD 了」
 
-    · 左轴 **固定 0~130**：偏度 **SKEW 指数**（100 中轴，>110 危险、>120 极危）
+    · 左轴 **固定 0~130**：偏度 **SKEW 指数**（BKM 严格口径：100 − 10×RNSkew，
+                        固定带宽 0.85S~1.15S、≥8 档 OTM，档位不够为 NA）
                         + VIX（30D ATM IV 插值，20~40 区间）——同量纲共轴
     · 右轴 **固定 0~2**  ：R_cascade（std20/std60）—— 深红粗线，单独一根轴
     大佬 2026-11-16：「左坐标轴 1~120 左右（偏度>110 危险）…VIX 在 20~40 之间…
@@ -869,7 +944,12 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y, title_not
         out = ser.reindex(ser.index.union(pd.Index(dates))).ffill().reindex(dates)
         return out.values.astype(float)
 
-    vix = _align(vol_series, "vix")
+    # 2026-11-16 大佬：「就是 VIX，如果你不好算的话，你可以把那个变成隐波」
+    # → 支持 --vol-mode iv 用近月 ATM 隐含波动率代替 VIX（VIX 本身已能算，默认仍用 VIX）
+    _col = "iv" if vol_mode == "iv" else "vix"
+    vix = _align(vol_series, _col)
+    if not np.isfinite(vix).any() and _col != "vix":
+        vix = _align(vol_series, "vix")          # 隐波缺列时回退 VIX
     skew = _align(vol_series, "skew")
     rc = _align(rc_series, "RC")
 
@@ -877,9 +957,10 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y, title_not
     # 「左坐标轴是 1~120 左右，因为偏度大于 110 就是危险了…VIX 是 20 到 40 之间…
     #   这样应该也能显示」
     ax.plot(x, skew, color=VOL_SKEW, lw=2.0,
-            label="偏度 SKEW 指数（100 中轴，>110 危险）", zorder=6)
-    ax.plot(x, vix, color=VOL_VIX, lw=1.9, ls="--",
-            label="VIX（30D ATM IV 插值）", zorder=5)
+            label="偏度 SKEW（BKM 严格，0.85S~1.15S ≥8档）", zorder=6)
+    _vlabel = ("隐波 ATM IV（近月平值）" if vol_mode == "iv"
+               else "VIX（30D，OI加权方差插值）")
+    ax.plot(x, vix, color=VOL_VIX, lw=1.9, ls="--", label=_vlabel, zorder=5)
     # 关键刻度线：偏度 100 中性 / 110 危险 / 120 极危；VIX 20 / 40
     for yv, ls, col, lab in ((100, ":", "#94a3b8", "偏度100 中性"),
                              (110, "--", "#c2410c", "110 危险"),
@@ -890,7 +971,8 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y, title_not
         ax.text(nv + 6, yv, lab, fontsize=f_tick - 2, color=col, alpha=0.85,
                 va="center", ha="right")
     ax.set_ylim(*VOL_YLIM)          # (0, 130)
-    ax.set_ylabel("偏度 SKEW ／ VIX（0~130）", fontsize=f_y - 2, color=VOL_SKEW)
+    ax.set_ylabel("偏度 SKEW（BKM严格）／ VIX（0~130）", fontsize=f_y - 2,
+                  color=VOL_SKEW)
     ax.tick_params(axis="y", colors=VOL_SKEW, labelsize=f_tick - 0.5)
     ax.grid(True, ls=":", color="#cccccc", alpha=0.45)
     ax.tick_params(labelsize=f_tick)
@@ -1020,8 +1102,37 @@ def _audit_stack(fig):
         print("[audit] 自检失败:", str(e)[:150], flush=True)
 
 
+def _pcr_oi_series_for(name):
+    """持仓量 PCR 序列（唯一实现：/root/.openclaw/workspace/bin/opt_pcr_oi.py）。
+
+    返回 DataFrame(index=YYYYMMDD str, col "PCR_OI")；取不到返回 None。
+    索引名 "创业板指" 等别名由 opt_pcr_oi.ALIAS 处理。
+    """
+    _ws = os.environ.get("PCR_OI_WS", "/root/.openclaw/workspace")
+    _b = os.path.join(_ws, "bin")
+    try:
+        if _b not in sys.path:
+            sys.path.insert(0, _b)
+        import opt_pcr_oi as PO  # noqa: PLC0415
+    except Exception as e:                                       # noqa: BLE001
+        print("[WARN] opt_pcr_oi 不可用：%s" % str(e)[:100], flush=True)
+        return None
+    try:
+        seq = PO.pcr_series_for_index(name)
+        if not seq:
+            return None
+        s = pd.Series([v for _d, v in seq],
+                      index=[str(d) for d, _v in seq], dtype=float)
+        s = s[~s.index.duplicated(keep="last")].sort_index()
+        return pd.DataFrame({"PCR_OI": s})
+    except Exception as e:                                       # noqa: BLE001
+        print("[WARN] %s 持仓量PCR取数失败：%s" % (name, str(e)[:100]), flush=True)
+        return None
+
+
 def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
-               with_rc=True, sub=None, with_macd=False):
+               with_rc=True, sub=None, with_macd=False, vol_mode="vix",
+               with_pcr=True):
     """多指数**纵向堆叠**：一个指数两块（上=缠论价格 / 下=VIX+偏度+R_cascade 双轴），往下垒。
 
     大佬 2026-11-14 23:13：「我就不明白，你就把这几个子图粘到一块就行了，为什么要压缩呀？
@@ -1037,13 +1148,15 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
     两层结构（2026-11-16 最终定稿）：
       ① 上：**原来的缠论图**（笔 / 中枢 ZG-ZD / 买卖点 / VWAP ±1σ2σ3σ），不加任何叠加线
       ② 下：**VIX + 偏度 + R_cascade 三条线，双 Y 轴**
-             左轴（波动率点）：VIX（30D ATM IV 插值）、偏度（25Δ Put−Call）
+             左轴（波动率点）：VIX（30D ATM IV 插值）、偏度（BKM 严格口径 SKEW 指数）
              右轴（比值）    ：R_cascade（std20/std60，深红粗线）
     大佬原话：「算了算了，你不要这么整了，还是原来的是原来的，底下那坐标轴…
     还是双 Y 轴，一个是卡斯卡的，一个是偏度，一个是那个 VIX，就这仨在一块。
     就是，还是不要 MACD 了」
     """
     nrow = len(pairs)
+    # 2026-11-16 大佬：「如果你这个 PCR 是持仓量 PCR，那你在这个子图上再画一下子」
+    # → 每个指数再叠一块**很薄的第三块**：持仓量 PCR（dte≤5 剔除口径）
     fig = plt.figure(figsize=(width, row_h * nrow), facecolor="white")
     # 顶部留 1.15 英寸给「大标题 + 口径说明」，避免标题压第一行子图
     _h = row_h * nrow
@@ -1058,7 +1171,7 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
     #   with_macd=True          → 副图 = MACD(10,20,5)
     #   sub 显式给值时优先（向后兼容 --sub kline 等）
     sub_mode = sub if sub else ("macd" if with_macd else "vol")
-    rc_map, vol_map = {}, {}
+    rc_map, vol_map, pcr_map = {}, {}, {}
     for _n, _c in pairs:
         if sub_mode == "vol":
             _v = _vol_series_for(_n)
@@ -1068,6 +1181,10 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
             _r = _rc_series_for(_n, _c)
             if _r is not None:
                 rc_map[_n] = _r
+        if with_pcr:
+            _p = _pcr_oi_series_for(_n)
+            if _p is not None:
+                pcr_map[_n] = _p
 
     for ri, (name, code) in enumerate(pairs):
         df = _index_day(code)
@@ -1081,19 +1198,28 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
         zs = geo["zs"]
         P = float(df["close"].iloc[-1])
         last_ts = df["dt"].iloc[-1]
-        sub = gs[ri, 0].subgridspec(2, 1, height_ratios=[2.9, 1.35], hspace=0.09)
+        _has_pcr = pcr_map.get(name) is not None
+        if _has_pcr:
+            sub = gs[ri, 0].subgridspec(3, 1, height_ratios=[2.9, 1.25, 0.72],
+                                        hspace=0.10)
+        else:
+            sub = gs[ri, 0].subgridspec(2, 1, height_ratios=[2.9, 1.35], hspace=0.09)
         ax = fig.add_subplot(sub[0, 0])
         axm = fig.add_subplot(sub[1, 0], sharex=ax)
+        axp = fig.add_subplot(sub[2, 0], sharex=ax) if _has_pcr else None
         _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
                    sub=sub_mode, rc_series=rc_map.get(name),
-                   vol_series=vol_map.get(name))
-    fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）｜下：VIX／偏度／R_cascade 双轴",
+                   vol_series=vol_map.get(name), vol_mode=vol_mode,
+                   pcr_ax=axp, pcr_series=pcr_map.get(name))
+    fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）｜下：VIX／偏度／R_cascade 双轴 + 持仓量PCR",
                  fontsize=21,
                  y=1 - 0.42 / _h, va="center")
     fig.text(0.5, 1 - 0.86 / _h,
              "口径：包含处理→顶底分型→笔→中枢(ZG/ZD)→背驰　｜　★买点 ▼卖点　"
              "黄框=最近中枢　蓝线=笔　紫线=VWAP中线　虚线=±1σ/±2σ/±3σ　｜　"
-             "下：蓝=VIX(30D ATM IV)　琥珀虚线=偏度25Δ　深红粗线=R_cascade(右轴)",
+             "中：蓝=VIX(30D ATM IV)\u3000琥珀=偏度SKEW(BKM严格 0.85S~1.15S ≥8档)"
+             "\u3000深红粗线=R_cascade(右轴)\u3000｜\u3000"
+             "底：持仓量PCR（剔到期≤5天合约，1.0 上方=认沽持仓占优）",
              ha="center", va="center", fontsize=14.5, color="#444444")
     if os.environ.get("CHAN_AUDIT"):
         _audit_stack(fig)
@@ -1127,6 +1253,13 @@ def main():
                     help="副图不画 R_cascade")
     ap.add_argument("--sub", default=None, choices=["vol", "macd", "kline"],
                     help="副图内容（一般不用给）：vol=VIX/偏度/R_cascade（默认）；macd；kline")
+    ap.add_argument("--vol-mode", default="vix", choices=["vix", "iv"],
+                    help="副图波动率用 VIX（默认）还是窄月 ATM 隐波")
+    ap.add_argument("--pcr", dest="with_pcr", action="store_true",
+                    help="堆叠图再叠一块薄面板：持仓量 PCR（默认开）")
+    ap.add_argument("--no-pcr", dest="with_pcr", action="store_false",
+                    help="不出持仓量 PCR 薄面板")
+    ap.set_defaults(with_pcr=True)
     ap.add_argument("--macd", dest="with_macd", action="store_true",
                     help="副图带 MACD（默认不带，带期权+R_cascade）")
     ap.add_argument("--no-macd", dest="with_macd", action="store_false",
@@ -1161,7 +1294,8 @@ def main():
             return 2
         p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h,
                        with_rc=not a.no_rc, sub=a.sub,
-                       with_macd=a.with_macd)
+                       with_macd=a.with_macd, vol_mode=a.vol_mode,
+                       with_pcr=a.with_pcr)
         print("[OK]", p)
         return 0
 
