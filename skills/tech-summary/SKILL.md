@@ -61,6 +61,7 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 > | `misc/engine/wyckoff_buypoint_v2.py` | 威科夫吸筹买点 v2 |
 > | `misc/engine/sector_buypoint_top20.py` | 板块买点 Top20 |
 > | `misc/engine/simple_chart.py` | 单图速览 |
+> | `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60，三指数；`--chart` 出图） |
 > | `chanlun/fractal/chan_smc_index.py` | 缠论·分型版（几何 + SMC 摘要） |
 > | `chanlun/fractal/chan_chart.py` | 缠论·分型版出图 |
 > | `chanlun/ma/chan_ma_trend_v2.py` | 缠论·均线版核心 |
@@ -93,6 +94,7 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 | `misc/engine/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
 | `misc/engine/buypoint_chart.py` | 买点图（日线 / 60m / 均线版三面板）+ `draw_stock_grid()` 多标的网格图 |
 | `misc/engine/wyckoff_buypoint_v2.py` | **盘中吸筹买点分析 v2**：威科夫吸筹 → 四层过滤 → Top10 行业 → Top20 个股 → 多子图 |
+| `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60）三指数 + 出图 + 报警判定（不属四层，独立指标） |
 
 ---
 

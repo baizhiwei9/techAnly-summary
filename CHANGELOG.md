@@ -6,6 +6,56 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-16 17:45
+
+**refactor(rcascade): R_cascade 实现搬进本库，工作区只留薄壳**
+
+大佬 2026-11-16 17:34：「你把这东西放在 techAnly 这个库里边，然后供这个脚本调用」。
+
+### 新增 `misc/engine/rcascade.py`（唯一实现）
+
+- 口径原样搬过来，**一行没改**：`R = std(ln收益,20日) ÷ std(ln收益,60日)`，
+  阈值 `THR_HIGH=1.2 / THR_LOW=0.8 / THR_DEEP=0.75`，`CONFIRM=3 / CONFIRM_DEEP=5`。
+- 对外 API 与旧文件**同名同签名**，所以工作区薄壳能 1:1 转发：
+  `TARGETS / compute / build / draw / text_block / alarm_tag / state_of / load`。
+- **取数升级**（这是搬进库的额外收益）：
+  - ① DataHub（`dh_bridge.etf_daily` / `index_daily`）优先，② akshare 兜底
+  - 两份都拿到时**取历史更长的那份当底，再用另一份补更晚的行**
+    → 历史计数（危险信号 N 次 / 累计<0.75 N 次）不缩水，同时能吃到最新一根
+  - 每条结果带 `df.attrs["source"]`（datahub / akshare / akshare+datahub）与 `last_date`
+  - `_ensure_datahub_path()`：部署机 DataHub 在工作区 `optstack/` 时自动补 `DATA_HUB_PATH`
+    （`dh_bridge` 只向上探 5 层，本库在 `/root/techAnly-summary` 探不到工作区）
+- **数据新鲜度提示**（`freshness_note()`）：最晚日期距今 >3 天就站出来喊
+  —— 之前出现过「源只到 11-13，报告看着像今天的新信号」。表格新增「数据截止」列。
+- 出图支持任意标的数（`--chart`），默认 `reports/charts/rcascade/`；CLI 兼容旧参数 `--no-chart`。
+
+### 登记进画图路由（`misc/charts/registry.py`）
+
+新条目 `rcascade`，关键词：`R_cascade / rcascade / 级联比 / 波动率级联比 / 吉连比`，
+所以 `python3 misc/charts/run.py "画波动率级联比图"` 能直接路由到这张图。
+
+### 工作区 `bin/rcascade_daily.py` 改成薄壳（424 行 → 40 行）
+
+只做三件事：找实现 → 把 `sys.modules[__name__]` 换掉 → 转发执行。
+`market_tech_daily.py` 的 `import rcascade_daily as RC` **一行没改**，照常拿到全部函数。
+`TECH_RCASCADE` 环境变量可覆盖实现路径。
+
+### 删除（大佬 2026-11-16 17:29 / 17:33 两次确认）
+
+`scripts/kc50_cascade.py` / `_v2.py` / `_smooth.py` / `_2026.py` / `_v3.py` / `_60min.py` / `_hourly.py`
+—— 7 个 5 日口径（`r²/5日均r²`）历史探索稿，与正式版 std20/std60 **无关**，
+备份在 `_archive/20261116_5日口径cascade删除/`。
+
+### 验收（2026-11-16 17:40，三指数）
+
+| 指数 | R | 数据截止 | 源 | 行数 |
+|---|---|---|---|---|
+| 科创50ETF | 1.314 | 2026-11-16 | akshare+datahub | 1455 |
+| 创业板指 | 1.310 | 2026-11-13 | akshare | 3995 |
+| 中证1000 | 1.275 | 2026-11-16 | akshare | 2937 |
+
+三个都还在 🔴 连3日 >1.2 报警区。搬库前后**历史计数完全一致**（21/27、50/60、38/49）。
+
 ## 2026-11-15 01:25
 
 **feat(charts): 缠论图叠加 VWAP 标准差带（±1σ/±2σ/±3σ）+ 现价 σ 倍数标注**

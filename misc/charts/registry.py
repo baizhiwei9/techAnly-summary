@@ -132,6 +132,19 @@ CHARTS = [
         kind="script",
         entry=None,
     ),
+    dict(
+        name="rcascade",
+        keywords=["R_cascade", "rcascade", "级联比", "波动率级联比", "波动率级联",
+                  "波动率吉连比", "吉连比", "R cascade"],
+        desc="R_cascade 波动率级联比（平滑版 std20/std60）：科创50ETF / 创业板指 / 中证1000 "
+             "三面板（K线+MA20 / R曲线）。--chart 出图；带「数据截止」列 + 历史计数。"
+             "阈值 🔴>1.2 连3日 报警 / 🟣<0.75 连5日 报警 / 🟢<0.8 安全 / 🟡中性",
+        module="misc/engine/rcascade.py",
+        default_out="reports/charts/rcascade",
+        out_kind="file",
+        kind="script",
+        entry=None,
+    ),
 ]
 
 
