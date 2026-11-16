@@ -17,9 +17,11 @@
       否则取最接近 30 的那一腿，不做外推）。单位：波动率点（18.6 = 18.6%）。
       注：这不是 CBOE 那套方差互换口径，就是 ATM IV 的 30 天插值，图上标
       「30D ATM IV」更准确，但大佬习惯叫 VIX，标题里两个都写。
-  · **偏度 Skew**
-      = IV(25Δ Put) − IV(25Δ Call)，取 **DTE 最接近 30** 的那一腿（同一腿内配对）。
-      正值 = 左偏（怕跌，买保护），负值 = 右偏（看涨）。单位同样是波动率点。
+  · **偏度 Skew（CBOE 口径，100 中轴）**
+      = 100 + 30 × (IV(25Δ Put) − ATM IV) / ATM IV
+      取 **DTE 最接近 30** 的那一腿。100=中性、>110=偏贵/危险、>120=极危、<95 右偏。
+      口径与本库 `data_hub.calc_cboe_skew_directional()` **完全一致**
+      （阈值 120/110/105/95/80 就是按这个口径校准的，别自己改公式）。
 
 为什么偏度能和 VIX 共用一根轴：两者都是「波动率点」，量纲一致；
 R_cascade 是**比值**（0.6~1.4），必须单独一根轴 → 双 Y 轴。
@@ -28,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 
 import numpy as np
 import pandas as pd
@@ -51,6 +54,33 @@ CACHE_DIR = os.environ.get("OPT_VOL_CACHE", os.path.join(
     os.path.expanduser("~"), ".cache", "opt_vol"))
 
 TARGET_DTE = 30.0
+
+
+def _moments_from_chain(recs, spot, T):
+    """BKM 风险中性矩（复用 optstack 的唯一实现，别在这再写一套）。
+
+    失败时返回空 dict —— 画图不能因为 BKM 挂掉整体失败。
+    """
+    try:
+        _op = os.environ.get("OPTSTACK_DIR") or os.path.join(
+            os.path.expanduser("~"), ".openclaw", "workspace", "optstack")
+        if _op not in sys.path:
+            sys.path.insert(0, _op)
+        from options_utility.calc.cn.moments import moments_from_chain
+        return moments_from_chain(recs, spot, T) or {}
+    except Exception as e:                                       # noqa: BLE001
+        print("[optvol] BKM 不可用：%s" % str(e)[:100], flush=True)
+        return {}
+
+
+def skew_index_of(bkm_skew):
+    """BKM 风险中性偏度 → 近似 SKEW 指数（CBOE 式 100 − 10×skew）。"""
+    if bkm_skew is None:
+        return None
+    try:
+        return 100.0 - 10.0 * float(bkm_skew)
+    except Exception:                                            # noqa: BLE001
+        return None
 
 
 def _legs_of(rec):
@@ -83,15 +113,18 @@ def vix_at(legs, target=TARGET_DTE):
 
 
 def skew_at(legs, target=TARGET_DTE):
-    """偏度 = IV(25Δ Put) − IV(25Δ Call)，取 DTE 最接近 target 的那一腿。"""
+    """偏度（CBOE 口径，100 中轴）= 100 + 30×(IV25ΔPut − ATM IV)/ATM IV。
+
+    老格式（只有 atm/p25/c25 三条）也能算；缺 p25 或 atm 返回 nan。
+    """
     cand = [(d, v) for d, v in legs if isinstance(v, dict)]
     if not cand:
         return np.nan
     _d, v = min(cand, key=lambda x: abs(x[0] - target))
-    p, c = v.get("p25"), v.get("c25")
-    if p is None or c is None:
+    p, a = v.get("p25"), v.get("atm")
+    if p is None or a is None or a <= 0:
         return np.nan
-    return float(p) - float(c)
+    return 100.0 + 30.0 * (float(p) - float(a)) / float(a)
 
 
 def series_from_hist(hist, opt_code):
@@ -242,10 +275,12 @@ def skew_one_day(contracts_df, opt_code, S, trade_date, target_dte=TARGET_DTE):
     import datetime
     import math
     if S is None or not (S > 0):
-        return np.nan, np.nan, None
+        return dict(vix=np.nan, skew=np.nan, skew25=np.nan, dte=None,
+                    p25=None, c25=None, atm=None)
     sub = contracts_df[contracts_df["opt_code"] == opt_code]
     if not len(sub):
-        return np.nan, np.nan, None
+        return dict(vix=np.nan, skew=np.nan, skew25=np.nan, dte=None,
+                    p25=None, c25=None, atm=None)
     today = datetime.date(int(trade_date[:4]), int(trade_date[4:6]), int(trade_date[6:]))
 
     # 每个到期月一个 leg：ATM IV（用于 VIX 插值）
@@ -292,7 +327,7 @@ def skew_one_day(contracts_df, opt_code, S, trade_date, target_dte=TARGET_DTE):
             legs.append((dte, float(np.mean(vals)) * 100))
 
         # 25Δ：把每个行权价的 IV 和 delta 都算出来，取最接近 0.25 的两边
-        pbest = cbest = None       # (|delta-0.25|, iv)
+        pbest = cbest = None       # (|delta-0.25|, iv小数)
         for k in Ks:
             for cp, bucket in (("P", "p"), ("C", "c")):
                 if cp not in cps[k]:
@@ -306,15 +341,35 @@ def skew_one_day(contracts_df, opt_code, S, trade_date, target_dte=TARGET_DTE):
                 dist = abs(abs(dl) - 0.25)
                 if bucket == "p":
                     if pbest is None or dist < pbest[0]:
-                        pbest = (dist, v * 100)
+                        pbest = (dist, v)
                 else:
                     if cbest is None or dist < cbest[0]:
-                        cbest = (dist, v * 100)
-        if pbest and cbest and pbest[0] < 0.13 and cbest[0] < 0.13:
-            skews.append((dte, pbest[1] - cbest[1]))
+                        cbest = (dist, v)
+        _atm_iv = float(np.mean(vals)) if vals else None
+        if pbest and _atm_iv and pbest[0] < 0.13:
+            # 25Δ 口径（备用）：100 + 30*(p25_iv - atm_iv)/atm_iv，量级只有 100~105
+            cboe25 = 100.0 + 30.0 * (pbest[1] - _atm_iv) / _atm_iv
+            # SKEW 指数（主用）：BKM 风险中性偏度 → 100 − 10×skew
+            # 这是「偏度 1~120」那个量级的口径，量级 100~130，与 110/120 阈值匹配
+            idx = None
+            try:
+                _recs = [dict(exercise_price=float(r["exercise_price"]),
+                              call_put=str(r["call_put"]),
+                              close=(r.get("settle") if (r.get("settle") is not None
+                                     and r.get("settle") == r.get("settle")
+                                     and r.get("settle")) else r.get("close")))
+                        for _, r in g.iterrows()]
+                _m = _moments_from_chain(_recs, S, Tn)
+                if _m.get("skew") is not None:
+                    idx = 100.0 - 10.0 * float(_m["skew"])
+            except Exception:                                # noqa: BLE001
+                idx = None
+            skews.append((dte, idx, cboe25, pbest[1] * 100, _atm_iv * 100,
+                          (cbest[1] * 100) if cbest else None))
 
     if not legs:
-        return np.nan, np.nan, None
+        return dict(vix=np.nan, skew=np.nan, skew25=np.nan, dte=None,
+                    p25=None, c25=None, atm=None)
     # VIX：DTE 线性插值到 30 天
     legs = sorted(legs)
     vix = np.nan
@@ -327,11 +382,21 @@ def skew_one_day(contracts_df, opt_code, S, trade_date, target_dte=TARGET_DTE):
     if not np.isfinite(vix):
         vix = min(legs, key=lambda x: abs(x[0] - target_dte))[1]
     # 偏度：DTE 最接近 30 的那一腿
+    #   skew  = SKEW 指数（BKM → 100−10×skew，量级 100~130）← 画图用这个
+    #   skew25= 25Δ 口径（100+30×(p25−atm)/atm，量级 100~105）← 备用
     skew = np.nan
+    skew25 = np.nan
     dte_used = None
+    p25 = c25 = atm_used = None
     if skews:
-        dte_used, skew = min(skews, key=lambda x: abs(x[0] - target_dte))
-    return float(vix), float(skew), dte_used
+        _best = min(skews, key=lambda x: abs(x[0] - target_dte))
+        dte_used, _idx, _s25, p25, atm_used, c25 = _best
+        if _idx is not None:
+            skew = float(_idx)
+        if _s25 is not None:
+            skew25 = float(_s25)
+    return dict(vix=float(vix), skew=skew, skew25=skew25, dte=dte_used,
+                p25=p25, c25=c25, atm=atm_used)
 
 
 def build_skew_cache(names=None, days=260, verbose=True, force=False):
@@ -435,10 +500,15 @@ def build_skew_cache(names=None, days=260, verbose=True, force=False):
             S = (spot_hist.get(ts) or {}).get(d) if ts else None
             if df is None or S is None:
                 continue
-            vix, skew, dte_used = skew_one_day(df, code, S, d)
-            out[n] = {"vix": None if not np.isfinite(vix) else round(float(vix), 3),
-                      "skew": None if not np.isfinite(skew) else round(float(skew), 3),
-                      "dte": dte_used}
+            r = skew_one_day(df, code, S, d)
+            out[n] = {
+                "vix": None if not np.isfinite(r["vix"]) else round(r["vix"], 3),
+                "skew": None if not np.isfinite(r["skew"]) else round(r["skew"], 3),
+                "skew25": None if not np.isfinite(r["skew25"]) else round(r["skew25"], 3),
+                "p25": None if r["p25"] is None else round(r["p25"], 3),
+                "c25": None if r["c25"] is None else round(r["c25"], 3),
+                "atm": None if r["atm"] is None else round(r["atm"], 3),
+                "dte": r["dte"]}
         return d, out
 
     nw = int(os.environ.get("OPT_VOL_WORKERS", "5"))
@@ -478,5 +548,6 @@ def skew_series(name, cache=None):
         return pd.DataFrame(columns=["vix", "skew"])
     ds = sorted(m)
     return pd.DataFrame(
-        [{"vix": m[d].get("vix"), "skew": m[d].get("skew")} for d in ds],
+        [{"vix": m[d].get("vix"), "skew": m[d].get("skew"),
+          "skew25": m[d].get("skew25")} for d in ds],
         index=ds)

@@ -802,6 +802,8 @@ RC_LINE = "#8b0000"          # 深红（dark red）
 RC_LINE_W = 3.4              # 粗线
 VOL_VIX = "#1d4ed8"          # VIX 蓝
 VOL_SKEW = "#b45309"         # 偏度 琥珀
+VOL_YLIM = (0.0, 130.0)      # 左轴固定范围（偏度 SKEW 100 中轴 + VIX 20~40）
+RC_YLIM = (0.0, 2.0)         # 右轴固定范围（R_cascade 0.75~1.2 阈值都装得下）
 
 
 def _vol_series_for(name):
@@ -855,8 +857,11 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y, title_not
     大佬原话：「底下那坐标轴…还是双 Y 轴，一个是卡斯卡的，一个是偏度，
     一个是那个 VIX，就这仨在一块。就是，还是不要 MACD 了」
 
-    · 左轴（波动率点）：VIX（30D ATM IV 插值）+ 偏度（25Δ Put − Call）——同量纲，共轴
-    · 右轴（比值）：R_cascade（std20/std60）—— 深红粗线，单独一根轴
+    · 左轴 **固定 0~130**：偏度 **SKEW 指数**（100 中轴，>110 危险、>120 极危）
+                        + VIX（30D ATM IV 插值，20~40 区间）——同量纲共轴
+    · 右轴 **固定 0~2**  ：R_cascade（std20/std60）—— 深红粗线，单独一根轴
+    大佬 2026-11-16：「左坐标轴 1~120 左右（偏度>110 危险）…VIX 在 20~40 之间…
+    卡斯卡的是 0.5~1.5，右坐标轴 0~2 差不多就能显示出来」
     返回最后一天的三元组，供标题/日志使用。
     """
     dates = [str(x) for x in view["dt"].dt.strftime("%Y%m%d").values]
@@ -875,35 +880,42 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y, title_not
     skew = _align(vol_series, "skew")
     rc = _align(rc_series, "RC")
 
-    # ── 左轴：VIX + 偏度 ──
-    ax.plot(x, vix, color=VOL_VIX, lw=2.0, label="VIX（30D ATM IV 插值）", zorder=5)
-    ax.plot(x, skew, color=VOL_SKEW, lw=1.9, ls="--", label="偏度 25Δ（Put−Call）", zorder=5)
-    ax.axhline(0, color="#94a3b8", lw=0.9, ls=":", alpha=0.7)
-    lv = np.concatenate([vix[np.isfinite(vix)], skew[np.isfinite(skew)]])
-    if len(lv):
-        lo, hi = float(np.nanmin(lv)), float(np.nanmax(lv))
-        pad = max(2.0, (hi - lo) * 0.14)
-        ax.set_ylim(lo - pad, hi + pad)
-    ax.set_ylabel("VIX ／ 偏度（波动率点）", fontsize=f_y - 2, color=VOL_VIX)
-    ax.tick_params(axis="y", colors=VOL_VIX, labelsize=f_tick - 0.5)
+    # ── 左轴：VIX + 偏度（**固定 0~130**，大佬 2026-11-16 指定）─────────
+    # 「左坐标轴是 1~120 左右，因为偏度大于 110 就是危险了…VIX 是 20 到 40 之间…
+    #   这样应该也能显示」
+    ax.plot(x, skew, color=VOL_SKEW, lw=2.0,
+            label="偏度 SKEW 指数（100 中轴，>110 危险）", zorder=6)
+    ax.plot(x, vix, color=VOL_VIX, lw=1.9, ls="--",
+            label="VIX（30D ATM IV 插值）", zorder=5)
+    # 关键刻度线：偏度 100 中性 / 110 危险 / 120 极危；VIX 20 / 40
+    for yv, ls, col, lab in ((100, ":", "#94a3b8", "偏度100 中性"),
+                             (110, "--", "#c2410c", "110 危险"),
+                             (120, "--", "#991b1b", "120 极危"),
+                             (20, ":", "#93c5fd", "VIX20"),
+                             (40, ":", "#3b82f6", "VIX40")):
+        ax.axhline(yv, color=col, ls=ls, lw=0.9, alpha=0.55, zorder=1)
+        ax.text(nv + 6, yv, lab, fontsize=f_tick - 2, color=col, alpha=0.85,
+                va="center", ha="right")
+    ax.set_ylim(*VOL_YLIM)          # (0, 130)
+    ax.set_ylabel("偏度 SKEW ／ VIX（0~130）", fontsize=f_y - 2, color=VOL_SKEW)
+    ax.tick_params(axis="y", colors=VOL_SKEW, labelsize=f_tick - 0.5)
     ax.grid(True, ls=":", color="#cccccc", alpha=0.45)
     ax.tick_params(labelsize=f_tick)
 
-    # ── 右轴：R_cascade（深红粗线） ──
+    # ── 右轴：R_cascade（深红粗线，**固定 0~2**，大佬指定）──
     ax2 = ax.twinx()
     if np.isfinite(rc).any():
         ax2.plot(x, rc, color=RC_LINE, lw=RC_LINE_W, alpha=0.92, zorder=9,
-                 solid_capstyle="round", label="R_cascade（右轴）")
-        r_lo, r_hi = float(np.nanmin(rc)), float(np.nanmax(rc))
-        y0 = min(0.70, r_lo - 0.05)
-        y1 = max(1.30, r_hi + 0.05)
-        ax2.set_ylim(y0, y1)
-        for yv, ls, lab in ((1.2, "--", "1.2"), (0.8, "--", "0.8"), (0.75, "-.", "0.75")):
-            if y0 <= yv <= y1:
-                ax2.axhline(yv, color=RC_LINE, ls=ls, lw=0.8, alpha=0.32, zorder=1)
-                ax2.text(-1, yv, " " + lab, fontsize=f_tick - 2, color=RC_LINE,
-                         alpha=0.75, va="bottom", ha="left")
-    ax2.set_ylabel("R_cascade", fontsize=f_y - 2, color=RC_LINE)
+                 solid_capstyle="round", label="R_cascade（右轴 0~2）")
+        ax2.set_ylim(*RC_YLIM)       # (0, 2.0)
+        for yv, ls in ((1.2, "--"), (0.8, "--"), (0.75, "-.")):
+            ax2.axhline(yv, color=RC_LINE, ls=ls, lw=0.8, alpha=0.32, zorder=1)
+        # 0.8 与 0.75 在 0~2 轴上只差 2.5% 高度 → 标签合并一行，避免撞字
+        for yv, lab, va in ((1.2, "1.2 危险", "bottom"), (0.775, "0.8 安全 / 0.75 深坑", "top")):
+            ax2.text(-1, yv, " " + lab, fontsize=f_tick - 2, color=RC_LINE,
+                     alpha=0.75, va=va, ha="left")
+        ax2.set_ylim(*RC_YLIM)
+    ax2.set_ylabel("R_cascade（0~2）", fontsize=f_y - 2, color=RC_LINE)
     ax2.tick_params(axis="y", colors=RC_LINE, labelsize=f_tick - 0.5)
     ax2.spines["right"].set_color(RC_LINE)
     ax2.spines["right"].set_linewidth(1.6)
