@@ -53,7 +53,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ── sys.path：仓库内各层（顺序有讲究，真实目录优先于 bin/ 兼容壳）────────────
 _WS = os.environ.get("TECH_WS") or os.path.dirname(os.path.dirname(
@@ -92,6 +92,18 @@ THR_HIGH, THR_LOW, CONFIRM = 1.2, 0.8, 3
 THR_DEEP, CONFIRM_DEEP = 0.75, 5
 
 WIN_SHORT, WIN_LONG = 20, 60
+
+# ── 数据超时（新鲜度）判定 ─────────────────────────────────────────────
+# 用**交易日**算，不用自然日（避免周末/节假日误报）。
+# 「应该到哪天」（expected）由收盘入库时间决定：
+#   · 工作日 18:00 之后（默认，行情基本入库完） → 应该到**今天**
+#   · 工作日 18:00 之前（盘中/上午）           → 应该到**上一个工作日**
+#   · 周末 → 应该到**上周五**
+# 落后根数 = expected 与「实际最后一日」之间跨过的工作日数。
+# 超过 STALE_MISS_MAX（默认 0 = 一天都不许缺）→ 判「数据超时」，
+# 报告表格里标 ⏰超时，加 --stale-alert 时发邮件。
+STALE_MISS_MAX = int(os.environ.get("RC_STALE_MISS", "0"))
+STALE_CUTOFF_HOUR = int(os.environ.get("RC_STALE_CUTOFF_HOUR", "18"))
 
 
 # ═══════════════════════════ 取数 ═══════════════════════════
@@ -322,21 +334,84 @@ def build(data):
     return d, rows, alerts, alerts_deep, warns
 
 
+def _weekdays_between(d0, d1):
+    """(d0, d1] 之间的工作日根数（不含 d0、含 d1）。不计节假日，只算周一~周五。"""
+    if d1 <= d0:
+        return 0
+    n = 0
+    cur = d0
+    while cur < d1:
+        cur += timedelta(days=1)
+        if cur.weekday() < 5:
+            n += 1
+    return n
+
+
+def expected_last_trade_date(now=None, cutoff_hour=None):
+    """「现在这个时点，数据最晚应该到哪个工作日」。
+
+    工作日 >= cutoff_hour（默认 18:00）→ 今天；否则 → 上一个工作日；周末 → 上周五。
+    """
+    now = now or datetime.now()
+    cutoff = STALE_CUTOFF_HOUR if cutoff_hour is None else cutoff_hour
+    d = now.date()
+    if d.weekday() >= 5:                       # 周六/周日 → 上周五
+        d -= timedelta(days=d.weekday() - 4)
+        return d
+    if now.hour >= cutoff:                     # 工作日且已过收盘入库时间
+        return d
+    d -= timedelta(days=1)                     # 否则退到上一个工作日
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def stale_check(rows, now=None, max_miss=None):
+    """检查每个标的的**数据超时**（交易日口径）。
+
+    返回 [{name, last_date, miss, stale, expected}]，
+    miss = 落后几个工作日；miss > max_miss（默认 STALE_MISS_MAX=0）→ stale=True。
+    """
+    max_miss = STALE_MISS_MAX if max_miss is None else max_miss
+    now = now or datetime.now()
+    exp = expected_last_trade_date(now)
+    out = []
+    for x in rows:
+        try:
+            d = datetime.strptime(x["last_date"], "%Y-%m-%d").date()
+        except Exception:                                        # noqa: BLE001
+            out.append(dict(name=x["name"], last_date=x.get("last_date", "—"),
+                            miss=None, stale=True, expected=str(exp)))
+            continue
+        miss = _weekdays_between(d, exp)
+        out.append(dict(name=x["name"], last_date=x["last_date"],
+                        miss=miss, stale=miss > max_miss,
+                        expected=exp.strftime("%Y-%m-%d")))
+    return out
+
+
 def freshness_note(rows):
-    """数据新鲜度提示：最后日期距今超过 3 自然日就提示（防止把旧信号当今天的新信号）"""
+    """数据新鲜度/超时提示（交易日口径）。返回 Markdown 行（可能为空）。"""
     if not rows:
         return ""
+    chk = stale_check(rows)
     last = max(x["last_date"] for x in rows)
-    try:
-        gap = (datetime.now() - datetime.strptime(last, "%Y-%m-%d")).days
-    except Exception:                                            # noqa: BLE001
+    stale = [x for x in chk if x["stale"]]
+    lag = [x for x in chk if x["miss"] and x["miss"] > 0 and not x["stale"]]
+    if not stale and not lag:
         return ""
-    if gap <= 3:
-        return ""
-    stale = sorted({x["name"] for x in rows if x["last_date"] < last})
-    extra = ("；%s 更旧" % "、".join(stale)) if stale else ""
-    return ("⚠️ **数据新鲜度**：最新只到 **%s**（距今 %d 天）%s —— "
-            "下面所有 R 值都是那天的，不是今天的新信号" % (last, gap, extra))
+    parts = []
+    if stale:
+        parts.append("⏰ **数据超时**：%s" % "、".join(
+            "%s 停在 %s（落后 %s 个交易日）" %
+            (x["name"], x["last_date"], x["miss"] if x["miss"] is not None else "?")
+            for x in stale))
+    if lag:
+        parts.append("⚠️ 数据滞后（未超时）：%s" % "、".join(
+            "%s 停在 %s（落后 %d 个交易日）" % (x["name"], x["last_date"], x["miss"])
+            for x in lag))
+    parts.append("最新数据只到 **%s** —— 里面的 R 值不是今天新算出来的" % last)
+    return " ｜ ".join(parts)
 
 
 def alarm_tag(x):
@@ -353,6 +428,20 @@ def alarm_tag(x):
     elif x.get("deep_streak", 0) > 0:
         t.append("⚪ <0.75 进度 %d/5" % x["deep_streak"])
     return " · ".join(t) if t else "—"
+
+
+def notify_line():
+    """报警邮件收件人（**脱敏**展示，报告里只允许出现这个）。"""
+    try:
+        import mailer
+        cfg = mailer.load_config()
+        rc = cfg.get("to") or ""
+        if not rc:
+            return "📧 报警邮件：未配置收件人（设 MAIL_TO 或 ~/.config/openclaw/mail.json）"
+        return "📧 报警邮件 → %s" % mailer.mask_many(
+            [x.strip() for x in str(rc).replace(";", ",").split(",") if x.strip()])
+    except Exception:                                            # noqa: BLE001
+        return ""
 
 
 def text_block(rows, d):
@@ -375,10 +464,17 @@ def text_block(rows, d):
     L.append("")
     L.append("| 指数 | 收盘 | R_cascade | 状态 | 20日波动 | 60日波动 | 数据截止 | 报警标识 |")
     L.append("|---|---|---|---|---|---|---|---|")
+    _stale = {y["name"]: y for y in stale_check(rows)}
     for x in rows:
+        _dt = x["last_date"]
+        _s = _stale.get(x["name"]) or {}
+        if _s.get("stale"):
+            _dt = "%s ⏰超时(%s交易日)" % (_dt, _s.get("miss"))
+        elif _s.get("miss"):
+            _dt = "%s (−%d)" % (_dt, _s["miss"])
         L.append("| %s | %.2f | **%.3f** | %s | %.1f%% | %.1f%% | %s | %s |" % (
             x["name"], x["close"], x["rc"], x["state"], x["vol20"], x["vol60"],
-            x["last_date"], alarm_tag(x)))
+            _dt, alarm_tag(x)))
     L.append("")
     for x in rows:
         s3 = " / ".join("%s %.3f" % (a, b) for a, b in x["last3"])
@@ -394,6 +490,9 @@ def text_block(rows, d):
              "🟡0.8~1.2 中性震荡（此区间历史效率比仅0.03，最无趋势）")
     L.append("> ⭐ **发邮件的只有两种正式报警**：🔴 连续 3 日 >1.2   🟣 连续 5 日 <0.75")
     L.append("> 🟡 单日越线（未连 3 日）只算预警，报告里标出但不发邮件")
+    nl = notify_line()
+    if nl:
+        L.append("> " + nl)
     return "\n".join(L)
 
 
@@ -507,20 +606,46 @@ def draw(data, out=None):
 
 
 # ═══════════════════════════ 邮件 ═══════════════════════════
-def send_email(subject, body_md, img_path, ws=None):
-    """发邮件（复用工作区 scripts/send_email.py；找不到就跳过，不抛异常）"""
-    import subprocess
-    ws = ws or WS
-    script = os.path.join(ws, "scripts", "send_email.py")
-    if not os.path.exists(script):
-        print("[email] 找不到 %s，跳过" % script)
+def send_email(subject, body_md, img_path, to=None, dry_run=False):
+    """发邮件（统一走 `misc/core/mailer.py`，收件人/发件人在日志里**自动脱敏**）。
+
+    账号与收件人一律从外部配置读：
+      · 环境变量：MAIL_FROM / MAIL_PASS / MAIL_TO（+ MAIL_SMTP_HOST / MAIL_SMTP_PORT）
+      · 或配置文件：~/.config/openclaw/mail.json（MAIL_CONFIG 可指定别的路径）
+    **仓库里没有任何真实邮箱与口令。**
+    发不出去也不抛异常——报警链路不能因为邮箱挂掉把主流程带死。
+    """
+    try:
+        import mailer
+    except Exception as e:                                       # noqa: BLE001
+        print("[email] mailer 不可用，跳过：%s" % str(e)[:120])
         return False
-    cmd = [sys.executable, script, "--subject", subject, "--body", body_md, "--html"]
-    if img_path and os.path.exists(img_path):
-        cmd += ["--attach", img_path]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    print("[email]", r.returncode, (r.stdout or "")[-200:], (r.stderr or "")[-300:])
-    return r.returncode == 0
+    return mailer.send(subject, body_md, to=to,
+                       attach=[img_path] if img_path else None,
+                       dry_run=dry_run)
+
+
+def stale_email(rows, img=None, dry_run=False, to=None):
+    """数据超时报警邮件（⏰）。返回 True/False；没超时直接 False。"""
+    chk = stale_check(rows)
+    bad = [x for x in chk if x["stale"]]
+    if not bad:
+        return False
+    d = datetime.now().strftime("%Y-%m-%d")
+    head = "\n".join(
+        "- ⏰ **%s** 数据停在 **%s**（落后 %s 个交易日，上限 %d）" %
+        (x["name"], x["last_date"],
+         x["miss"] if x["miss"] is not None else "?", STALE_MISS_MAX)
+        for x in bad)
+    subj = "⏰ R_cascade 数据超时 · %s · %s" % (d, "、".join(x["name"] for x in bad))
+    body = ("# ⏰ R_cascade 数据超时报警\n\n"
+            "**%s** 以下标的数据没跟上（按交易日算）：\n\n%s\n\n"
+            "---\n\n%s\n\n"
+            "> 数据源：DataHub（dh_bridge）优先，失败回退 akshare。\n"
+            "> 排查：`python3 misc/core/datafeed.py status`、"
+            "`python3 misc/engine/rcascade.py --local`（强制走 akshare 对照）\n"
+            % (d, head, text_block(rows, d)))
+    return send_email(subj, body, img, to=to, dry_run=dry_run)
 
 
 def fetch_all(prefer_datahub=True):
@@ -543,6 +668,12 @@ def main(argv=None):
     ap.add_argument("--email-alert", action="store_true",
                     help="有正式报警时发邮件（带图）")
     ap.add_argument("--force-email", action="store_true", help="无论是否越线都发邮件")
+    ap.add_argument("--email-dry-run", action="store_true",
+                    help="只打印邮件要素（收件人已脱敏）不真发")
+    ap.add_argument("--stale-alert", action="store_true",
+                    help="数据超时（落后 >RC_STALE_MISS 个交易日）就发邮件")
+    ap.add_argument("--stale-miss", type=int, default=None,
+                    help="允许落后的交易日数上限（默认 1，等价环境变量 RC_STALE_MISS）")
     ap.add_argument("--json", action="store_true", help="额外打印 JSON 摘要")
     ap.add_argument("--state", default=os.path.join(WS, ".cache", "rcascade_state.json"),
                     help="状态 JSON 落盘路径（默认 .cache/rcascade_state.json）")
@@ -603,15 +734,28 @@ def main(argv=None):
             body = ("# 🚨 R_cascade 正式报警\n\n"
                     "**%s**  触发指数：\n\n%s\n\n---\n\n%s\n\n**图见附件。**"
                     % (d, "\n".join(head), tb))
-            send_email(subj, body, img)
+            send_email(subj, body, img, dry_run=a.email_dry_run)
         elif a.force_email:
             subj = "✅ R_cascade 日报 · %s · 无正式报警" % d
             body = ("# ✅ R_cascade 日报\n\n"
                     "三个指数均未达到正式报警条件（连续3日>1.2 / 连续5日<0.75）。"
                     "\n\n---\n\n" + tb)
-            send_email(subj, body, img)
+            send_email(subj, body, img, dry_run=a.email_dry_run)
         else:
             print("[email] 无正式报警，不发邮件")
+    # 数据超时报警（⏰）：默认只提示不发；--stale-alert 才发邮件
+    try:
+        chk = stale_check(rows, max_miss=a.stale_miss)
+        bad = [x for x in chk if x["stale"]]
+        if bad:
+            print("[stale] ⏰ 数据超时：%s" % "、".join(
+                "%s 停在 %s（落后 %s）" % (x["name"], x["last_date"], x["miss"])
+                for x in bad))
+            if a.stale_alert:
+                stale_email(rows, img, dry_run=a.email_dry_run,
+                            to=None)
+    except Exception as e:                                       # noqa: BLE001
+        print("[WARN] 超时检查失败:", str(e)[:120])
     if warns:
         print("[warn] 仅预警（不发邮件）：%s" %
               "、".join("%s %.3f" % (x[0], x[1]) for x in warns))

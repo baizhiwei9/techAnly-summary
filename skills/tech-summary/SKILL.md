@@ -95,6 +95,7 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 | `misc/engine/buypoint_chart.py` | 买点图（日线 / 60m / 均线版三面板）+ `draw_stock_grid()` 多标的网格图 |
 | `misc/engine/wyckoff_buypoint_v2.py` | **盘中吸筹买点分析 v2**：威科夫吸筹 → 四层过滤 → Top10 行业 → Top20 个股 → 多子图 |
 | `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60）三指数 + 出图 + 报警判定（不属四层，独立指标） |
+| `misc/core/mailer.py` | **全库唯一发信通道**：收件人/口令只从环境变量或 `~/.config/openclaw/mail.json` 读，日志里邮箱一律脱敏（`exa***456@qq.com` 这种） |
 
 ---
 

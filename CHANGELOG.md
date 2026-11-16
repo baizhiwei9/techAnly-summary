@@ -6,6 +6,57 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-16 18:05
+
+**feat(mailer): 邮件统一走库内 `misc/core/mailer.py`，地址/口令全程脱敏 + R_cascade 数据超时报警**
+
+大佬 2026-11-16 17:35：「你把这东西整理一下子，就这个超时报警的，整理一下子，都放在
+techAnly 这个库，然后它发邮件，但是这邮件地址你得给我脱敏了啊」。
+
+### 新增 `misc/core/mailer.py`（全库唯一发信通道）
+
+- **配置只从外部读**：环境变量 `MAIL_FROM / MAIL_PASS / MAIL_SMTP_HOST /
+  MAIL_SMTP_PORT / MAIL_TO / MAIL_FROM_NAME` > `~/.config/openclaw/mail.json`
+  （`MAIL_CONFIG` 可指定别的路径）> 本机遗留配置（只读兼容）
+  → **仓库里一个真实邮箱、一个口令都没有**
+- **脱敏函数**（日志/报告/异常全走它们）：
+  `mask()` → `example123456@qq.com` 变 `exa***456@qq.com`；
+  `mask_many()` 多收件人；`scrub()` 把任意文本里的完整邮箱统一抹掉
+  （异常信息里带出地址也不会泄漏）
+- `send()`：失败 **不抛异常**（报警链路不能因邮箱挂掉把主流程带死），只返回 False
+- `MAIL_DRY_RUN=1` 全局干跑开关；`MAIL_RENDERER` 可指定 Markdown→HTML 渲染器
+- CLI：`python3 misc/core/mailer.py --check`（配置体检，已脱敏）
+
+### `misc/engine/rcascade.py` 接入
+
+- `send_email()` 不再 subprocess 调外部脚本，改走 `mailer.send()`
+- 报告脚注新增一行（脱敏）：`> 📧 报警邮件 → exa***456@qq.com`
+- 新增 `--email-dry-run`：只打印邮件要素（收件人已脱敏）不真发
+
+### ⏰ 数据超时报警（大佬说的「超时报警」，用**交易日**算）
+
+- `expected_last_trade_date()`：工作日 18:00 后 → 应该到**今天**；
+  18:00 前 → 上一个工作日；周末 → 上周五（`RC_STALE_CUTOFF_HOUR` 可改，默认 18）
+- `stale_check()`：算每个标的落后多少个工作日，超过 `RC_STALE_MISS`（默认 0）判超时
+  —— 用交易日不用自然日，避开周末误报
+- 表格「数据截止」列自动标 `2026-11-13 ⏰超时(1交易日)` / `2026-11-13 (−1)`
+- `stale_email()`：超时单独发一封（⏰ 标题），与「正式报警」那封互不影响
+- CLI `--stale-alert`（默认只提示不发）、`--stale-miss N`
+
+### 工作区侧（不进库）
+
+- `bin/market_tech_daily.py`：`rcascade_block()` 额外算 `stale_bad` 写进 `_RCASCADE`；
+  `rcascade_email_alerts()` 抽了个 `_rcascade_stale_mail()`，正式报警发完再补发超时那封
+- 新增 `~/.config/openclaw/mail.json`（权限 600，仓库外）
+
+### 验收
+
+- 脱敏实测：`example123456@qq.com`→`exa***456@qq.com`、`someone@163.com`→`som***one@163.com`
+  （真实地址只在仓库外的配置文件里，CHANGELOG 也不写真实值）
+- 真发一封自测邮件 → 返回 True，日志里只见脱敏地址
+- `RC_STALE_CUTOFF_HOUR=15` 测试：正确报「⏰ 数据超时：创业板指 停在 2026-11-13（落后 1 个交易日）」
+- 晚 20:15 链路：正式报警邮件 + 超时邮件各一封，互不阻塞
+
 ## 2026-11-16 17:45
 
 **refactor(rcascade): R_cascade 实现搬进本库，工作区只留薄壳**
