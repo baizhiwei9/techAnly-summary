@@ -17,15 +17,24 @@ techAnly 这个库里边，然后供这个脚本调用」）。工作区那份�
 
 阈值（正式报警只发两种）
 --------------------------------
-    🔴 > 1.2            小尺度波动失控     —— 须**连续 3 日**成立才正式报警
+    🔴 > 1.2            小尺度波动失控
     🟢 < 0.8            能量集中在大尺度
     🟡 0.8 ~ 1.2        中性震荡（历史效率比仅 0.03，最无趋势）
-    🟣 < 0.75 连续 5 日  低波动陷阱 / 单边末端 —— 也正式报警
+    🟣 < 0.75           低波动陷阱 / 单边末端
+
+发邮件口径（2026-11-16 大佬定稿，唯一权威）
+--------------------------------
+    🔴 R>1.2 **连续 3 日**：
+        · 五大宽基里 **≥ SYNC_MIN(3) 个** 同时成立 → 发邮件
+        · 任一指数 **连续 CONFIRM_SOLO(5) 日** >1.2 → 发邮件（单个也算）
+        · 只有 1~2 个连续 3 日 → **不发**，只在报告里标
+    🟣 R<0.75 **连续 5 日** → 发邮件
     单日越线只算「预警」，报告里标出但**不发邮件**
 
-标的（三指数）
+标的（五大宽基）
 --------------------------------
-    科创50ETF 588000.SH ｜ 创业板指 399006.SZ ｜ 中证1000 000852.SH
+    沪深300 000300.SH ｜ 中证500 000905.SH ｜ 中证1000 000852.SH
+    创业板指 399006.SZ ｜ 科创50 000688.SH
 
 数据来源
 --------------------------------
@@ -81,15 +90,26 @@ WS = _WS
 OUT_DEFAULT = os.path.join(WS, ".cache", "rcascade_daily.png")
 
 # (显示名, 代码, 数据源类型, 标签)
+# 2026-11-16 大佬要求把报警口径放在「五大宽基」上 → 补齐沪深300 / 中证500
 TARGETS = [
-    ("科创50ETF", "588000", "etf", "科创50 ETF（588000）"),
-    ("创业板指", "399006", "index_sz", "创业板指（399006）"),
+    ("沪深300", "000300", "index_sh", "沪深300（000300）"),
+    ("中证500", "000905", "index_sh", "中证500（000905）"),
     ("中证1000", "000852", "index_sh", "中证1000（000852）"),
+    ("创业板指", "399006", "index_sz", "创业板指（399006）"),
+    ("科创50", "000688", "index_sh", "科创50（000688）"),
 ]
 
 # 阈值（唯一口径，工作区薄壳与大盘技术拆解都读这里）
 THR_HIGH, THR_LOW, CONFIRM = 1.2, 0.8, 3
 THR_DEEP, CONFIRM_DEEP = 0.75, 5
+
+# ── 发邮件的口径（2026-11-16 大佬定稿）──────────────────────────────
+#  🔴 R>1.2：单指数连续 3 日 **不再发邮件**，只有
+#       ① 五大宽基里 **≥3 个** 同时连续 3 日 >1.2  → 发
+#       ② 任一指数 **连续 5 日** >1.2            → 发（单个也算）
+#  🟣 R<0.75：本来就是连续 5 日才确认 → 照旧发
+SYNC_MIN = 3              # 五大宽基同步最少个数
+CONFIRM_SOLO = 5          # 单指数连续 5 日也算正式报警
 
 WIN_SHORT, WIN_LONG = 20, 60
 
@@ -310,6 +330,7 @@ def build(data):
         ds = cur_streak(v, THR_DEEP, False)
         st, rng = state_of(lv)
         confirmed = cur_ok(v, THR_HIGH, True, CONFIRM)
+        hi_streak = cur_streak(v, THR_HIGH, True)
         deep_confirmed = cur_ok(v, THR_DEEP, False, CONFIRM_DEEP)
         warn = (lv > THR_HIGH) and not confirmed
         rows.append(dict(name=nm, label=lab, code=code,
@@ -319,7 +340,9 @@ def build(data):
                          danger_n=len(hi), safe_n=len(lo_),
                          danger_last=hi[-1].strftime("%Y-%m-%d") if hi else "—",
                          safe_last=lo_[-1].strftime("%Y-%m-%d") if lo_ else "—",
-                         confirmed=confirmed, warn=warn, deep_streak=ds,
+                         confirmed=confirmed, hi_streak=hi_streak,
+                         solo_5=hi_streak >= CONFIRM_SOLO,
+                         warn=warn, deep_streak=ds,
                          deep_n=len(deep), below_n=int((v < THR_DEEP).sum()),
                          deep_last=deep[-1].strftime("%Y-%m-%d") if deep else "—",
                          deep_confirmed=deep_confirmed,
@@ -331,7 +354,38 @@ def build(data):
             warns.append((nm, lv))
         if deep_confirmed:
             alerts_deep.append((nm, lv))
+    # 红侧是否发邮件：五个里 ≥3 个同步 或 任一连续 5 日
+    mp = mail_plan(rows)
+    for x in rows:
+        x["sync_n"] = mp["sync_n"]
+        x["mail_red"] = bool(mp["mail_red"] and (x.get("confirmed") or False))
     return d, rows, alerts, alerts_deep, warns
+
+
+def mail_plan(rows):
+    """红侧（R>1.2）发邮件判定（2026-11-16 大佬口径）。
+
+    🔴 连续 3 日 >1.2：
+        · 五大宽基里 **≥ SYNC_MIN(3) 个** 同时成立 → 发
+        · 单指数 **连续 5 日** >1.2（CONFIRM_SOLO）→ 发（单个也算）
+        · 只有 1~2 个连续 3 日 → **不发**，只写进报告
+    """
+    conf = [x for x in rows if x.get("confirmed")]
+    solo = [x for x in rows if x.get("solo_5")]
+    sync_n = len(conf)
+    mail_red = (sync_n >= SYNC_MIN) or bool(solo)
+    if sync_n >= SYNC_MIN:
+        reason = "%d 个宽基同步连续 3 日 >1.2（阈值 %d 个）" % (sync_n, SYNC_MIN)
+    elif solo:
+        reason = "%s 连续 %d 日 >1.2" % ("、".join(x["name"] for x in solo), CONFIRM_SOLO)
+    elif conf:
+        reason = "仅 %d 个宽基连续 3 日 >1.2，不足 %d 个且无 5 日连续 → 不发" % (
+            sync_n, SYNC_MIN)
+    else:
+        reason = "无连续 3 日 >1.2"
+    return dict(mail_red=mail_red, sync_n=sync_n, need=SYNC_MIN,
+                solo=[x["name"] for x in solo], conf=[x["name"] for x in conf],
+                reason=reason)
 
 
 def _weekdays_between(d0, d1):
@@ -420,9 +474,17 @@ def alarm_tag(x):
         return "—"
     t = []
     if x.get("confirmed"):
-        t.append("🔴 报警 R>1.2(连续3日)")
+        _sync = x.get("sync_n") or 0
+        if _sync >= SYNC_MIN:
+            t.append("🔴 报警 R>1.2(连续%d日，%d个宽基同步发)" % (x.get("hi_streak", CONFIRM), _sync))
+        elif x.get("solo_5"):
+            t.append("🔴 报警 R>1.2(连续%d日，单指数5日发)" % x.get("hi_streak", CONFIRM_SOLO))
+        else:
+            t.append("🔴 连续%d日>1.2（不足%d个宽基同步，不发）" % (CONFIRM, SYNC_MIN))
     elif x.get("warn"):
         t.append("🟡 预警 R>1.2(单日·不发)")
+    elif x.get("hi_streak", 0) > 0:
+        t.append("🔶 >1.2 进度 %d/%d" % (x["hi_streak"], CONFIRM))
     if x.get("deep_confirmed"):
         t.append("🟣 报警 R<0.75(连续5日)")
     elif x.get("deep_streak", 0) > 0:
@@ -446,18 +508,23 @@ def notify_line():
 
 def text_block(rows, d):
     """Markdown 文字段（大盘技术拆解日报直接贴这一段）"""
-    trig_rows = [x for x in rows if x.get("confirmed") or x.get("deep_confirmed")]
+    mp = mail_plan(rows)
+    mail_rows = [x for x in rows if x.get("mail_red") or x.get("deep_confirmed")]
+    conf_rows = [x for x in rows if x.get("confirmed")]
     warn_rows = [x for x in rows if x.get("warn")]
     L = ["**📈 R_cascade 波动率级联比（平滑版 std%d/std%d）· %s**" %
          (WIN_SHORT, WIN_LONG, d), ""]
     fresh = freshness_note(rows)
     if fresh:
         L += [fresh, ""]
-    if trig_rows:
-        L.append("🚨 **本次触发（正式报警 → 发邮件）**：%s" % "；".join(
-            "%s %s（%.3f）" % (x["name"], alarm_tag(x), x["rc"]) for x in trig_rows))
+    if mail_rows:
+        L.append("🚨 **本次发邮件**：%s" % "；".join(
+            "%s %s（%.3f）" % (x["name"], alarm_tag(x), x["rc"]) for x in mail_rows))
     else:
-        L.append("✅ **本次触发**：无（未达连续 3 日 >1.2、也未连续 5 日 <0.75）")
+        L.append("✅ **本次不发邮件**：%s" % mp["reason"])
+    if conf_rows and not mp["mail_red"]:
+        L.append("🔴 **连续3日>1.2 但未达发信条件**：%s" % "；".join(
+            "%s %.3f" % (x["name"], x["rc"]) for x in conf_rows))
     if warn_rows:
         L.append("⚠️ **预警未确认（不发邮件）**：%s" % "；".join(
             "%s %.3f 单日越线" % (x["name"], x["rc"]) for x in warn_rows))
@@ -488,8 +555,12 @@ def text_block(rows, d):
     L.append("> 口径：R = std(ln收益,%d日) ÷ std(ln收益,%d日)" % (WIN_SHORT, WIN_LONG))
     L.append("> 🔴>1.2 小尺度波动失控 / 🟢<0.8 能量集中在大尺度 / "
              "🟡0.8~1.2 中性震荡（此区间历史效率比仅0.03，最无趋势）")
-    L.append("> ⭐ **发邮件的只有两种正式报警**：🔴 连续 3 日 >1.2   🟣 连续 5 日 <0.75")
-    L.append("> 🟡 单日越线（未连 3 日）只算预警，报告里标出但不发邮件")
+    L.append("> ⭐ **发邮件口径（2026-11-16 定）**：")
+    L.append("> 🔴 R>1.2：五大宽基里 **≥%d 个**同时连续 3 日 → 发；"
+             "单指数 **连续 %d 日** → 也发（单个也算）" % (SYNC_MIN, CONFIRM_SOLO))
+    L.append("> 🔴 R>1.2：只有 1~2 个连续 3 日 → **不发**，只在报告里标")
+    L.append("> 🟣 R<0.75：连续 5 日 → 发")
+    L.append("> 🟡 单日越线（未连 3 日）只算预警，不发邮件")
     nl = notify_line()
     if nl:
         L.append("> " + nl)
@@ -716,33 +787,43 @@ def main(argv=None):
         print("\n--- JSON ---")
         print(json.dumps(payload, ensure_ascii=False, indent=1))
 
-    # 只有两种正式报警才发邮件：🔴 连3日>1.2 / 🟣 连5日<0.75
+    # 发邮件口径（2026-11-16 大佬定）：
+    #   🔴 R>1.2 → 五大宽基里 ≥3 个同时连续 3 日，或单指数连续 5 日
+    #   🟣 R<0.75 → 连续 5 日
+    mp = mail_plan(rows)
     if a.email_alert or a.force_email:
-        if alerts or alerts_deep:
+        mail_rows = [x for x in rows if x.get("mail_red") or x.get("deep_confirmed")]
+        if mail_rows:
             head = []
-            for x in alerts:
-                head.append("- 🔴 **%s** R=%.3f ｜ 连续 3 日 >1.2（正式报警）" % (x[0], x[1]))
-            for x in alerts_deep:
-                head.append("- 🟣 **%s** R=%.3f ｜ 连续 5 日 <0.75（正式报警）" % (x[0], x[1]))
+            for x in mail_rows:
+                if x.get("deep_confirmed"):
+                    head.append("- 🟣 **%s** R=%.3f ｜ 连续 5 日 <0.75（正式报警）"
+                                % (x["name"], x["rc"]))
+                elif x.get("solo_5"):
+                    head.append("- 🔴 **%s** R=%.3f ｜ 单指数连续 %d 日 >1.2（正式报警）"
+                                % (x["name"], x["rc"], x.get("hi_streak", 0)))
+                else:
+                    head.append("- 🔴 **%s** R=%.3f ｜ 连续 3 日 >1.2（%d 个宽基同步）"
+                                % (x["name"], x["rc"], mp["sync_n"]))
             tags = []
-            if alerts:
-                tags.append("🔴连续3日>1.2")
-            if alerts_deep:
+            if any(x.get("mail_red") for x in mail_rows):
+                tags.append("🔴五大宽基%d个同步>1.2" % mp["sync_n"] if mp["sync_n"] >= SYNC_MIN
+                            else "🔴单指数连续%d日>1.2" % CONFIRM_SOLO)
+            if any(x.get("deep_confirmed") for x in mail_rows):
                 tags.append("🟣连续5日<0.75")
-            names = "、".join([x[0] for x in alerts] + [x[0] for x in alerts_deep])
+            names = "、".join(x["name"] for x in mail_rows)
             subj = "🚨 R_cascade 正式报警 · %s · %s · %s" % (d, "/".join(tags), names)
             body = ("# 🚨 R_cascade 正式报警\n\n"
-                    "**%s**  触发指数：\n\n%s\n\n---\n\n%s\n\n**图见附件。**"
-                    % (d, "\n".join(head), tb))
+                    "**%s**  发信依据：%s\n\n%s\n\n---\n\n%s\n\n**图见附件。**"
+                    % (d, mp["reason"], "\n".join(head), tb))
             send_email(subj, body, img, dry_run=a.email_dry_run)
         elif a.force_email:
             subj = "✅ R_cascade 日报 · %s · 无正式报警" % d
             body = ("# ✅ R_cascade 日报\n\n"
-                    "三个指数均未达到正式报警条件（连续3日>1.2 / 连续5日<0.75）。"
-                    "\n\n---\n\n" + tb)
+                    "未达发信条件：%s。\n\n---\n\n%s" % (mp["reason"], tb))
             send_email(subj, body, img, dry_run=a.email_dry_run)
         else:
-            print("[email] 无正式报警，不发邮件")
+            print("[email] 不发邮件：%s" % mp["reason"])
     # 数据超时报警（⏰）：默认只提示不发；--stale-alert 才发邮件
     try:
         chk = stale_check(rows, max_miss=a.stale_miss)
