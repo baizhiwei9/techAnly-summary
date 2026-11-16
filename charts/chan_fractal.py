@@ -1166,7 +1166,7 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
     sub_mode = sub if sub else ("macd" if with_macd else "vol")
     rc_map, vol_map = {}, {}
     for _n, _c in pairs:
-        if sub == "vol":
+        if sub_mode == "vol":
             _v = _vol_series_for(_n)
             if _v is not None:
                 vol_map[_n] = _v

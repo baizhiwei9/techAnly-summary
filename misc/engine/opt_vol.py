@@ -7,7 +7,14 @@
 
 口径（唯一实现，别在画图层另算一套）
 ------------------------------------
-数据源：工作区 IV 历史库 `.cache/opt_iv_hist.json`（由 `bin/opt_iv_hist.py` 逐日回补）
+**主数据源：DataHub**（2026-11-16 大佬要求：「期权的数据应该也在 DataHub 上搞」）
+  `data_hub.collectors.misc.option_metrics_history.get_option_metrics()`
+  · VIX  = CBOE 分钟到期方差互换法（30 日历日插值），`calc_vix`
+  · 偏度 = CBOE 偏度（100 中轴），`cboe_skew` 列
+  · 带增量缓存 `~/.openclaw/workspace/.cache/option_metrics/`
+    首次回补较慢（~31s/天），之后每天只补 1 天
+
+备用（DataHub 不可用时）：工作区 IV 历史库 `.cache/opt_iv_hist.json`
 结构：{ "OP510300.SH": { "20261116": { "9": {atm,p25,c25,F,S}, "37": {...} }, ... } }
        外层 key=日期，内层 key=该到期月的剩余天数 DTE（字符串）
 
@@ -45,7 +52,7 @@ IDX2OPT = {
     "上证50": "OP510050.SH",
 }
 
-# 数据源默认路径（可用环境变量覆盖，方便别的机器/测试）
+# 备用数据源（只在 DataHub 不可用时启用；可用 OPT_VOL_SOURCE=legacy 强制走这条）
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _WS = os.environ.get("TECH_WS") or os.path.dirname(os.path.dirname(_HERE))
 DEFAULT_HIST = os.environ.get("OPT_IV_HIST") or os.path.join(
@@ -146,11 +153,110 @@ def series_from_hist(hist, opt_code):
     return df
 
 
+# ═══════════ 主路径：从 DataHub 期权指标缓存取数（2026-11-16 大佬要求）═══════════
+# 「现在是需要期权相关的数据，你单独期权相关的数据，你用那个。我不知道你这个 DataHub
+#   有没有期权相关的数据。我记得是 Options Utility 是做期权的策略的，
+#   期权的数据应该也在 DataHub 上搞」
+#
+# DataHub 侧唯一入口：data_hub.collectors.misc.option_metrics_history.get_option_metrics
+#   · 带增量缓存（~/.openclaw/workspace/.cache/option_metrics/）
+#   · 指标口径：VIX = CBOE 分钟到期方差互换法；偏度 = CBOE 偏度（100 中轴）
+#   · 列：trade_date, underlying, spot_price, atm_iv, put_25d_iv, call_25d_iv,
+#         iv_skew, cboe_skew, vol_pcr, oi_pcr, amt_pcr, vix
+#
+# 本文件只做「指数名 → DataHub underlying」映射 + 列名整理，**不自己算指标**。
+
+IDX2DH = {
+    "沪深300": "510300",
+    "中证500": "510500",
+    "中证1000": "MO",
+    "创业板指": "159915",
+    "科创50": "588000",
+    "上证50": "IO",
+}
+
+
+def _dh_metrics():
+    """import DataHub 的期权指标入口（失败返回 None）。"""
+    try:
+        _op = os.environ.get("OPTSTACK_DIR") or os.path.join(
+            os.path.expanduser("~"), ".openclaw", "workspace", "optstack")
+        if _op not in sys.path:
+            sys.path.insert(0, _op)
+        from data_hub.collectors.misc.option_metrics_history import get_option_metrics
+        return get_option_metrics
+    except Exception as e:                                       # noqa: BLE001
+        print("[optvol] DataHub 期权指标不可用：%s" % str(e)[:120], flush=True)
+        return None
+
+
+def series_from_datahub(name, start=None, end=None, verbose=False):
+    """从 DataHub 取某指数的 VIX / 偏度（SKEW 指数口径），返回统一 DataFrame。
+
+    列：vix（%）、skew（SKEW 指数，100 中轴）、atm_iv（%）、iv_skew（原始差值×100）
+    """
+    ul = IDX2DH.get(name)
+    if ul is None:
+        raise KeyError("没有 %s 的 DataHub 期权标的映射（可选：%s）"
+                       % (name, "、".join(IDX2DH)))
+    fn = _dh_metrics()
+    if fn is None:
+        return None
+    import datetime as _dt
+    end = end or _dt.date.today().strftime("%Y%m%d")
+    start = start or (_dt.date.today() - _dt.timedelta(days=460)).strftime("%Y%m%d")
+    df = fn(start, end, underlyings=[ul], verbose=verbose)
+    if df is None or not len(df):
+        return None
+    df = df.copy()
+    # 必须按日期排序后再取列（缓存合并后行序不保证），否则 values 会错位
+    df["trade_date"] = df["trade_date"].astype(str)
+    df = df.sort_values("trade_date")
+    out = pd.DataFrame(index=[str(x) for x in df["trade_date"]])
+    out.index.name = "trade_date"
+    out["vix"] = pd.to_numeric(df["vix"], errors="coerce").values
+    # SKEW 指数：优先 DataHub 的 skew_index（BKM 风险中性偏度 → 100−10×skew，
+    # 100 中轴、>110 危险）；老缓存没这列时退回 cboe_skew（该列被钳在 150，仅兜底）
+    if "skew_index" in df.columns:
+        out["skew"] = pd.to_numeric(df["skew_index"], errors="coerce").values
+        try:
+            _fallback = pd.to_numeric(df["cboe_skew"], errors="coerce").values
+            out["skew"] = out["skew"].where(out["skew"].notna(), _fallback)
+        except Exception:                                        # noqa: BLE001
+            pass
+    else:
+        out["skew"] = pd.to_numeric(df["cboe_skew"], errors="coerce").values
+    out["atm_iv"] = pd.to_numeric(df["atm_iv"], errors="coerce").values * 100.0
+    out["iv_skew"] = pd.to_numeric(df["iv_skew"], errors="coerce").values * 100.0
+    out = out[~out.index.duplicated(keep="last")].sort_index()
+    if verbose:
+        _l = out.iloc[-1]
+        print("[optvol] %s ← DataHub(%s) %d 天 %s~%s | VIX=%.1f SKEW=%.1f"
+              % (name, ul, len(out), out.index[0], out.index[-1], _l["vix"], _l["skew"]),
+              flush=True)
+    return out
+
+
 def series_for(name, hist_path=None, force=False, verbose=False):
     """取某指数的 VIX / 偏度序列（磁盘缓存，历史库变了才重算）。
 
     返回 DataFrame(index=YYYYMMDD str, cols: vix, skew, atm_near, dte_near)
     """
+    # ① 主路径：DataHub（2026-11-16 大佬要求，期权数据统一从 DataHub 来）
+    if os.environ.get("OPT_VOL_SOURCE", "datahub") != "legacy":
+        try:
+            dh_df = series_from_datahub(name, verbose=verbose)
+            if dh_df is not None and len(dh_df):
+                os.makedirs(CACHE_DIR, exist_ok=True)
+                fp_dh = os.path.join(CACHE_DIR, "%s.csv" % name)
+                dh_df.to_csv(fp_dh)
+                return dh_df[["vix", "skew"]]
+        except Exception as e:                                   # noqa: BLE001
+            if verbose:
+                print("[optvol] %s DataHub 取数失败，回退旧 IV 历史库：%s"
+                      % (name, str(e)[:100]), flush=True)
+
+    # ② 备用：旧 IV 历史库（.cache/opt_iv_hist.json + 25Δ delta 口径自算）
     code = IDX2OPT.get(name)
     if not code:
         raise KeyError("没有 %s 的期权链映射（可选：%s）" % (name, "、".join(IDX2OPT)))
