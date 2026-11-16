@@ -524,12 +524,16 @@ def draw_compare(pairs, out=None, n_show=160):
 
 # ─────────── 多指数纵向堆叠（一指数一行，不压缩宽度） ───────────
 def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
-               fs=None, axr=None, rmt_win=60, sub="kline"):
+               fs=None, sub="macd", rc_series=None, rc_ax=True, xtick_every=10):
     """在给定 axes 上画一个完整指数的一段行情（价格面板 + 副图）。
 
     `sub` 决定副图画什么：
-      · "kline"（默认）：日线 K 线图（K线+MA20）—— 只给**日线**用
-      · "macd"         ：MACD(10,20,5) —— 小时线 / 周线仍然用这个
+      · "macd"（默认）：MACD(10,20,5) —— 小时线 / 周线 / 日线都用这个
+      · "kline"       ：日线 K 线图（K线+MA20）—— 备用，日报已改回 MACD
+
+    `rc_series`：R_cascade 序列（index=日期, 列 RC）。给了就**叠在价格面板上**，
+    用第二个 y 轴（twinx）画深红粗线；`rc_ax=False` 可关闭。
+    `xtick_every`：价格面板横轴刻度间隔（根）；0 = 不显示（与副图共轴时用）。
     """
     fs = fs or {}
     f_title, f_zt, f_pt, f_tick, f_y = (fs.get("title", 14.0), fs.get("ztick", 10.5),
@@ -670,24 +674,42 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
                         fontsize=f_pt, color=col, fontweight="bold", zorder=11,
                         bbox=dict(boxstyle="round,pad=0.3", fc="white",
                                   ec=col, alpha=0.94, lw=1.0))
+    # ── R_cascade 叠加：双坐标轴（右轴），深红粗线（必须在算标题之前）──
+    # 2026-11-16 大佬：「缠论的那个上面加上卡斯卡德的那个线，变成双坐标轴…
+    # 那个卡斯卡德那个线，你要用粗的，深红色笔来画，就是它和那个指数放一块」
+    _rc_last = _paint_rc_overlay(ax, view, nv, rc_series, f_tick, f_y) if rc_ax else None
+
     zpos = {"in": "中枢内", "above": "中枢上方", "below": "中枢下方"}.get(ck.get("zpos"), "-")
     ts_txt = last_ts.strftime("%Y-%m-%d")
     _sig_txt = ("   ｜   VWAP %+.2fσ" % vwap_sig) if vwap_sig is not None else ""
-    ax.set_title("%s（%s）· %s   收盘 %.2f   ｜   阶段：%s   ｜   %s   ｜   背驰：%s%s"
+    _rc_txt = ""
+    if _rc_last is not None and np.isfinite(_rc_last):
+        _rc_st = ("危险>1.2" if _rc_last > 1.2 else
+                  ("安全<0.8" if _rc_last < 0.8 else "中性0.8~1.2"))
+        _rc_txt = "   ｜   R_cascade %.3f（%s）" % (_rc_last, _rc_st)
+    ax.set_title("%s（%s）· %s   收盘 %.2f   ｜   阶段：%s   ｜   %s   ｜   背驰：%s%s%s"
                  % (name, code, ts_txt, P, ck.get("stage", ""), zpos,
-                    ck.get("div") or "无", _sig_txt),
+                    ck.get("div") or "无", _sig_txt, _rc_txt),
                  fontsize=f_title, pad=9, loc="left")
     ax.set_ylabel("价格", fontsize=f_y)
     ax.grid(True, ls=":", color="#cccccc", alpha=0.55)
     ax.set_xlim(-2, nv + 7)
     ax.tick_params(labelsize=f_tick)
-    plt.setp(ax.get_xticklabels(), visible=False)
 
-    # ── 副图：按**级别**选（2026-11-16 大佬澄清，别一刀切）────────────────
-    # 大佬原话：「不要给那个缠论的代码他的 M（MACD）……因为你小时级别和周线级别，
-    # 你还是用那个偏向的 MACD，我只是说你日线级别给我出图那会改一下子」
-    #   · 日线（level="day"）→ 该指数的日线 K 线图（K线+MA20，画法照 R_cascade）
-    #   · 小时线 / 周线      → **保持 MACD(10,20,5)**，一点都不动
+    # ── 横轴刻度（大佬：「那个横轴一你得画上」）────────────────────
+    _xlabels = view["dt"].dt.strftime("%m-%d").values
+    if xtick_every and xtick_every > 0:
+        _ti = list(range(0, nv, max(1, xtick_every)))
+        ax.set_xticks(_ti)
+        ax.set_xticklabels([_xlabels[i] for i in _ti], fontsize=f_tick)
+        ax.tick_params(axis="x", labelrotation=0)
+    else:
+        plt.setp(ax.get_xticklabels(), visible=False)
+
+
+    # ── 副图：MACD(10,20,5) ────────────────────────────────────────
+    # 2026-11-16 大佬最后定稿：「底下还是 MACD？」
+    #   → 是。日线/小时线/周线统一 MACD；白天临时做的 K线+RMT 三层不再用。
     if sub == "kline":
         _paint_kline_panel(axm, view, nv, f_tick, f_y)
     else:
@@ -699,11 +721,6 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
     axm.set_xticklabels([dates[i] for i in idxs], fontsize=f_tick)
     axm.set_xlim(-2, nv + 7)
 
-    # ── 第三层：RMT 结构指标（60 日滚动窗口）─────────────────────────
-    # 2026-11-16 大佬：「把下边带着 RMT 矩阵的那个图画出来…λ 的比值、能量比都有…
-    # 这仨垒一块也行，你先画子图。周期还是默认的 60 日窗口」
-    if axr is not None and sub == "kline":
-        _paint_rmt_panel(axr, name, view, nv, f_tick, f_y, win=rmt_win)
 
 
 def _paint_macd_panel(ax, df, start, nv, bw, f_tick, f_y):
@@ -779,6 +796,79 @@ def _paint_kline_panel(ax, view, nv, f_tick, f_y):
                     xytext=(4, 0), textcoords="offset points",
                     va="center", ha="left", fontsize=f_tick,
                     color=cols[-1], fontweight="bold")
+
+
+# ── R_cascade 叠加（双坐标轴，深红粗线）────────────────────────────
+RC_LINE = "#8b0000"          # 深红（dark red）
+RC_LINE_W = 3.4              # 粗线
+
+
+def _rc_series_for(name, code=None, df=None):
+    """取该指数的 R_cascade 序列（唯一实现在 misc/engine/rcascade.py）。
+
+    返回 DataFrame(index=YYYYMMDD str, col "RC")；取不到返回 None（画图不能因此炸）。
+    """
+    try:
+        _ENG = os.path.join(WS, "misc", "engine")
+        if _ENG not in sys.path:
+            sys.path.insert(0, _ENG)
+        import rcascade as RC
+    except Exception as e:                                       # noqa: BLE001
+        print("[WARN] rcascade 不可用：%s" % str(e)[:100], flush=True)
+        return None
+    typ = "index_sz" if str(code or "").upper().endswith(".SZ") else "index_sh"
+    num = str(code or "").split(".")[0]
+    try:
+        d = RC.compute(typ, num)
+    except Exception as e:                                       # noqa: BLE001
+        print("[WARN] %s R_cascade 取数失败：%s" % (name, str(e)[:100]), flush=True)
+        return None
+    out = pd.DataFrame({"RC": d["RC"].astype(float)})
+    out.index = [str(x).replace("-", "")[:8] for x in d.index]
+    return out
+
+
+def _paint_rc_overlay(ax, view, nv, rc_series, f_tick, f_y):
+    """把 R_cascade 画到价格面板的**右侧第二 y 轴**（深红粗线 + 阈值线）。
+
+    大佬口径（2026-11-16）：「加上卡斯卡德的那个线，变成双坐标轴…
+    用粗的、深红色笔来画，就是它和那个指数放一块」
+    阈值沿用 rcascade 库的常量（1.2 危险 / 0.8 安全 / 0.75 深坑），不硬编码。
+    """
+    if rc_series is None or not len(rc_series):
+        return None
+    dates = [str(x) for x in view["dt"].dt.strftime("%Y%m%d").values]
+    s = rc_series["RC"].reindex(rc_series.index.union(pd.Index(dates))).ffill() \
+        .reindex(dates)
+    y = s.values.astype(float)
+    if not np.isfinite(y).any():
+        return None
+    x = np.arange(nv)
+
+    ax2 = ax.twinx()
+    ax2.plot(x, y, color=RC_LINE, lw=RC_LINE_W, alpha=0.92, zorder=9,
+             solid_capstyle="round", label="R_cascade（右轴）")
+    lo, hi = float(np.nanmin(y)), float(np.nanmax(y))
+    y0 = min(0.70, lo - 0.05)
+    y1 = max(1.30, hi + 0.05)
+    ax2.set_ylim(y0, y1)
+    for yv, ls, lab in ((1.2, "--", "1.2 危险"), (0.8, "--", "0.8 安全"),
+                        (0.75, "-.", "0.75 深坑")):
+        if y0 <= yv <= y1:
+            ax2.axhline(yv, color=RC_LINE, ls=ls, lw=0.9, alpha=0.38, zorder=1)
+            # 阈值文字贴**左**边缘（右下角要留给最新值标签，右边会和它打架）
+            ax2.text(-1, yv, lab, fontsize=f_tick - 1.5, color=RC_LINE,
+                     alpha=0.8, va="bottom", ha="left",
+                     bbox=dict(boxstyle="round,pad=0.18", fc="white",
+                               ec="none", alpha=0.72))
+    ax2.set_ylabel("R_cascade", fontsize=f_y - 2, color=RC_LINE)
+    ax2.tick_params(axis="y", colors=RC_LINE, labelsize=f_tick - 0.5)
+    ax2.spines["right"].set_color(RC_LINE)
+    ax2.spines["right"].set_linewidth(1.6)
+
+    last = float(y[np.isfinite(y)][-1])
+    # 不在图上乱贴标签（会和买卖点标注/阈值字打架）→ 只画线，数值回传写进标题
+    return last
 
 
 # ── 第三层：RMT（随机矩阵）结构指标 ────────────────────────────────
@@ -962,24 +1052,24 @@ def _audit_stack(fig):
         print("[audit] 自检失败:", str(e)[:150], flush=True)
 
 
-def draw_stack(pairs, out=None, n_show=160, row_h=10.2, width=12.0, dpi=150,
-               rmt_win=60):
-    """多指数**纵向堆叠**：一个指数三块（缠论价格 / 日线K线 / RMT结构），固定宽往下垒。
+def draw_stack(pairs, out=None, n_show=160, row_h=7.6, width=12.0, dpi=150,
+               with_rc=True):
+    """多指数**纵向堆叠**：一个指数两块（缠论价格+R_cascade双轴 / MACD），固定宽往下垒。
 
     大佬 2026-11-14 23:13：「我就不明白，你就把这几个子图粘到一块就行了，为什么要压缩呀？
     …你要能力不行，还是恢复到以前，一个指数一个图吧。」
 
     → 上一版是 5 列并排（figsize 10.2*ncol × 11.2 英寸），每列被压成约 11:1 的窄条，
       字和图挤在一起。本函数改成「宽度不变、往下垒」：
-      画布宽 width 英寸固定，每指数占 row_h 英寸高，单块内 价格:K线:RMT = 2.6:1.25:1.15，
+      画布宽 width 英寸固定，每指数占 row_h 英寸高，单块内 价格:MACD = 3.0:1.15，
       子图宽高比 ≈ 1.5:1（接近单图 16×10 的观感），字号按单图比例放大。
 
     口径与 draw() 完全一致（同一 chan_geometry / 买卖点样式）。
 
-    三层结构（2026-11-16 大佬两次要求）：
-      ① 上：缠论价格图（笔 / 中枢 / 买卖点 / VWAP ±σ 带）
-      ② 中：该指数日线 K 线图（K线 + MA20，画法照 R_cascade 那张）——原来这里是 MACD
-      ③ 下：RMT 结构（outlier_energy / AR5 / λ1/Σλ / RC / λ1/λ2，默认 60 日滚动窗口）
+    两层结构（2026-11-16 终稿，大佬：「缠论的那个上面加上卡斯卡德的那个线，
+    变成双坐标轴…那个卡斯卡德那个线，你要用粗的深红色笔来画…底下还是 MACD」）：
+      ① 上：缠论价格（笔 / 中枢 / 买卖点 / VWAP ±σ）＋ R_cascade 右轴（深红粗线）
+      ② 下：MACD(10,20,5)（日线 / 小时线 / 周线统一）
     """
     nrow = len(pairs)
     fig = plt.figure(figsize=(width, row_h * nrow), facecolor="white")
@@ -989,6 +1079,13 @@ def draw_stack(pairs, out=None, n_show=160, row_h=10.2, width=12.0, dpi=150,
                           left=0.052, right=0.988,
                           top=1 - 1.15 / _h,
                           bottom=0.030)
+    rc_map = {}
+    if with_rc:
+        for _n, _c in pairs:
+            _r = _rc_series_for(_n, _c)
+            if _r is not None:
+                rc_map[_n] = _r
+
     for ri, (name, code) in enumerate(pairs):
         df = _index_day(code)
         if df is None or len(df) < 60:
@@ -1001,20 +1098,17 @@ def draw_stack(pairs, out=None, n_show=160, row_h=10.2, width=12.0, dpi=150,
         zs = geo["zs"]
         P = float(df["close"].iloc[-1])
         last_ts = df["dt"].iloc[-1]
-        sub = gs[ri, 0].subgridspec(3, 1, height_ratios=[2.6, 1.25, 1.15],
-                                    hspace=0.06)
+        sub = gs[ri, 0].subgridspec(2, 1, height_ratios=[3.0, 1.15], hspace=0.10)
         ax = fig.add_subplot(sub[0, 0])
         axm = fig.add_subplot(sub[1, 0], sharex=ax)
-        axr = fig.add_subplot(sub[2, 0], sharex=ax)
         _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
-                   axr=axr, rmt_win=rmt_win)
+                   sub="macd", rc_series=rc_map.get(name))
     fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）", fontsize=21,
                  y=1 - 0.42 / _h, va="center")
     fig.text(0.5, 1 - 0.86 / _h,
              "口径：包含处理→顶底分型→笔→中枢(ZG/ZD)→背驰　｜　★买点 ▼卖点　"
              "黄框=最近中枢　蓝线=笔　紫线=VWAP中线　虚线=±1σ/±2σ/±3σ　"
-             "｜　中=日线K线+MA20　下=RMT结构（%d日窗：能量比/AR5/λ1/λ2/λ1Σλ/RC）"
-             % rmt_win,
+             "｜　深红粗线=R_cascade（右轴，20/60日窗）　｜　下=MACD(10,20,5)",
              ha="center", va="center", fontsize=14.5, color="#444444")
     if os.environ.get("CHAN_AUDIT"):
         _audit_stack(fig)
@@ -1043,9 +1137,9 @@ def main():
                     help="多指数**纵向堆叠**（一指数一行，不压缩宽度）：逗号分隔名称或代码")
     ap.add_argument("--stack-n", type=int, default=160,
                     help="堆叠图显示最近多少根K线")
-    ap.add_argument("--row-h", type=float, default=10.2, help="堆叠图每行高度（英寸）")
-    ap.add_argument("--rmt-win", type=int, default=60,
-                    help="第三层 RMT 的滚动窗口天数（默认 60）")
+    ap.add_argument("--row-h", type=float, default=7.6, help="堆叠图每行高度（英寸）")
+    ap.add_argument("--no-rc", action="store_true",
+                    help="不在价格面板叠加 R_cascade 双轴")
     a = ap.parse_args()
 
     if a.all:
@@ -1073,7 +1167,7 @@ def main():
         if not pairs:
             print("[ERR] --stack 至少需要一个指数", flush=True)
             return 2
-        p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h, rmt_win=a.rmt_win)
+        p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h, with_rc=not a.no_rc)
         print("[OK]", p)
         return 0
 
