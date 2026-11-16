@@ -510,7 +510,10 @@ def draw_compare(pairs, out=None, n_show=160):
 # ─────────── 多指数纵向堆叠（一指数一行，不压缩宽度） ───────────
 def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
                fs=None):
-    """在给定 axes 上画一个完整指数的日线（价格面板 + MACD 面板）。"""
+    """在给定 axes 上画一个完整指数的日线（价格面板 + 副图K线面板）。
+
+    副图原来画 MACD(10,20,5)，2026-11-16 大佬要求换成该指数自己的日线 K 线图。
+    """
     fs = fs or {}
     f_title, f_zt, f_pt, f_tick, f_y = (fs.get("title", 14.0), fs.get("ztick", 10.5),
                                       fs.get("pt", 11.0), fs.get("tick", 9.5),
@@ -659,30 +662,74 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
                  fontsize=f_title, pad=9, loc="left")
     ax.set_ylabel("价格", fontsize=f_y)
     ax.grid(True, ls=":", color="#cccccc", alpha=0.55)
-    ax.set_xlim(-2, nv + 1)
+    ax.set_xlim(-2, nv + 7)
     ax.tick_params(labelsize=f_tick)
     plt.setp(ax.get_xticklabels(), visible=False)
 
-    # MACD(10,20,5) —— 与 draw() 同口径
-    cl = df["close"].astype(float)
-    dif = cl.ewm(span=MACD_FAST, adjust=False).mean() - cl.ewm(span=MACD_SLOW, adjust=False).mean()
-    dea = dif.ewm(span=MACD_SIGNAL, adjust=False).mean()
-    hist = 2 * (dif - dea)
-    hh = hist.values[start:]
-    axm.bar(x, hh, width=bw, color=[RED if v >= 0 else GRN for v in hh], alpha=0.7)
-    axm.plot(x, dif.values[start:], color="#e67e22", lw=1.0, label="DIF")
-    axm.plot(x, dea.values[start:], color="#2980b9", lw=1.0, label="DEA")
-    axm.axhline(0, color="#999", lw=0.6)
-    axm.set_ylabel("MACD(10,20,5)", fontsize=f_y - 1)
-    axm.grid(True, ls=":", color="#cccccc", alpha=0.5)
-    axm.tick_params(labelsize=f_tick)
-    axm.legend(loc="upper left", fontsize=f_tick, framealpha=0.85, ncol=2)
+    # ── 副图：该指数对应的**日线 K 线图**（原来这里是 MACD 面板）──────────
+    # 2026-11-16 大佬：「下边不要画 MACD 了，要把每一个指数下边对应的那个
+    # K 线图的那个图画出来。Cascade 的那边有，之前代码里有，你就把它用一下。」
+    # → 画法直接照 R_cascade 图（misc/engine/rcascade.py::draw）里的 K 线面板：
+    #   K 线 + MA20 虚线 + 月份竖线网格，配色/线宽同口径，只是搬到白底日线图里。
+    _paint_kline_panel(axm, view, nv, f_tick, f_y)
     step = max(nv // 12, 1)
     idxs = list(range(0, nv, step))
     dates = view["dt"].dt.strftime("%m-%d").values
     axm.set_xticks(idxs)
     axm.set_xticklabels([dates[i] for i in idxs], fontsize=f_tick)
-    axm.set_xlim(-2, nv + 1)
+    axm.set_xlim(-2, nv + 7)
+
+
+RCP_UP, RCP_DN = "#e74c3c", "#2ecc71"     # R_cascade 图里的涨/跌配色
+RCP_MA = "#f39c12"                        # R_cascade 图里的 MA20 线（白底改成更深的橙）
+
+
+def _paint_kline_panel(ax, view, nv, f_tick, f_y):
+    """副图：R_cascade 口径的 K 线面板（K线 + MA20 + 月份竖线 + 现价）。
+
+    取自 `misc/engine/rcascade.py::draw()` 的 axp 面板：
+      · 影线 + 实体，UP/DN 两色（#e74c3c / #2ecc71）
+      · MA20 虚线
+      · 每月一条竖线
+    唯一一处调整：涨跌配色按「收盘 vs 前一根收盘」（= 涨跌幅口径），
+    不用 open/close，避免低开收高被画成红柱、和图外涨跌幅对不上
+    （2026-11-06 大佬：「今天是跌的，你怎么还是向上的？」）。
+    """
+    o = view["open"].astype(float).values
+    h = view["high"].astype(float).values
+    l = view["low"].astype(float).values
+    c = view["close"].astype(float).values
+    x = np.arange(nv)
+    prev = np.concatenate([[np.nan], c[:-1]])
+    cols = [RCP_UP if (np.isfinite(prev[i]) and c[i] >= prev[i]) else RCP_DN
+            for i in range(nv)]
+    for i in range(nv):
+        ax.plot([i, i], [l[i], h[i]], color=cols[i], lw=0.8, zorder=2)
+        ax.add_patch(Rectangle((i - 0.32, min(o[i], c[i])), 0.64,
+                               max(abs(c[i] - o[i]), 1e-9),
+                               facecolor=cols[i], edgecolor=cols[i], lw=0.5, zorder=3))
+    ma20 = view["close"].astype(float).rolling(20).mean().values
+    if np.isfinite(ma20).any():
+        ax.plot(x, ma20, color=RCP_MA, lw=1.2, ls="--", alpha=0.9, zorder=4,
+                label="MA20")
+        ax.legend(loc="upper left", fontsize=f_tick, framealpha=0.85)
+    ax.set_ylabel("日线K线", fontsize=f_y - 1)
+    ax.grid(True, ls=":", color="#cccccc", alpha=0.5)
+    ax.tick_params(labelsize=f_tick)
+    # 月份竖线（与 R_cascade 图同口径）
+    ticks, prev_m = [], None
+    for k, dt in enumerate(view["dt"]):
+        if dt.month != prev_m:
+            ticks.append(k)
+            prev_m = dt.month
+    for t in ticks:
+        ax.axvline(t, color="#7c8794", lw=0.7, ls="--", alpha=0.35, zorder=1)
+    # 现价（贴右侧）
+    if nv:
+        ax.annotate("%.2f" % c[-1], xy=(nv - 1, c[-1]),
+                    xytext=(4, 0), textcoords="offset points",
+                    va="center", ha="left", fontsize=f_tick,
+                    color=cols[-1], fontweight="bold")
 
 
 def _audit_stack(fig):
@@ -767,17 +814,19 @@ def _audit_stack(fig):
 
 
 def draw_stack(pairs, out=None, n_show=160, row_h=8.0, width=12.0, dpi=150):
-    """多指数**纵向堆叠**：一个指数一块（上价格 + 下 MACD），画布固定宽、往下垒。
+    """多指数**纵向堆叠**：一个指数一块（上缠论价格 + 下日线K线），画布固定宽、往下垒。
 
     大佬 2026-11-14 23:13：「我就不明白，你就把这几个子图粘到一块就行了，为什么要压缩呀？
     …你要能力不行，还是恢复到以前，一个指数一个图吧。」
 
     → 上一版是 5 列并排（figsize 10.2*ncol × 11.2 英寸），每列被压成约 11:1 的窄条，
       字和图挤在一起。本函数改成「宽度不变、往下垒」：
-      画布宽 width 英寸固定，每指数占 row_h 英寸高，单块内价格:MACD = 3.4:1，
+      画布宽 width 英寸固定，每指数占 row_h 英寸高，单块内价格:副图 = 2.4:1.4，
       子图宽高比 ≈ 1.5:1（接近单图 16×10 的观感），字号按单图比例放大。
 
-    口径与 draw() 完全一致（同一 chan_geometry / MACD 常量 / 买卖点样式）。
+    口径与 draw() 完全一致（同一 chan_geometry / 买卖点样式）。
+    **副图 2026-11-16 起改为该指数的日线 K 线图**（K线+MA20，画法照 R_cascade 那张），
+    不再画 MACD。
     """
     nrow = len(pairs)
     fig = plt.figure(figsize=(width, row_h * nrow), facecolor="white")
@@ -799,7 +848,7 @@ def draw_stack(pairs, out=None, n_show=160, row_h=8.0, width=12.0, dpi=150):
         zs = geo["zs"]
         P = float(df["close"].iloc[-1])
         last_ts = df["dt"].iloc[-1]
-        sub = gs[ri, 0].subgridspec(2, 1, height_ratios=[3.4, 1.0], hspace=0.06)
+        sub = gs[ri, 0].subgridspec(2, 1, height_ratios=[2.4, 1.4], hspace=0.07)
         ax = fig.add_subplot(sub[0, 0])
         axm = fig.add_subplot(sub[1, 0], sharex=ax)
         _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts)
@@ -807,7 +856,8 @@ def draw_stack(pairs, out=None, n_show=160, row_h=8.0, width=12.0, dpi=150):
                  y=1 - 0.42 / _h, va="center")
     fig.text(0.5, 1 - 0.86 / _h,
              "口径：包含处理→顶底分型→笔→中枢(ZG/ZD)→背驰　｜　★买点 ▼卖点　"
-             "黄框=最近中枢　蓝线=笔　紫线=VWAP中线　虚线=±1σ/±2σ/±3σ",
+             "黄框=最近中枢　蓝线=笔　紫线=VWAP中线　虚线=±1σ/±2σ/±3σ　"
+             "｜　下半部分=该指数日线K线+MA20",
              ha="center", va="center", fontsize=14.5, color="#444444")
     if os.environ.get("CHAN_AUDIT"):
         _audit_stack(fig)
