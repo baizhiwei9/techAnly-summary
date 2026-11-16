@@ -667,7 +667,7 @@ def structure_diag(close: pd.DataFrame, corr: np.ndarray, k_cluster: int = 5):
     return dict(sync20=sync20, sync60=sync60, sync_pct=sync_pct, pc1=pc1,
                 n_bloc=n_bloc, w_in=w_in, w_out=w_out, gap=gap,
                 tear=tear, hug=hug, hug_lv=hug_lv, tear_lv=tear_lv,
-                label=label, note=note)
+                label=label, note=note, lab=np.asarray(lab, dtype=int))
 
 
 def _wrap(txt: str, width: int = 24):
