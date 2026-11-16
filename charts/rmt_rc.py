@@ -214,6 +214,128 @@ def rmt_series(ret, comps, win=60):
     return pd.DataFrame(rows).set_index("date")
 
 
+# ───────────────────── 快速算法 + CSV 面板（2026-11-16 新增）─────────────────────
+# 为什么要有这一段
+# ----------------
+# 日报要画「五大宽基 × 60 日窗口」的 RMT，`rmt_series()` 每窗口都用
+# np.corrcoef(N×N) + eigvalsh，N=1000（中证1000）时单指数就要 6 分钟，
+# 五个指数加起来日报顶不住；而且 DataHub 的按股票拉面板 1812 只要十几分钟。
+#
+# 两个等价的快路径（都用逐点比对验证过，误差 <1e-13）：
+#   ① 特征值：相关矩阵特征值 == 标准化矩阵 SVD 奇异值² / (win-1)。
+#      N 可以远大于 win，所以改用 60×60 的 Gram 矩阵（win×win）求奇异值，
+#      复杂度从 O(N³) 降到 O(win²·N)，N=1000 时 341 个窗口 1.9s（原来约 400s）。
+#   ② 数据：tushare `pro.daily(trade_date=)` 一次给全市场 5500 行，
+#      按「日」增量落 CSV（bin/rmt_panel_sync.py），比按股票拉快一个数量级。
+#
+# 口径与 `rmt_series()` **完全一致**：同样的 dropna(thresh=win*0.95)、
+# fillna(0)、ddof=1、前 50 个特征值做分母、MP 上界 (1+√(N/T))²。
+
+CSV_PANEL_DIR = os.environ.get("RMT_PANEL_DIR", "/root/.cache/rmt_panel")
+SERIES_CACHE = os.path.join(CSV_PANEL_DIR, "series")
+
+
+def panel_from_csv(panel_dir=None, days=560):
+    """读 /root/.cache/rmt_panel/close_*.csv → 宽表（index=YYYYMMDD, columns=ts_code）。"""
+    import glob
+    d = panel_dir or CSV_PANEL_DIR
+    fs = sorted(glob.glob(os.path.join(d, "close_*.csv")))[-days:]
+    if not fs:
+        return None
+    rows = []
+    for f in fs:
+        day = os.path.basename(f).replace("close_", "").replace(".csv", "")
+        try:
+            one = pd.read_csv(f, usecols=["ts_code", "close"])
+        except Exception:                                        # noqa: BLE001
+            continue
+        if one is None or one.empty:
+            continue
+        ser = one.drop_duplicates("ts_code").set_index("ts_code")["close"].astype(float)
+        ser.name = day
+        rows.append(ser)
+    if not rows:
+        return None
+    out = pd.concat(rows, axis=1).T.sort_index()
+    out.index.name = "trade_date"
+    return out
+
+
+def rmt_series_fast(ret, comps, win=60):
+    """`rmt_series()` 的等价快版（SVD-based，见上方说明）。"""
+    P = ret[[c for c in comps if c in ret.columns]]
+    if not len(P.columns):
+        raise SystemExit("rmt_series_fast: 成分股一只都没匹配上")
+    V = P.values.astype(float)
+    dates = list(P.index)
+    thr_n = int(win * 0.95)
+    rows, idx = [], []
+    for i in range(win - 1, len(V)):
+        w = V[i - win + 1:i + 1]
+        keep = (~np.isnan(w)).sum(axis=0) >= thr_n
+        w = w[:, keep]
+        n = w.shape[1]
+        if n < 20:
+            continue
+        w = np.nan_to_num(w, nan=0.0)
+        sd = w.std(axis=0, ddof=1)
+        sd[sd < 1e-12] = 1e-12
+        Z = (w - w.mean(axis=0)) / sd
+        sv = np.linalg.svd(Z, compute_uv=False)
+        ev = np.sort(sv ** 2 / (win - 1))[::-1]
+        s50 = ev[:min(50, n)].sum()
+        thr = (1 + np.sqrt(n / win)) ** 2
+        out = ev[ev > thr]
+        port = w.mean(axis=1)
+        v20, vall = port[-20:].std(ddof=1), port.std(ddof=1)
+        rows.append(dict(N=n, thr=thr, ar5=ev[:5].sum() / s50,
+                         l1l2=ev[0] / max(ev[1], 1e-9), l1s=ev[0] / s50,
+                         oe=out.sum() / n, oc=int(len(out)),
+                         rc=(v20 / vall) if vall > 0 else np.nan))
+        idx.append(dates[i])
+    if not rows:
+        raise SystemExit("窗口不足，算不出 RMT（面板长度 / 成分股覆盖不够）")
+    return pd.DataFrame(rows, index=idx)
+
+
+def series_for(name, win=60, force=False, panel_days=560, verbose=True):
+    """取某指数的 RMT 指标序列（CSV 面板 + 磁盘缓存）。
+
+    返回 DataFrame(index=YYYYMMDD str, cols: N thr ar5 l1l2 l1s oe oc rc)。
+    缓存文件 `series/<name>_win<win>.csv`；面板最后一天变了才重算。
+    """
+    os.makedirs(SERIES_CACHE, exist_ok=True)
+    fp = os.path.join(SERIES_CACHE, "%s_win%d.csv" % (name, win))
+    panel = panel_from_csv(days=panel_days)
+    if panel is None:
+        raise SystemExit("RMT 面板为空：%s（先跑 bin/rmt_panel_sync.py）" % CSV_PANEL_DIR)
+    last_day = str(panel.index[-1])
+    if os.path.exists(fp) and not force:
+        try:
+            old = pd.read_csv(fp, index_col=0, dtype={"trade_date": str})
+            old.index = [str(x) for x in old.index]      # 缓存读回来是 int64，统一成 str
+            if len(old) and str(old.index[-1]) == last_day:
+                if verbose:
+                    print("[rmt] %s 命中缓存 %s" % (name, os.path.basename(fp)), flush=True)
+                return old
+        except Exception:                                        # noqa: BLE001
+            pass
+    code, _etf = TARGETS[name]
+    dh = _datahub()
+    comps = [str(x) for x in dh.get_index_components(code)]
+    ret = (panel.pct_change().iloc[1:] * 100).clip(-30, 30)
+    ret.index = [str(x) for x in ret.index]
+    full = rmt_series_fast(ret, comps, win=win)
+    if verbose:
+        last = full.iloc[-1]
+        print("[rmt] %s 算出 %d 窗 %s~%s | oe=%.4f AR5=%.3f λ1/λ2=%.2f λ1/Σλ=%.3f RC=%.2f"
+              % (name, len(full), full.index[0], full.index[-1], last.oe, last.ar5,
+                 last.l1l2, last.l1s, last.rc), flush=True)
+    full.index = [str(x) for x in full.index]
+    full.to_csv(fp)
+    return full
+
+
 def pct_rank(s, v):
     s = s.dropna()
     if not len(s):

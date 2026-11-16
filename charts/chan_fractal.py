@@ -39,6 +39,16 @@ try:
 except Exception:                                     # 画图不应因 VWAP 缺失而整体失败
     _vwap_tracks = None
 
+# RMT 指标（2026-11-16 大佬：第三层要「RMT 矩阵那套」——λ 比值 / 能量比 / RC）
+# 计算口径唯一在 charts/rmt_rc.py；这里只取序列来画，不另算一套。
+try:
+    from charts import rmt_rc as _RMT
+except Exception:                                    # 画图不应因 RMT 缺失整体失败
+    try:
+        import rmt_rc as _RMT                     # 直接以 charts/ 为 sys.path 时
+    except Exception:
+        _RMT = None
+
 OUT_DIR = os.path.join(WS, ".cache/charts")
 LV_TXT = {"h1": "小时线60m", "day": "日线"}
 VER = "缠论·分型版"
@@ -509,7 +519,7 @@ def draw_compare(pairs, out=None, n_show=160):
 
 # ─────────── 多指数纵向堆叠（一指数一行，不压缩宽度） ───────────
 def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
-               fs=None):
+               fs=None, axr=None, rmt_win=60):
     """在给定 axes 上画一个完整指数的日线（价格面板 + 副图K线面板）。
 
     副图原来画 MACD(10,20,5)，2026-11-16 大佬要求换成该指数自己的日线 K 线图。
@@ -679,6 +689,12 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
     axm.set_xticklabels([dates[i] for i in idxs], fontsize=f_tick)
     axm.set_xlim(-2, nv + 7)
 
+    # ── 第三层：RMT 结构指标（60 日滚动窗口）─────────────────────────
+    # 2026-11-16 大佬：「把下边带着 RMT 矩阵的那个图画出来…λ 的比值、能量比都有…
+    # 这仨垒一块也行，你先画子图。周期还是默认的 60 日窗口」
+    if axr is not None:
+        _paint_rmt_panel(axr, name, view, nv, f_tick, f_y, win=rmt_win)
+
 
 RCP_UP, RCP_DN = "#e74c3c", "#2ecc71"     # R_cascade 图里的涨/跌配色
 RCP_MA = "#f39c12"                        # R_cascade 图里的 MA20 线（白底改成更深的橙）
@@ -732,6 +748,102 @@ def _paint_kline_panel(ax, view, nv, f_tick, f_y):
                     color=cols[-1], fontweight="bold")
 
 
+# ── 第三层：RMT（随机矩阵）结构指标 ────────────────────────────────
+RMT_BLUE = "#2563eb"      # outlier_energy（左轴）
+RMT_GREEN = "#15803d"     # AR5
+RMT_PURPLE = "#7c3aed"    # λ1/Σλ
+RMT_ORANGE = "#ea580c"    # RC
+RMT_RED = "#b91c1c"       # λ1/λ2（外右轴）
+
+
+def _paint_rmt_panel(ax, name, view, nv, f_tick, f_y, win=60):
+    """第三层：该指数成分股相关矩阵的 RMT 结构（60 日滚动窗口）。
+
+    口径全部来自 `charts/rmt_rc.py::series_for()`（唯一实现，本文件不另算）：
+      · outlier_energy = Σ(λi | λi > (1+√(N/T))²) / N   ← 左轴，能量比
+      · AR5            = (λ1..λ5) / Σ(λ1..λ50)          ← 右轴
+      · λ1/Σλ          = λ1 / Σ(λ1..λ50)                ← 右轴（同分母）
+      · RC             = σ20 / σ60（波动率级联比）        ← 右轴
+      · λ1/λ2          = 第一 / 第二特征值比              ← 外右轴
+    日期轴与上方 K 线共用（同一批 view 日期），RMT 缺的日子前向填充。
+    """
+    if _RMT is None:
+        ax.text(0.5, 0.5, "RMT 模块不可用", ha="center", va="center",
+                fontsize=f_y, color="#999999", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+    try:
+        full = _RMT.series_for(name, win=win, verbose=False)
+    except Exception as e:                                     # noqa: BLE001
+        ax.text(0.5, 0.5, "RMT 数据不可用：%s" % str(e)[:60], ha="center", va="center",
+                fontsize=f_tick, color="#b91c1c", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+
+    dates = [str(x) for x in view["dt"].dt.strftime("%Y%m%d").values]
+    cols = {k: full[k].reindex(full.index.union(pd.Index(dates))).ffill()
+            .reindex(dates).values.astype(float)
+            for k in ("oe", "ar5", "l1s", "rc", "l1l2")}
+    x = np.arange(nv)
+
+    # 左轴：outlier_energy（柱 + 阴影，最直观的「能量比」）
+    oe = cols["oe"]
+    lo_oe = float(np.nanmin(oe)) if np.isfinite(oe).any() else 0.0
+    base = min(0.0, lo_oe * 1.05)
+    ax.bar(x, oe - base, bottom=base, width=0.72, color=RMT_BLUE, alpha=0.30, lw=0)
+    ax.plot(x, oe, color=RMT_BLUE, lw=1.5, zorder=4)
+    ax.set_ylabel("outlier_energy", fontsize=f_y - 2, color=RMT_BLUE)
+    ax.tick_params(axis="y", colors=RMT_BLUE, labelsize=f_tick - 0.5)
+    hi_oe = float(np.nanmax(oe)) if np.isfinite(oe).any() else 0.6
+    ax.set_ylim(base, hi_oe * 1.12 if hi_oe > base else base + 0.1)
+
+    # 右轴：AR5 / λ1/Σλ / RC
+    ax1 = ax.twinx()
+    ax1.plot(x, cols["ar5"], color=RMT_GREEN, lw=1.7, label="AR5=(λ1..λ5)/Σ(λ1..λ50)")
+    ax1.plot(x, cols["l1s"], color=RMT_PURPLE, lw=1.3, ls="--", label="λ1/Σλ")
+    ax1.plot(x, cols["rc"], color=RMT_ORANGE, lw=1.3, label="RC=σ20/σ60")
+    ax1.set_ylim(0, max(1.6, float(np.nanmax(cols["rc"])) * 1.05))
+    ax1.set_ylabel("AR5 ｜ λ1/Σλ ｜ RC", fontsize=f_y - 2, color=RMT_GREEN)
+    ax1.tick_params(axis="y", colors=RMT_GREEN, labelsize=f_tick - 0.5)
+    for yv, c in ((1.0, RMT_ORANGE), (1.2, "#c2410c")):
+        ax1.axhline(yv, color=c, ls=":", lw=0.8, alpha=0.55)
+
+    # 外右轴：λ1/λ2
+    ax2 = ax1.twinx()
+    ax2.spines["right"].set_position(("outward", 42))
+    ax2.plot(x, cols["l1l2"], color=RMT_RED, lw=1.2, alpha=0.85, label="λ1/λ2")
+    lmax = max(4.0, float(np.nanmax(cols["l1l2"])) * 1.1) if np.isfinite(cols["l1l2"]).any() else 4.0
+    ax2.set_ylim(0, lmax)
+    ax2.set_ylabel("λ1/λ2", fontsize=f_y - 2, color=RMT_RED)
+    ax2.tick_params(axis="y", colors=RMT_RED, labelsize=f_tick - 0.5)
+    ax2.spines["right"].set_color(RMT_RED)
+
+    # 最新读数
+    if np.isfinite(oe[-1]):
+        ax.text(0.995, 0.955,
+                "RMT(%d日窗) 最新 %s ｜ oe=%.4f  AR5=%.3f  λ1/λ2=%.2f  λ1/Σλ=%.3f  RC=%.2f"
+                % (win, dates[-1][4:6] + "/" + dates[-1][6:], oe[-1], cols["ar5"][-1],
+                   cols["l1l2"][-1], cols["l1s"][-1], cols["rc"][-1]),
+                transform=ax.transAxes, ha="right", va="top", fontsize=f_tick - 0.5,
+                color="#334155",
+                bbox=dict(boxstyle="round,pad=0.28", fc="white", ec="#cbd5e1", alpha=0.9))
+
+    hs, ls = ax1.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax1.legend(hs + h2, ls + l2, loc="upper left", fontsize=f_tick - 1.5,
+               framealpha=0.85, ncol=2)
+    ax.set_ylabel("RMT结构", fontsize=f_y - 1)
+    ax.grid(True, ls=":", color="#cccccc", alpha=0.45)
+    ax.tick_params(labelsize=f_tick)
+    ax.set_xlim(-2, nv + 7)
+    step = max(nv // 12, 1)
+    idxs = list(range(0, nv, step))
+    ax.set_xticks(idxs)
+    ax.set_xticklabels([dates[i][4:6] + "/" + dates[i][6:] for i in idxs], fontsize=f_tick)
+    for t in idxs:
+        ax.axvline(t, color="#7c8794", lw=0.7, ls="--", alpha=0.25, zorder=0)
+
+
 def _audit_stack(fig):
     """版面自检：报「文字 bbox 与任何坐标轴区域重叠」以及「出画布」的文字。
 
@@ -766,6 +878,10 @@ def _audit_stack(fig):
                     continue
                 for other, ob in axes_boxes:
                     if other is ax:
+                        continue
+                    # 孪生轴（twinx/twiny 共用同一块画布）不算「压到别的子图」
+                    if (abs(ob.x0 - ax.get_window_extent(r).x0) < 2
+                            and abs(ob.y0 - ax.get_window_extent(r).y0) < 2):
                         continue
                     ov = (min(tb.x1, ob.x1) - max(tb.x0, ob.x0)) > 4 and \
                          (min(tb.y1, ob.y1) - max(tb.y0, ob.y0)) > 4
@@ -813,20 +929,24 @@ def _audit_stack(fig):
         print("[audit] 自检失败:", str(e)[:150], flush=True)
 
 
-def draw_stack(pairs, out=None, n_show=160, row_h=8.0, width=12.0, dpi=150):
-    """多指数**纵向堆叠**：一个指数一块（上缠论价格 + 下日线K线），画布固定宽、往下垒。
+def draw_stack(pairs, out=None, n_show=160, row_h=10.2, width=12.0, dpi=150,
+               rmt_win=60):
+    """多指数**纵向堆叠**：一个指数三块（缠论价格 / 日线K线 / RMT结构），固定宽往下垒。
 
     大佬 2026-11-14 23:13：「我就不明白，你就把这几个子图粘到一块就行了，为什么要压缩呀？
     …你要能力不行，还是恢复到以前，一个指数一个图吧。」
 
     → 上一版是 5 列并排（figsize 10.2*ncol × 11.2 英寸），每列被压成约 11:1 的窄条，
       字和图挤在一起。本函数改成「宽度不变、往下垒」：
-      画布宽 width 英寸固定，每指数占 row_h 英寸高，单块内价格:副图 = 2.4:1.4，
+      画布宽 width 英寸固定，每指数占 row_h 英寸高，单块内 价格:K线:RMT = 2.6:1.25:1.15，
       子图宽高比 ≈ 1.5:1（接近单图 16×10 的观感），字号按单图比例放大。
 
     口径与 draw() 完全一致（同一 chan_geometry / 买卖点样式）。
-    **副图 2026-11-16 起改为该指数的日线 K 线图**（K线+MA20，画法照 R_cascade 那张），
-    不再画 MACD。
+
+    三层结构（2026-11-16 大佬两次要求）：
+      ① 上：缠论价格图（笔 / 中枢 / 买卖点 / VWAP ±σ 带）
+      ② 中：该指数日线 K 线图（K线 + MA20，画法照 R_cascade 那张）——原来这里是 MACD
+      ③ 下：RMT 结构（outlier_energy / AR5 / λ1/Σλ / RC / λ1/λ2，默认 60 日滚动窗口）
     """
     nrow = len(pairs)
     fig = plt.figure(figsize=(width, row_h * nrow), facecolor="white")
@@ -848,16 +968,20 @@ def draw_stack(pairs, out=None, n_show=160, row_h=8.0, width=12.0, dpi=150):
         zs = geo["zs"]
         P = float(df["close"].iloc[-1])
         last_ts = df["dt"].iloc[-1]
-        sub = gs[ri, 0].subgridspec(2, 1, height_ratios=[2.4, 1.4], hspace=0.07)
+        sub = gs[ri, 0].subgridspec(3, 1, height_ratios=[2.6, 1.25, 1.15],
+                                    hspace=0.06)
         ax = fig.add_subplot(sub[0, 0])
         axm = fig.add_subplot(sub[1, 0], sharex=ax)
-        _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts)
+        axr = fig.add_subplot(sub[2, 0], sharex=ax)
+        _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
+                   axr=axr, rmt_win=rmt_win)
     fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）", fontsize=21,
                  y=1 - 0.42 / _h, va="center")
     fig.text(0.5, 1 - 0.86 / _h,
              "口径：包含处理→顶底分型→笔→中枢(ZG/ZD)→背驰　｜　★买点 ▼卖点　"
              "黄框=最近中枢　蓝线=笔　紫线=VWAP中线　虚线=±1σ/±2σ/±3σ　"
-             "｜　下半部分=该指数日线K线+MA20",
+             "｜　中=日线K线+MA20　下=RMT结构（%d日窗：能量比/AR5/λ1/λ2/λ1Σλ/RC）"
+             % rmt_win,
              ha="center", va="center", fontsize=14.5, color="#444444")
     if os.environ.get("CHAN_AUDIT"):
         _audit_stack(fig)
@@ -886,7 +1010,9 @@ def main():
                     help="多指数**纵向堆叠**（一指数一行，不压缩宽度）：逗号分隔名称或代码")
     ap.add_argument("--stack-n", type=int, default=160,
                     help="堆叠图显示最近多少根K线")
-    ap.add_argument("--row-h", type=float, default=8.0, help="堆叠图每行高度（英寸）")
+    ap.add_argument("--row-h", type=float, default=10.2, help="堆叠图每行高度（英寸）")
+    ap.add_argument("--rmt-win", type=int, default=60,
+                    help="第三层 RMT 的滚动窗口天数（默认 60）")
     a = ap.parse_args()
 
     if a.all:
@@ -914,7 +1040,7 @@ def main():
         if not pairs:
             print("[ERR] --stack 至少需要一个指数", flush=True)
             return 2
-        p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h)
+        p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h, rmt_win=a.rmt_win)
         print("[OK]", p)
         return 0
 
