@@ -214,7 +214,17 @@ def series_from_datahub(name, start=None, end=None, verbose=False):
     df = df.sort_values("trade_date")
     out = pd.DataFrame(index=[str(x) for x in df["trade_date"]])
     out.index.name = "trade_date"
-    out["vix"] = pd.to_numeric(df["vix"], errors="coerce").values
+    # VIX：优先 vix30（Options Utility 的 vix30 同口径，OI 加权方差插值，抗单档噪声）；
+    # 老缓存没这列时退回 DataHub 的 calc_vix（CBOE 方差互换法）
+    if "vix30" in df.columns:
+        out["vix"] = pd.to_numeric(df["vix30"], errors="coerce").values
+        try:
+            _fb = pd.to_numeric(df["vix"], errors="coerce").values
+            out["vix"] = out["vix"].where(out["vix"].notna(), _fb)
+        except Exception:                                        # noqa: BLE001
+            pass
+    else:
+        out["vix"] = pd.to_numeric(df["vix"], errors="coerce").values
     # SKEW 指数：优先 DataHub 的 skew_index（BKM 风险中性偏度 → 100−10×skew，
     # 100 中轴、>110 危险）；老缓存没这列时退回 cboe_skew（该列被钳在 150，仅兜底）
     if "skew_index" in df.columns:
