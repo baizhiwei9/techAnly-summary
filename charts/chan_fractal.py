@@ -8,7 +8,7 @@
 
 副图按级别区分（2026-11-16 大佬澄清：「小时级别和周线级别你还是用那个偏向的 MACD，
 我只是说你日线级别给我出图那会改一下子」）：
-  · 日线       → 该指数日线 K 线（K线+MA20），叠 RMT 结构层（60 日滚动窗口）
+  · 日线       → 期权（VIX + SKEW 偏度）+ R_cascade，双 Y 轴
   · 小时线/周线 → MACD(10,20,5)，保持原样不动
 口径（与 chan_signal_monitor / chan_smc_index 完全一致）
   版本：缠论·分型版（包含处理→顶底分型→笔→中枢ZG/ZD→背驰）
@@ -43,16 +43,6 @@ try:
     from smc_core import vwap_tracks as _vwap_tracks  # noqa: E402
 except Exception:                                     # 画图不应因 VWAP 缺失而整体失败
     _vwap_tracks = None
-
-# RMT 指标（2026-11-16 大佬：第三层要「RMT 矩阵那套」——λ 比值 / 能量比 / RC）
-# 计算口径唯一在 charts/rmt_rc.py；这里只取序列来画，不另算一套。
-try:
-    from charts import rmt_rc as _RMT
-except Exception:                                    # 画图不应因 RMT 缺失整体失败
-    try:
-        import rmt_rc as _RMT                     # 直接以 charts/ 为 sys.path 时
-    except Exception:
-        _RMT = None
 
 OUT_DIR = os.path.join(WS, ".cache/charts")
 LV_TXT = {"h1": "小时线60m", "day": "日线"}
@@ -943,102 +933,6 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y, title_not
         a = arr[np.isfinite(arr)]
         return float(a[-1]) if len(a) else float("nan")
     return _last(vix), _last(skew), _last(rc)
-
-
-# ── 第三层：RMT（随机矩阵）结构指标 ────────────────────────────────
-RMT_BLUE = "#2563eb"      # outlier_energy（左轴）
-RMT_GREEN = "#15803d"     # AR5
-RMT_PURPLE = "#7c3aed"    # λ1/Σλ
-RMT_ORANGE = "#ea580c"    # RC
-RMT_RED = "#b91c1c"       # λ1/λ2（外右轴）
-
-
-def _paint_rmt_panel(ax, name, view, nv, f_tick, f_y, win=60):
-    """第三层：该指数成分股相关矩阵的 RMT 结构（60 日滚动窗口）。
-
-    口径全部来自 `charts/rmt_rc.py::series_for()`（唯一实现，本文件不另算）：
-      · outlier_energy = Σ(λi | λi > (1+√(N/T))²) / N   ← 左轴，能量比
-      · AR5            = (λ1..λ5) / Σ(λ1..λ50)          ← 右轴
-      · λ1/Σλ          = λ1 / Σ(λ1..λ50)                ← 右轴（同分母）
-      · RC             = σ20 / σ60（波动率级联比）        ← 右轴
-      · λ1/λ2          = 第一 / 第二特征值比              ← 外右轴
-    日期轴与上方 K 线共用（同一批 view 日期），RMT 缺的日子前向填充。
-    """
-    if _RMT is None:
-        ax.text(0.5, 0.5, "RMT 模块不可用", ha="center", va="center",
-                fontsize=f_y, color="#999999", transform=ax.transAxes)
-        ax.set_axis_off()
-        return
-    try:
-        full = _RMT.series_for(name, win=win, verbose=False)
-    except Exception as e:                                     # noqa: BLE001
-        ax.text(0.5, 0.5, "RMT 数据不可用：%s" % str(e)[:60], ha="center", va="center",
-                fontsize=f_tick, color="#b91c1c", transform=ax.transAxes)
-        ax.set_axis_off()
-        return
-
-    dates = [str(x) for x in view["dt"].dt.strftime("%Y%m%d").values]
-    cols = {k: full[k].reindex(full.index.union(pd.Index(dates))).ffill()
-            .reindex(dates).values.astype(float)
-            for k in ("oe", "ar5", "l1s", "rc", "l1l2")}
-    x = np.arange(nv)
-
-    # 左轴：outlier_energy（柱 + 阴影，最直观的「能量比」）
-    oe = cols["oe"]
-    lo_oe = float(np.nanmin(oe)) if np.isfinite(oe).any() else 0.0
-    base = min(0.0, lo_oe * 1.05)
-    ax.bar(x, oe - base, bottom=base, width=0.72, color=RMT_BLUE, alpha=0.30, lw=0)
-    ax.plot(x, oe, color=RMT_BLUE, lw=1.5, zorder=4)
-    ax.set_ylabel("outlier_energy", fontsize=f_y - 2, color=RMT_BLUE)
-    ax.tick_params(axis="y", colors=RMT_BLUE, labelsize=f_tick - 0.5)
-    hi_oe = float(np.nanmax(oe)) if np.isfinite(oe).any() else 0.6
-    ax.set_ylim(base, hi_oe * 1.12 if hi_oe > base else base + 0.1)
-
-    # 右轴：AR5 / λ1/Σλ / RC
-    ax1 = ax.twinx()
-    ax1.plot(x, cols["ar5"], color=RMT_GREEN, lw=1.7, label="AR5=(λ1..λ5)/Σ(λ1..λ50)")
-    ax1.plot(x, cols["l1s"], color=RMT_PURPLE, lw=1.3, ls="--", label="λ1/Σλ")
-    ax1.plot(x, cols["rc"], color=RMT_ORANGE, lw=1.3, label="RC=σ20/σ60")
-    ax1.set_ylim(0, max(1.6, float(np.nanmax(cols["rc"])) * 1.05))
-    ax1.set_ylabel("AR5 ｜ λ1/Σλ ｜ RC", fontsize=f_y - 2, color=RMT_GREEN)
-    ax1.tick_params(axis="y", colors=RMT_GREEN, labelsize=f_tick - 0.5)
-    for yv, c in ((1.0, RMT_ORANGE), (1.2, "#c2410c")):
-        ax1.axhline(yv, color=c, ls=":", lw=0.8, alpha=0.55)
-
-    # 外右轴：λ1/λ2
-    ax2 = ax1.twinx()
-    ax2.spines["right"].set_position(("outward", 42))
-    ax2.plot(x, cols["l1l2"], color=RMT_RED, lw=1.2, alpha=0.85, label="λ1/λ2")
-    lmax = max(4.0, float(np.nanmax(cols["l1l2"])) * 1.1) if np.isfinite(cols["l1l2"]).any() else 4.0
-    ax2.set_ylim(0, lmax)
-    ax2.set_ylabel("λ1/λ2", fontsize=f_y - 2, color=RMT_RED)
-    ax2.tick_params(axis="y", colors=RMT_RED, labelsize=f_tick - 0.5)
-    ax2.spines["right"].set_color(RMT_RED)
-
-    # 最新读数
-    if np.isfinite(oe[-1]):
-        ax.text(0.995, 0.955,
-                "RMT(%d日窗) 最新 %s ｜ oe=%.4f  AR5=%.3f  λ1/λ2=%.2f  λ1/Σλ=%.3f  RC=%.2f"
-                % (win, dates[-1][4:6] + "/" + dates[-1][6:], oe[-1], cols["ar5"][-1],
-                   cols["l1l2"][-1], cols["l1s"][-1], cols["rc"][-1]),
-                transform=ax.transAxes, ha="right", va="top", fontsize=f_tick - 0.5,
-                color="#334155",
-                bbox=dict(boxstyle="round,pad=0.28", fc="white", ec="#cbd5e1", alpha=0.9))
-
-    hs, ls = ax1.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    ax1.legend(hs + h2, ls + l2, loc="upper left", fontsize=f_tick - 1.5,
-               framealpha=0.85, ncol=2)
-    ax.set_ylabel("RMT结构", fontsize=f_y - 1)
-    ax.grid(True, ls=":", color="#cccccc", alpha=0.45)
-    ax.tick_params(labelsize=f_tick)
-    ax.set_xlim(-2, nv + 7)
-    step = max(nv // 12, 1)
-    idxs = list(range(0, nv, step))
-    ax.set_xticks(idxs)
-    ax.set_xticklabels([dates[i][4:6] + "/" + dates[i][6:] for i in idxs], fontsize=f_tick)
-    for t in idxs:
-        ax.axvline(t, color="#7c8794", lw=0.7, ls="--", alpha=0.25, zorder=0)
 
 
 def _audit_stack(fig):
