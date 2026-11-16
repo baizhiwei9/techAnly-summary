@@ -4,7 +4,12 @@
 =====================================================================
 原 chanlun/fractal/chan_chart.py 的画图部分，统一收进 charts/（2026-11-14）。
 
-把「某一级别的缠论买卖点」画成图片：K线 + 笔 + 中枢矩形 + 买点/卖点 + MACD。
+把「某一级别的缠论买卖点」画成图片：K线 + 笔 + 中枢矩形 + 买点/卖点 + 副图。
+
+副图按级别区分（2026-11-16 大佬澄清：「小时级别和周线级别你还是用那个偏向的 MACD，
+我只是说你日线级别给我出图那会改一下子」）：
+  · 日线       → 该指数日线 K 线（K线+MA20），叠 RMT 结构层（60 日滚动窗口）
+  · 小时线/周线 → MACD(10,20,5)，保持原样不动
 口径（与 chan_signal_monitor / chan_smc_index 完全一致）
   版本：缠论·分型版（包含处理→顶底分型→笔→中枢ZG/ZD→背驰）
   级别：--level h1  → 小时线60m
@@ -519,10 +524,12 @@ def draw_compare(pairs, out=None, n_show=160):
 
 # ─────────── 多指数纵向堆叠（一指数一行，不压缩宽度） ───────────
 def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
-               fs=None, axr=None, rmt_win=60):
-    """在给定 axes 上画一个完整指数的日线（价格面板 + 副图K线面板）。
+               fs=None, axr=None, rmt_win=60, sub="kline"):
+    """在给定 axes 上画一个完整指数的一段行情（价格面板 + 副图）。
 
-    副图原来画 MACD(10,20,5)，2026-11-16 大佬要求换成该指数自己的日线 K 线图。
+    `sub` 决定副图画什么：
+      · "kline"（默认）：日线 K 线图（K线+MA20）—— 只给**日线**用
+      · "macd"         ：MACD(10,20,5) —— 小时线 / 周线仍然用这个
     """
     fs = fs or {}
     f_title, f_zt, f_pt, f_tick, f_y = (fs.get("title", 14.0), fs.get("ztick", 10.5),
@@ -676,12 +683,15 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
     ax.tick_params(labelsize=f_tick)
     plt.setp(ax.get_xticklabels(), visible=False)
 
-    # ── 副图：该指数对应的**日线 K 线图**（原来这里是 MACD 面板）──────────
-    # 2026-11-16 大佬：「下边不要画 MACD 了，要把每一个指数下边对应的那个
-    # K 线图的那个图画出来。Cascade 的那边有，之前代码里有，你就把它用一下。」
-    # → 画法直接照 R_cascade 图（misc/engine/rcascade.py::draw）里的 K 线面板：
-    #   K 线 + MA20 虚线 + 月份竖线网格，配色/线宽同口径，只是搬到白底日线图里。
-    _paint_kline_panel(axm, view, nv, f_tick, f_y)
+    # ── 副图：按**级别**选（2026-11-16 大佬澄清，别一刀切）────────────────
+    # 大佬原话：「不要给那个缠论的代码他的 M（MACD）……因为你小时级别和周线级别，
+    # 你还是用那个偏向的 MACD，我只是说你日线级别给我出图那会改一下子」
+    #   · 日线（level="day"）→ 该指数的日线 K 线图（K线+MA20，画法照 R_cascade）
+    #   · 小时线 / 周线      → **保持 MACD(10,20,5)**，一点都不动
+    if sub == "kline":
+        _paint_kline_panel(axm, view, nv, f_tick, f_y)
+    else:
+        _paint_macd_panel(axm, df, start, nv, bw, f_tick, f_y)
     step = max(nv // 12, 1)
     idxs = list(range(0, nv, step))
     dates = view["dt"].dt.strftime("%m-%d").values
@@ -692,8 +702,31 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
     # ── 第三层：RMT 结构指标（60 日滚动窗口）─────────────────────────
     # 2026-11-16 大佬：「把下边带着 RMT 矩阵的那个图画出来…λ 的比值、能量比都有…
     # 这仨垒一块也行，你先画子图。周期还是默认的 60 日窗口」
-    if axr is not None:
+    if axr is not None and sub == "kline":
         _paint_rmt_panel(axr, name, view, nv, f_tick, f_y, win=rmt_win)
+
+
+def _paint_macd_panel(ax, df, start, nv, bw, f_tick, f_y):
+    """副图：MACD(10,20,5) —— 小时线 / 周线继续用这个（2026-11-16 大佬澄清）。
+
+    口径与原 `_paint_row` 里的 MACD 段**完全一致**（同一组常量，勿硬编码）：
+    DIF = EMA(10) - EMA(20)，DEA = EMA(DIF, 5)，HIST = 2×(DIF-DEA)。
+    """
+    x = np.arange(nv)
+    cl = df["close"].astype(float)
+    dif = (cl.ewm(span=MACD_FAST, adjust=False).mean()
+           - cl.ewm(span=MACD_SLOW, adjust=False).mean())
+    dea = dif.ewm(span=MACD_SIGNAL, adjust=False).mean()
+    hist = 2 * (dif - dea)
+    hh = hist.values[start:]
+    ax.bar(x, hh, width=bw, color=[RED if v >= 0 else GRN for v in hh], alpha=0.7)
+    ax.plot(x, dif.values[start:], color="#e67e22", lw=1.0, label="DIF")
+    ax.plot(x, dea.values[start:], color="#2980b9", lw=1.0, label="DEA")
+    ax.axhline(0, color="#999", lw=0.6)
+    ax.set_ylabel("MACD(10,20,5)", fontsize=f_y - 1)
+    ax.grid(True, ls=":", color="#cccccc", alpha=0.5)
+    ax.tick_params(labelsize=f_tick)
+    ax.legend(loc="upper left", fontsize=f_tick, framealpha=0.85, ncol=2)
 
 
 RCP_UP, RCP_DN = "#e74c3c", "#2ecc71"     # R_cascade 图里的涨/跌配色
