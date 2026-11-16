@@ -699,11 +699,10 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
         plt.setp(ax.get_xticklabels(), visible=False)
 
 
-    # ── 副图（2026-11-16 最终定稿，大佬两次改口后的结论）─────────────
-    # 「底下那坐标轴…还是双 Y 轴，一个是卡斯卡的，一个是偏度，一个是那个 VIX，
-    #   就这仨在一块。就是，还是不要 MACD 了」
-    #   · "vol"  ← 日报用这个：VIX + 偏度（左轴）／R_cascade（右轴，深红粗线）
-    #   · "macd" ：MACD(10,20,5)（保留能力，--sub macd 才用）
+    # ── 副图 ──────────────────────────────────────────────────────
+    # 2026-11-16 定稿：默认 **不带 MACD**，副图 = 期权(VIX+偏度) + R_cascade
+    #   · "vol"  ← 默认：VIX + 偏度（左轴 0~130）／R_cascade（右轴 0~2，深红粗线）
+    #   · "macd" ：MACD(10,20,5) —— 传 with_macd=True 或 --sub macd
     #   · "kline"：日线 K 线（更早的临时方案，保留能力）
     if sub == "vol":
         _v, _s, _r = _paint_vol_panel(axm, view, nv, rc_series, vol_series,
@@ -862,6 +861,10 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y, title_not
     · 右轴 **固定 0~2**  ：R_cascade（std20/std60）—— 深红粗线，单独一根轴
     大佬 2026-11-16：「左坐标轴 1~120 左右（偏度>110 危险）…VIX 在 20~40 之间…
     卡斯卡的是 0.5~1.5，右坐标轴 0~2 差不多就能显示出来」
+
+    `with_macd`：副图带不带 MACD（默认 False）。
+      False → 期权（VIX+偏度）+ R_cascade（2026-11-16 定稿）
+      True  → MACD(10,20,5)
     返回最后一天的三元组，供标题/日志使用。
     """
     dates = [str(x) for x in view["dt"].dt.strftime("%Y%m%d").values]
@@ -1124,7 +1127,7 @@ def _audit_stack(fig):
 
 
 def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
-               with_rc=True, sub="vol"):
+               with_rc=True, sub=None, with_macd=False):
     """多指数**纵向堆叠**：一个指数两块（上=缠论价格 / 下=VIX+偏度+R_cascade 双轴），往下垒。
 
     大佬 2026-11-14 23:13：「我就不明白，你就把这几个子图粘到一块就行了，为什么要压缩呀？
@@ -1155,7 +1158,12 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
                           top=1 - 1.15 / _h,
                           bottom=0.030)
     globals()["_VOL_LAST"] = {}
-    sub_mode = "vol" if sub == "vol" else sub
+    # 2026-11-16 大佬：「有个参数要传进去，就是带不带对应的 MACD。现在我就不需要你带了，
+    # 也只要带期权和那个 CASC 的了」
+    #   with_macd=False（默认）→ 副图 = 期权（VIX+偏度）+ R_cascade
+    #   with_macd=True          → 副图 = MACD(10,20,5)
+    #   sub 显式给值时优先（向后兼容 --sub kline 等）
+    sub_mode = sub if sub else ("macd" if with_macd else "vol")
     rc_map, vol_map = {}, {}
     for _n, _c in pairs:
         if sub == "vol":
@@ -1223,8 +1231,13 @@ def main():
     ap.add_argument("--row-h", type=float, default=7.6, help="堆叠图每行高度（英寸）")
     ap.add_argument("--no-rc", action="store_true",
                     help="副图不画 R_cascade")
-    ap.add_argument("--sub", default="vol", choices=["vol", "macd", "kline"],
-                    help="副图内容：vol=VIX/偏度/R_cascade（默认）；macd；kline")
+    ap.add_argument("--sub", default=None, choices=["vol", "macd", "kline"],
+                    help="副图内容（一般不用给）：vol=VIX/偏度/R_cascade（默认）；macd；kline")
+    ap.add_argument("--macd", dest="with_macd", action="store_true",
+                    help="副图带 MACD（默认不带，带期权+R_cascade）")
+    ap.add_argument("--no-macd", dest="with_macd", action="store_false",
+                    help="副图不带 MACD（默认，带期权+R_cascade）")
+    ap.set_defaults(with_macd=False)
     a = ap.parse_args()
 
     if a.all:
@@ -1253,7 +1266,8 @@ def main():
             print("[ERR] --stack 至少需要一个指数", flush=True)
             return 2
         p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h,
-                       with_rc=not a.no_rc, sub=a.sub)
+                       with_rc=not a.no_rc, sub=a.sub,
+                       with_macd=a.with_macd)
         print("[OK]", p)
         return 0
 
