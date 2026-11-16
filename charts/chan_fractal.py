@@ -524,16 +524,18 @@ def draw_compare(pairs, out=None, n_show=160):
 
 # ─────────── 多指数纵向堆叠（一指数一行，不压缩宽度） ───────────
 def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
-               fs=None, sub="macd", rc_series=None, rc_ax=True, xtick_every=10):
+               fs=None, sub="vol", rc_series=None, vol_series=None,
+               rc_ax=True, xtick_every=10):
     """在给定 axes 上画一个完整指数的一段行情（价格面板 + 副图）。
 
     `sub` 决定副图画什么：
-      · "macd"（默认）：MACD(10,20,5) —— 小时线 / 周线 / 日线都用这个
-      · "kline"       ：日线 K 线图（K线+MA20）—— 备用，日报已改回 MACD
+      · "vol"（默认）  ：VIX + 偏度（左轴）／R_cascade（右轴）三条线，双 Y 轴
+      · "macd"        ：MACD(10,20,5)
+      · "kline"       ：日线 K 线图（K线+MA20）
 
-    `rc_series`：R_cascade 序列（index=日期, 列 RC）。给了就**叠在价格面板上**，
-    用第二个 y 轴（twinx）画深红粗线；`rc_ax=False` 可关闭。
-    `xtick_every`：价格面板横轴刻度间隔（根）；0 = 不显示（与副图共轴时用）。
+    `rc_series`：R_cascade（列 RC）；`vol_series`：期权波动率（列 vix/skew）。
+    两者都按日期对齐到 view，副图用 vol_series 时一起画。
+    `xtick_every`：价格面板横轴刻度间隔（根）；0 = 不显示。
     """
     fs = fs or {}
     f_title, f_zt, f_pt, f_tick, f_y = (fs.get("title", 14.0), fs.get("ztick", 10.5),
@@ -674,22 +676,12 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
                         fontsize=f_pt, color=col, fontweight="bold", zorder=11,
                         bbox=dict(boxstyle="round,pad=0.3", fc="white",
                                   ec=col, alpha=0.94, lw=1.0))
-    # ── R_cascade 叠加：双坐标轴（右轴），深红粗线（必须在算标题之前）──
-    # 2026-11-16 大佬：「缠论的那个上面加上卡斯卡德的那个线，变成双坐标轴…
-    # 那个卡斯卡德那个线，你要用粗的，深红色笔来画，就是它和那个指数放一块」
-    _rc_last = _paint_rc_overlay(ax, view, nv, rc_series, f_tick, f_y) if rc_ax else None
-
     zpos = {"in": "中枢内", "above": "中枢上方", "below": "中枢下方"}.get(ck.get("zpos"), "-")
     ts_txt = last_ts.strftime("%Y-%m-%d")
     _sig_txt = ("   ｜   VWAP %+.2fσ" % vwap_sig) if vwap_sig is not None else ""
-    _rc_txt = ""
-    if _rc_last is not None and np.isfinite(_rc_last):
-        _rc_st = ("危险>1.2" if _rc_last > 1.2 else
-                  ("安全<0.8" if _rc_last < 0.8 else "中性0.8~1.2"))
-        _rc_txt = "   ｜   R_cascade %.3f（%s）" % (_rc_last, _rc_st)
-    ax.set_title("%s（%s）· %s   收盘 %.2f   ｜   阶段：%s   ｜   %s   ｜   背驰：%s%s%s"
+    ax.set_title("%s（%s）· %s   收盘 %.2f   ｜   阶段：%s   ｜   %s   ｜   背驰：%s%s"
                  % (name, code, ts_txt, P, ck.get("stage", ""), zpos,
-                    ck.get("div") or "无", _sig_txt, _rc_txt),
+                    ck.get("div") or "无", _sig_txt),
                  fontsize=f_title, pad=9, loc="left")
     ax.set_ylabel("价格", fontsize=f_y)
     ax.grid(True, ls=":", color="#cccccc", alpha=0.55)
@@ -707,19 +699,26 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
         plt.setp(ax.get_xticklabels(), visible=False)
 
 
-    # ── 副图：MACD(10,20,5) ────────────────────────────────────────
-    # 2026-11-16 大佬最后定稿：「底下还是 MACD？」
-    #   → 是。日线/小时线/周线统一 MACD；白天临时做的 K线+RMT 三层不再用。
-    if sub == "kline":
+    # ── 副图（2026-11-16 最终定稿，大佬两次改口后的结论）─────────────
+    # 「底下那坐标轴…还是双 Y 轴，一个是卡斯卡的，一个是偏度，一个是那个 VIX，
+    #   就这仨在一块。就是，还是不要 MACD 了」
+    #   · "vol"  ← 日报用这个：VIX + 偏度（左轴）／R_cascade（右轴，深红粗线）
+    #   · "macd" ：MACD(10,20,5)（保留能力，--sub macd 才用）
+    #   · "kline"：日线 K 线（更早的临时方案，保留能力）
+    if sub == "vol":
+        _v, _s, _r = _paint_vol_panel(axm, view, nv, rc_series, vol_series,
+                                      f_tick, f_y)
+        globals().setdefault("_VOL_LAST", {})[name] = {"vix": _v, "skew": _s, "rc": _r}
+    elif sub == "kline":
         _paint_kline_panel(axm, view, nv, f_tick, f_y)
     else:
         _paint_macd_panel(axm, df, start, nv, bw, f_tick, f_y)
-    step = max(nv // 12, 1)
-    idxs = list(range(0, nv, step))
-    dates = view["dt"].dt.strftime("%m-%d").values
-    axm.set_xticks(idxs)
-    axm.set_xticklabels([dates[i] for i in idxs], fontsize=f_tick)
-    axm.set_xlim(-2, nv + 7)
+        step = max(nv // 12, 1)
+        idxs = list(range(0, nv, step))
+        dates = view["dt"].dt.strftime("%m-%d").values
+        axm.set_xticks(idxs)
+        axm.set_xticklabels([dates[i] for i in idxs], fontsize=f_tick)
+        axm.set_xlim(-2, nv + 7)
 
 
 
@@ -801,6 +800,28 @@ def _paint_kline_panel(ax, view, nv, f_tick, f_y):
 # ── R_cascade 叠加（双坐标轴，深红粗线）────────────────────────────
 RC_LINE = "#8b0000"          # 深红（dark red）
 RC_LINE_W = 3.4              # 粗线
+VOL_VIX = "#1d4ed8"          # VIX 蓝
+VOL_SKEW = "#b45309"         # 偏度 琥珀
+
+
+def _vol_series_for(name):
+    """取该指数的 VIX / 偏度序列（唯一实现：misc/engine/opt_vol.py）。失败返回 None。"""
+    try:
+        _ENG = os.path.join(WS, "misc", "engine")
+        if _ENG not in sys.path:
+            sys.path.insert(0, _ENG)
+        import opt_vol as OV
+    except Exception as e:                                       # noqa: BLE001
+        print("[WARN] opt_vol 不可用：%s" % str(e)[:100], flush=True)
+        return None
+    try:
+        df = OV.series_for(name)
+        if df is None or not len(df):
+            return None
+        return df[["vix", "skew"]]
+    except Exception as e:                                       # noqa: BLE001
+        print("[WARN] %s VIX/偏度取数失败：%s" % (name, str(e)[:100]), flush=True)
+        return None
 
 
 def _rc_series_for(name, code=None, df=None):
@@ -828,47 +849,85 @@ def _rc_series_for(name, code=None, df=None):
     return out
 
 
-def _paint_rc_overlay(ax, view, nv, rc_series, f_tick, f_y):
-    """把 R_cascade 画到价格面板的**右侧第二 y 轴**（深红粗线 + 阈值线）。
+def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y, title_note=""):
+    """副图：R_cascade / 偏度 / VIX 三条线，**双 Y 轴**（2026-11-16 终稿）。
 
-    大佬口径（2026-11-16）：「加上卡斯卡德的那个线，变成双坐标轴…
-    用粗的、深红色笔来画，就是它和那个指数放一块」
-    阈值沿用 rcascade 库的常量（1.2 危险 / 0.8 安全 / 0.75 深坑），不硬编码。
+    大佬原话：「底下那坐标轴…还是双 Y 轴，一个是卡斯卡的，一个是偏度，
+    一个是那个 VIX，就这仨在一块。就是，还是不要 MACD 了」
+
+    · 左轴（波动率点）：VIX（30D ATM IV 插值）+ 偏度（25Δ Put − Call）——同量纲，共轴
+    · 右轴（比值）：R_cascade（std20/std60）—— 深红粗线，单独一根轴
+    返回最后一天的三元组，供标题/日志使用。
     """
-    if rc_series is None or not len(rc_series):
-        return None
     dates = [str(x) for x in view["dt"].dt.strftime("%Y%m%d").values]
-    s = rc_series["RC"].reindex(rc_series.index.union(pd.Index(dates))).ffill() \
-        .reindex(dates)
-    y = s.values.astype(float)
-    if not np.isfinite(y).any():
-        return None
     x = np.arange(nv)
 
+    def _align(df, col):
+        if df is None or not len(df) or col not in getattr(df, "columns", []):
+            return np.full(nv, np.nan)
+        ser = df[col]
+        idx = [str(i) for i in ser.index]
+        ser.index = idx
+        out = ser.reindex(ser.index.union(pd.Index(dates))).ffill().reindex(dates)
+        return out.values.astype(float)
+
+    vix = _align(vol_series, "vix")
+    skew = _align(vol_series, "skew")
+    rc = _align(rc_series, "RC")
+
+    # ── 左轴：VIX + 偏度 ──
+    ax.plot(x, vix, color=VOL_VIX, lw=2.0, label="VIX（30D ATM IV 插值）", zorder=5)
+    ax.plot(x, skew, color=VOL_SKEW, lw=1.9, ls="--", label="偏度 25Δ（Put−Call）", zorder=5)
+    ax.axhline(0, color="#94a3b8", lw=0.9, ls=":", alpha=0.7)
+    lv = np.concatenate([vix[np.isfinite(vix)], skew[np.isfinite(skew)]])
+    if len(lv):
+        lo, hi = float(np.nanmin(lv)), float(np.nanmax(lv))
+        pad = max(2.0, (hi - lo) * 0.14)
+        ax.set_ylim(lo - pad, hi + pad)
+    ax.set_ylabel("VIX ／ 偏度（波动率点）", fontsize=f_y - 2, color=VOL_VIX)
+    ax.tick_params(axis="y", colors=VOL_VIX, labelsize=f_tick - 0.5)
+    ax.grid(True, ls=":", color="#cccccc", alpha=0.45)
+    ax.tick_params(labelsize=f_tick)
+
+    # ── 右轴：R_cascade（深红粗线） ──
     ax2 = ax.twinx()
-    ax2.plot(x, y, color=RC_LINE, lw=RC_LINE_W, alpha=0.92, zorder=9,
-             solid_capstyle="round", label="R_cascade（右轴）")
-    lo, hi = float(np.nanmin(y)), float(np.nanmax(y))
-    y0 = min(0.70, lo - 0.05)
-    y1 = max(1.30, hi + 0.05)
-    ax2.set_ylim(y0, y1)
-    for yv, ls, lab in ((1.2, "--", "1.2 危险"), (0.8, "--", "0.8 安全"),
-                        (0.75, "-.", "0.75 深坑")):
-        if y0 <= yv <= y1:
-            ax2.axhline(yv, color=RC_LINE, ls=ls, lw=0.9, alpha=0.38, zorder=1)
-            # 阈值文字贴**左**边缘（右下角要留给最新值标签，右边会和它打架）
-            ax2.text(-1, yv, lab, fontsize=f_tick - 1.5, color=RC_LINE,
-                     alpha=0.8, va="bottom", ha="left",
-                     bbox=dict(boxstyle="round,pad=0.18", fc="white",
-                               ec="none", alpha=0.72))
+    if np.isfinite(rc).any():
+        ax2.plot(x, rc, color=RC_LINE, lw=RC_LINE_W, alpha=0.92, zorder=9,
+                 solid_capstyle="round", label="R_cascade（右轴）")
+        r_lo, r_hi = float(np.nanmin(rc)), float(np.nanmax(rc))
+        y0 = min(0.70, r_lo - 0.05)
+        y1 = max(1.30, r_hi + 0.05)
+        ax2.set_ylim(y0, y1)
+        for yv, ls, lab in ((1.2, "--", "1.2"), (0.8, "--", "0.8"), (0.75, "-.", "0.75")):
+            if y0 <= yv <= y1:
+                ax2.axhline(yv, color=RC_LINE, ls=ls, lw=0.8, alpha=0.32, zorder=1)
+                ax2.text(-1, yv, " " + lab, fontsize=f_tick - 2, color=RC_LINE,
+                         alpha=0.75, va="bottom", ha="left")
     ax2.set_ylabel("R_cascade", fontsize=f_y - 2, color=RC_LINE)
     ax2.tick_params(axis="y", colors=RC_LINE, labelsize=f_tick - 0.5)
     ax2.spines["right"].set_color(RC_LINE)
     ax2.spines["right"].set_linewidth(1.6)
 
-    last = float(y[np.isfinite(y)][-1])
-    # 不在图上乱贴标签（会和买卖点标注/阈值字打架）→ 只画线，数值回传写进标题
-    return last
+    # 图例合并（左轴两条 + 右轴一条）
+    h1, l1 = ax.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax.legend(h1 + h2, l1 + l2, loc="upper left", fontsize=f_tick - 1,
+              framealpha=0.85, ncol=3)
+
+    # 横轴刻度
+    _xlabels = view["dt"].dt.strftime("%m-%d").values
+    step = max(nv // 12, 1)
+    idxs = list(range(0, nv, step))
+    ax.set_xticks(idxs)
+    ax.set_xticklabels([_xlabels[i] for i in idxs], fontsize=f_tick)
+    ax.set_xlim(-2, nv + 7)
+    for t in idxs:
+        ax.axvline(t, color="#7c8794", lw=0.7, ls="--", alpha=0.22, zorder=0)
+
+    def _last(arr):
+        a = arr[np.isfinite(arr)]
+        return float(a[-1]) if len(a) else float("nan")
+    return _last(vix), _last(skew), _last(rc)
 
 
 # ── 第三层：RMT（随机矩阵）结构指标 ────────────────────────────────
@@ -1052,24 +1111,28 @@ def _audit_stack(fig):
         print("[audit] 自检失败:", str(e)[:150], flush=True)
 
 
-def draw_stack(pairs, out=None, n_show=160, row_h=7.6, width=12.0, dpi=150,
-               with_rc=True):
-    """多指数**纵向堆叠**：一个指数两块（缠论价格+R_cascade双轴 / MACD），固定宽往下垒。
+def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
+               with_rc=True, sub="vol"):
+    """多指数**纵向堆叠**：一个指数两块（上=缠论价格 / 下=VIX+偏度+R_cascade 双轴），往下垒。
 
     大佬 2026-11-14 23:13：「我就不明白，你就把这几个子图粘到一块就行了，为什么要压缩呀？
     …你要能力不行，还是恢复到以前，一个指数一个图吧。」
 
     → 上一版是 5 列并排（figsize 10.2*ncol × 11.2 英寸），每列被压成约 11:1 的窄条，
       字和图挤在一起。本函数改成「宽度不变、往下垒」：
-      画布宽 width 英寸固定，每指数占 row_h 英寸高，单块内 价格:MACD = 3.0:1.15，
+      画布宽 width 英寸固定，每指数占 row_h 英寸高，单块内 价格:副图 = 2.9:1.35，
       子图宽高比 ≈ 1.5:1（接近单图 16×10 的观感），字号按单图比例放大。
 
     口径与 draw() 完全一致（同一 chan_geometry / 买卖点样式）。
 
-    两层结构（2026-11-16 终稿，大佬：「缠论的那个上面加上卡斯卡德的那个线，
-    变成双坐标轴…那个卡斯卡德那个线，你要用粗的深红色笔来画…底下还是 MACD」）：
-      ① 上：缠论价格（笔 / 中枢 / 买卖点 / VWAP ±σ）＋ R_cascade 右轴（深红粗线）
-      ② 下：MACD(10,20,5)（日线 / 小时线 / 周线统一）
+    两层结构（2026-11-16 最终定稿）：
+      ① 上：**原来的缠论图**（笔 / 中枢 ZG-ZD / 买卖点 / VWAP ±1σ2σ3σ），不加任何叠加线
+      ② 下：**VIX + 偏度 + R_cascade 三条线，双 Y 轴**
+             左轴（波动率点）：VIX（30D ATM IV 插值）、偏度（25Δ Put−Call）
+             右轴（比值）    ：R_cascade（std20/std60，深红粗线）
+    大佬原话：「算了算了，你不要这么整了，还是原来的是原来的，底下那坐标轴…
+    还是双 Y 轴，一个是卡斯卡的，一个是偏度，一个是那个 VIX，就这仨在一块。
+    就是，还是不要 MACD 了」
     """
     nrow = len(pairs)
     fig = plt.figure(figsize=(width, row_h * nrow), facecolor="white")
@@ -1079,9 +1142,15 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.6, width=12.0, dpi=150,
                           left=0.052, right=0.988,
                           top=1 - 1.15 / _h,
                           bottom=0.030)
-    rc_map = {}
-    if with_rc:
-        for _n, _c in pairs:
+    globals()["_VOL_LAST"] = {}
+    sub_mode = "vol" if sub == "vol" else sub
+    rc_map, vol_map = {}, {}
+    for _n, _c in pairs:
+        if sub == "vol":
+            _v = _vol_series_for(_n)
+            if _v is not None:
+                vol_map[_n] = _v
+        if with_rc:
             _r = _rc_series_for(_n, _c)
             if _r is not None:
                 rc_map[_n] = _r
@@ -1098,17 +1167,19 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.6, width=12.0, dpi=150,
         zs = geo["zs"]
         P = float(df["close"].iloc[-1])
         last_ts = df["dt"].iloc[-1]
-        sub = gs[ri, 0].subgridspec(2, 1, height_ratios=[3.0, 1.15], hspace=0.10)
+        sub = gs[ri, 0].subgridspec(2, 1, height_ratios=[2.9, 1.35], hspace=0.09)
         ax = fig.add_subplot(sub[0, 0])
         axm = fig.add_subplot(sub[1, 0], sharex=ax)
         _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
-                   sub="macd", rc_series=rc_map.get(name))
-    fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）", fontsize=21,
+                   sub=sub_mode, rc_series=rc_map.get(name),
+                   vol_series=vol_map.get(name))
+    fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）｜下：VIX／偏度／R_cascade 双轴",
+                 fontsize=21,
                  y=1 - 0.42 / _h, va="center")
     fig.text(0.5, 1 - 0.86 / _h,
              "口径：包含处理→顶底分型→笔→中枢(ZG/ZD)→背驰　｜　★买点 ▼卖点　"
-             "黄框=最近中枢　蓝线=笔　紫线=VWAP中线　虚线=±1σ/±2σ/±3σ　"
-             "｜　深红粗线=R_cascade（右轴，20/60日窗）　｜　下=MACD(10,20,5)",
+             "黄框=最近中枢　蓝线=笔　紫线=VWAP中线　虚线=±1σ/±2σ/±3σ　｜　"
+             "下：蓝=VIX(30D ATM IV)　琥珀虚线=偏度25Δ　深红粗线=R_cascade(右轴)",
              ha="center", va="center", fontsize=14.5, color="#444444")
     if os.environ.get("CHAN_AUDIT"):
         _audit_stack(fig)
@@ -1139,7 +1210,9 @@ def main():
                     help="堆叠图显示最近多少根K线")
     ap.add_argument("--row-h", type=float, default=7.6, help="堆叠图每行高度（英寸）")
     ap.add_argument("--no-rc", action="store_true",
-                    help="不在价格面板叠加 R_cascade 双轴")
+                    help="副图不画 R_cascade")
+    ap.add_argument("--sub", default="vol", choices=["vol", "macd", "kline"],
+                    help="副图内容：vol=VIX/偏度/R_cascade（默认）；macd；kline")
     a = ap.parse_args()
 
     if a.all:
@@ -1167,7 +1240,8 @@ def main():
         if not pairs:
             print("[ERR] --stack 至少需要一个指数", flush=True)
             return 2
-        p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h, with_rc=not a.no_rc)
+        p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h,
+                       with_rc=not a.no_rc, sub=a.sub)
         print("[OK]", p)
         return 0
 
