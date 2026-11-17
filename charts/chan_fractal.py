@@ -35,6 +35,7 @@ import pandas as pd  # noqa: E402
 import chan_smc_index as C  # noqa: E402
 from chan_smc_index import MACD_FAST, MACD_SLOW, MACD_SIGNAL  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
+from matplotlib.transforms import blended_transform_factory  # noqa: E402
 
 # VWAP 标准差带（2026-11-15 大佬：「缠论的那图都要带上那个 VWAP，
 # 我好像知道它到了几倍的标准差了」→ 图上直接标 σ 倍数）
@@ -722,10 +723,12 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
     zpos = {"in": "中枢内", "above": "中枢上方", "below": "中枢下方"}.get(ck.get("zpos"), "-")
     ts_txt = last_ts.strftime("%Y-%m-%d")
     _sig_txt = ("   ｜   VWAP %+.2fσ" % vwap_sig) if vwap_sig is not None else ""
-    ax.set_title("%s（%s）· %s   收盘 %.2f   ｜   阶段：%s   ｜   %s   ｜   背驰：%s%s"
+    # 2026-11-17：标题原来一整行（实测宽 1854px @150dpi > 画布 1800px），
+    #   右侧 165px 被裁 → 拆两行，且字号略降，保证整句在画布内
+    ax.set_title("%s（%s）· %s   收盘 %.2f\n阶段：%s   ｜   %s   ｜   背驰：%s%s"
                  % (name, code, ts_txt, P, ck.get("stage", ""), zpos,
                     ck.get("div") or "无", _sig_txt),
-                 fontsize=f_title, pad=9, loc="left")
+                 fontsize=f_title - 1.0, pad=9, loc="left")
     ax.set_ylabel("价格", fontsize=f_y)
     ax.grid(True, ls=":", color="#cccccc", alpha=0.55)
     ax.set_xlim(-2, nv + 7)
@@ -858,7 +861,10 @@ RC_LINE = "#8b0000"          # 深红（dark red）
 RC_LINE_W = 3.4              # 粗线
 VOL_VIX = "#1d4ed8"          # VIX 蓝
 VOL_SKEW = "#b45309"         # 偏度 琥珀
-VOL_YLIM = (0.0, 130.0)      # 左轴固定范围（偏度 SKEW 100 中轴 + VIX 20~40）
+VOL_YLIM = (0.0, 100.0)      # 左轴固定范围：偏度**近一年分位** 0~100（VIX 20~40 落在同一轴上）
+SKEW_PCT_LINES = ((50, ":", "#94a3b8", "分位50"),
+                  (80, "--", "#c2410c", "80 偏高"),
+                  (95, "--", "#991b1b", "95 极危"))
 RC_YLIM = (0.0, 2.0)         # 右轴固定范围（R_cascade 0.75~1.2 阈值都装得下）
 PCR_LINE = "#6d28d9"         # 持仓量 PCR 主线（紫）
 PCR_FILL = "#8b5cf6"         # 持仓量 PCR 淡填充
@@ -878,7 +884,7 @@ def _vol_series_for(name):
         df = OV.series_for(name)
         if df is None or not len(df):
             return None
-        cols = [c for c in ("vix", "skew", "atm_iv") if c in df.columns]
+        cols = [c for c in ("vix", "skew", "skew_pct", "atm_iv") if c in df.columns]
         out = df[cols].copy()
         if "atm_iv" in out.columns and "iv" not in out.columns:
             out["iv"] = out["atm_iv"]
@@ -950,28 +956,31 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y,
     vix = _align(vol_series, _col)
     if not np.isfinite(vix).any() and _col != "vix":
         vix = _align(vol_series, "vix")          # 隐波缺列时回退 VIX
-    skew = _align(vol_series, "skew")
+    skew_pct = _align(vol_series, "skew_pct")
     rc = _align(rc_series, "RC")
 
-    # ── 左轴：VIX + 偏度（**固定 0~130**，大佬 2026-11-16 指定）─────────
-    # 「左坐标轴是 1~120 左右，因为偏度大于 110 就是危险了…VIX 是 20 到 40 之间…
-    #   这样应该也能显示」
-    ax.plot(x, skew, color=VOL_SKEW, lw=2.0,
-            label="偏度 SKEW（BKM 严格，0.85S~1.15S ≥8档）", zorder=6)
+    # ── 左轴：**偏度近一年分位 0~100** + VIX ────────────────────────
+    # 2026-11-17 大佬：「偏度的那个图你改一下子，因为我看出来都是 100 左右，
+    #   变化不大。你偏度图能不能变成近一年的分位数？」
+    # → 左轴改成 0~100 的**滚动分位**（252 交易日窗口，唯一实现在 opt_vol.py）。
+    #   偏度原始值（100−10×RNSkew）只用来算分位，图上不再画绝对值。
+    ax.plot(x, skew_pct, color=VOL_SKEW, lw=2.2,
+            label="偏度分位（近一年 252 日滚动，0~100）", zorder=6)
     _vlabel = ("隐波 ATM IV（近月平值）" if vol_mode == "iv"
                else "VIX（30D，OI加权方差插值）")
-    ax.plot(x, vix, color=VOL_VIX, lw=1.9, ls="--", label=_vlabel, zorder=5)
-    # 关键刻度线：偏度 100 中性 / 110 危险 / 120 极危；VIX 20 / 40
-    for yv, ls, col, lab in ((100, ":", "#94a3b8", "偏度100 中性"),
-                             (110, "--", "#c2410c", "110 危险"),
-                             (120, "--", "#991b1b", "120 极危"),
-                             (20, ":", "#93c5fd", "VIX20"),
-                             (40, ":", "#3b82f6", "VIX40")):
+    ax.plot(x, vix, color=VOL_VIX, lw=1.7, ls="--", label=_vlabel, zorder=5)
+    # 关键刻度线：分位 50 中位 / 80 偏高 / 95 极危；VIX 20 / 40
+    for yv, ls, col, lab in SKEW_PCT_LINES + ((20, ":", "#93c5fd", "VIX20"),
+                                              (40, ":", "#3b82f6", "VIX40")):
         ax.axhline(yv, color=col, ls=ls, lw=0.9, alpha=0.55, zorder=1)
-        ax.text(nv + 6, yv, lab, fontsize=f_tick - 2, color=col, alpha=0.85,
-                va="center", ha="right")
-    ax.set_ylim(*VOL_YLIM)          # (0, 130)
-    ax.set_ylabel("偏度 SKEW（BKM严格）／ VIX（0~130）", fontsize=f_y - 2,
+        # 标签放绘图区**内侧右端**：原来放 x=nv+6（画布外）会被右轴/R_cascade 压掉。
+        # ⚠️ 必须用 blended 变换：x=轴比例(0.994)，y=**数据坐标**(0~100)；
+        #    直接 transAxes 会把 y 当比例 → 跑到画布外（audit 实测报错）。
+        ax.text(0.994, yv, lab, fontsize=f_tick - 2.5, color=col,
+                alpha=0.9, va="center", ha="right", zorder=11,
+                transform=blended_transform_factory(ax.transAxes, ax.transData))
+    ax.set_ylim(*VOL_YLIM)          # (0, 100)
+    ax.set_ylabel("偏度分位（近一年，0~100）／ VIX", fontsize=f_y - 2,
                   color=VOL_SKEW)
     ax.tick_params(axis="y", colors=VOL_SKEW, labelsize=f_tick - 0.5)
     ax.grid(True, ls=":", color="#cccccc", alpha=0.45)
@@ -986,9 +995,11 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y,
         for yv, ls in ((1.2, "--"), (0.8, "--"), (0.75, "-.")):
             ax2.axhline(yv, color=RC_LINE, ls=ls, lw=0.8, alpha=0.32, zorder=1)
         # 0.8 与 0.75 在 0~2 轴上只差 2.5% 高度 → 标签合并一行，避免撞字
+        # 放**绘图区内左侧**：放右侧会顶到右轴刻度、甚至出画布（audit 会报）
         for yv, lab, va in ((1.2, "1.2 危险", "bottom"), (0.775, "0.8 安全 / 0.75 深坑", "top")):
-            ax2.text(-1, yv, " " + lab, fontsize=f_tick - 2, color=RC_LINE,
-                     alpha=0.75, va=va, ha="left")
+            ax2.text(0.006, yv, lab, fontsize=f_tick - 2, color=RC_LINE,
+                     alpha=0.8, va=va, ha="left", zorder=11,
+                     transform=blended_transform_factory(ax2.transAxes, ax2.transData))
         ax2.set_ylim(*RC_YLIM)
     ax2.set_ylabel("R_cascade（0~2）", fontsize=f_y - 2, color=RC_LINE)
     ax2.tick_params(axis="y", colors=RC_LINE, labelsize=f_tick - 0.5)
@@ -1014,7 +1025,7 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y,
     def _last(arr):
         a = arr[np.isfinite(arr)]
         return float(a[-1]) if len(a) else float("nan")
-    return _last(vix), _last(skew), _last(rc)
+    return _last(vix), _last(skew_pct), _last(rc)
 
 
 def _audit_stack(fig):
@@ -1036,7 +1047,16 @@ def _audit_stack(fig):
         fig_box = fig.bbox
         for ax in fig.axes:
             texts = [ax.title] if ax.title.get_text() else []
+            # 2026-11-17 大佬：「图右侧的那个坐标我看不到了」
+            #   → 轴标题/刻度标签也必须纳入「出画布」检查，否则右轴 ylabel 被裁了也报 0 处
+            texts += [ax.xaxis.label, ax.yaxis.label]
             texts += [t for t in ax.texts]
+            try:
+                # 只把 y 轴刻度纳入**出画布**检查（右侧被裁就是这个）；
+                # x 轴刻度不纳入重叠检查，否则和下方子图贴边会误报
+                texts += list(ax.get_yticklabels())
+            except Exception:
+                pass
             for t in texts:
                 if not t.get_text().strip():
                     continue
@@ -1062,6 +1082,32 @@ def _audit_stack(fig):
                         print("[audit] 文字压到别的子图：%r" % t.get_text()[:40], flush=True)
                         bad += 1
                         break
+        # 图级文本（suptitle / 口径说明）的出画布检查：2026-11-17 实测
+        # 「口径说明」曾宽 2765px > 画布 1200px，左右各被裁 780px，旧 audit 不报
+        for t in ([fig._suptitle] if fig._suptitle else []) + list(fig.texts):
+            if not t.get_text().strip():
+                continue
+            try:
+                tb = t.get_window_extent(r)
+            except Exception:
+                continue
+            if (tb.x0 < fig_box.x0 - 2 or tb.x1 > fig_box.x1 + 2
+                    or tb.y0 < fig_box.y0 - 2 or tb.y1 > fig_box.y1 + 2):
+                print("[audit] 图级文字出画布：%r" % t.get_text()[:40], flush=True)
+                bad += 1
+        # 子图主标题（ax.title）出画布检查：2026-11-17 实测标题宽 1854px > 画布 1800px
+        # 右侧 165px（「背驰：无」）被裁，旧 audit 完全没报
+        for ax in fig.axes:
+            t = ax.title
+            if not t.get_text().strip():
+                continue
+            try:
+                tb = t.get_window_extent(r)
+            except Exception:
+                continue
+            if tb.x0 < fig_box.x0 - 2 or tb.x1 > fig_box.x1 + 2:
+                print("[audit] 子图标题出画布：%r" % t.get_text()[:40], flush=True)
+                bad += 1
         # 文字 vs 文字（标题/口径说明会互相压）
         all_t = []
         for ax in fig.axes:
@@ -1160,8 +1206,11 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
     fig = plt.figure(figsize=(width, row_h * nrow), facecolor="white")
     # 顶部留 1.15 英寸给「大标题 + 口径说明」，避免标题压第一行子图
     _h = row_h * nrow
+    # 2026-11-17 大佬：「这个图右侧的那个坐标我看不到了，你把右侧的空白留大点」
+    #   → right 0.988→0.925：右轴刻度数字 + 「R_cascade（0~2）」竖排标题实测要
+    #     约 0.9 英寸，0.945 时标题右缘只剩 ~10px（几乎贴边），0.925 后留 ~55px。
     gs = fig.add_gridspec(nrow, 1, hspace=0.30,
-                          left=0.052, right=0.988,
+                          left=0.062, right=0.925,
                           top=1 - 1.15 / _h,
                           bottom=0.030)
     globals()["_VOL_LAST"] = {}
@@ -1211,16 +1260,20 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
                    sub=sub_mode, rc_series=rc_map.get(name),
                    vol_series=vol_map.get(name), vol_mode=vol_mode,
                    pcr_ax=axp, pcr_series=pcr_map.get(name))
-    fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）｜下：VIX／偏度／R_cascade 双轴 + 持仓量PCR",
-                 fontsize=21,
+    fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）｜下：VIX／偏度分位／R_cascade 双轴 + 持仓量PCR",
+                 fontsize=19,
                  y=1 - 0.42 / _h, va="center")
-    fig.text(0.5, 1 - 0.86 / _h,
-             "口径：包含处理→顶底分型→笔→中枢(ZG/ZD)→背驰　｜　★买点 ▼卖点　"
-             "黄框=最近中枢　蓝线=笔　紫线=VWAP中线　虚线=±1σ/±2σ/±3σ　｜　"
-             "中：蓝=VIX(30D ATM IV)\u3000琥珀=偏度SKEW(BKM严格 0.85S~1.15S ≥8档)"
-             "\u3000深红粗线=R_cascade(右轴)\u3000｜\u3000"
-             "底：持仓量PCR（剔到期≤5天合约，1.0 上方=认沽持仓占优）",
-             ha="center", va="center", fontsize=14.5, color="#444444")
+    # 2026-11-17：口径说明原来一整行长文本，实测宽 2765px > 画布 1200px，
+    #   **左右两端各被裁掉 780px**（右侧坐标/文字「看不到」有一部分是它顶出来的）
+    #   → 拆成两行、字号降到 13，确保整句落在画布内。
+    fig.text(0.5, 1 - 0.80 / _h,
+             "口径：分型→笔→中枢(ZG/ZD)→背驰　｜　★买点 ▼卖点　｜　"
+             "黄框=中枢　蓝线=笔　紫线=VWAP　虚线=±1σ/2σ/3σ",
+             ha="center", va="center", fontsize=13.5, color="#444444")
+    fig.text(0.5, 1 - 0.99 / _h,
+             "中：蓝=VIX(30D)　琥珀=偏度近一年分位(252日滚动)　深红=R_cascade(右轴)　｜　"
+             "底：持仓量PCR(剔≤5天，1.0 上方=认沽占优)",
+             ha="center", va="center", fontsize=13.5, color="#444444")
     if os.environ.get("CHAN_AUDIT"):
         _audit_stack(fig)
     os.makedirs(OUT_DIR, exist_ok=True)
