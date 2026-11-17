@@ -129,9 +129,16 @@ STALE_CUTOFF_HOUR = int(os.environ.get("RC_STALE_CUTOFF_HOUR", "18"))
 # ═══════════════════════════ 取数 ═══════════════════════════
 def _ts_code(code, typ):
     """6 位代码 → 标准 ts_code"""
+    if typ in _SECTOR_TYPES:
+        return str(code)
     if typ == "etf" or typ == "index_sh":
         return code + ".SH"
     return code + ".SZ"
+
+
+# 2026-11-17 新增：申万行业指数 / 同花顺行业板块 / 同花顺概念板块 也走同一套 RC
+#   （大佬：「不单单是宽基，也有可能是指数，也有可能是行业」）
+_SECTOR_TYPES = ("sw", "sector_ind", "sector_con")
 
 
 def _norm(df, cols=("dt", "open", "high", "low", "close")):
@@ -141,6 +148,8 @@ def _norm(df, cols=("dt", "open", "high", "low", "close")):
     d = df.copy()
     if "date" in d.columns and "dt" not in d.columns:
         d = d.rename(columns={"date": "dt"})
+    if "trade_date" in d.columns and "dt" not in d.columns:   # DataHub 指数/申万口径
+        d = d.rename(columns={"trade_date": "dt"})
     if "dt" not in d.columns:
         return None
     d["dt"] = pd.to_datetime(d["dt"])
@@ -171,6 +180,8 @@ def _ensure_datahub_path():
 def _from_datahub(typ, code):
     """DataHub 路径（库内硬规矩：数据优先 DataHub）。失败/不可用返回 None。"""
     _ensure_datahub_path()
+    if typ in _SECTOR_TYPES:
+        return _sector_from_datahub(typ, code)
     try:
         import dh_bridge as D
     except Exception:                                            # noqa: BLE001
@@ -188,8 +199,28 @@ def _from_datahub(typ, code):
     return _norm(df)
 
 
+def _sector_from_datahub(typ, code):
+    """申万行业 / 同花顺行业板块 / 同花顺概念的日线（都给 DataHub 取）。"""
+    try:
+        import data_hub as dh
+    except Exception as e:                                       # noqa: BLE001
+        print("[WARN] data_hub 不可用：%s" % str(e)[:90])
+        return None
+    try:
+        if typ == "sw":
+            df = dh.fetch_sw_index_daily(str(code))
+        else:
+            df = dh.get_sector_kline(str(code), years_back=6)
+    except Exception as e:                                       # noqa: BLE001
+        print("[WARN] datahub %s(%s): %s" % (typ, code, str(e)[:90]))
+        return None
+    return _norm(df)
+
+
 def _from_akshare(typ, code):
     """akshare 老链路（兜底）。失败返回 None。"""
+    if typ in _SECTOR_TYPES:
+        return None                    # 板块只走 DataHub，不另写抓取
     import akshare as ak
     try:
         if typ == "etf":

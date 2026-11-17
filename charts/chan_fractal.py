@@ -865,7 +865,7 @@ VOL_YLIM = (0.0, 100.0)      # 左轴固定范围：偏度**近一年分位** 0~
 SKEW_PCT_LINES = ((50, ":", "#94a3b8", "分位50"),
                   (80, "--", "#c2410c", "80 偏高"),
                   (95, "--", "#991b1b", "95 极危"))
-RC_YLIM = (0.0, 2.0)         # 右轴固定范围（R_cascade 0.75~1.2 阈值都装得下）
+RC_YLIM = (0.0, 2.0)         # 右轴**默认/兜底**范围（2026-11-17 起改成自适应，见 _paint_vol_panel）
 PCR_LINE = "#6d28d9"         # 持仓量 PCR 主线（紫）
 PCR_FILL = "#8b5cf6"         # 持仓量 PCR 淡填充
 
@@ -988,20 +988,40 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y,
 
     # ── 右轴：R_cascade（深红粗线，**固定 0~2**，大佬指定）──
     ax2 = ax.twinx()
+    _rc_axis = RC_YLIM
     if np.isfinite(rc).any():
+        # 2026-11-17 大佬：「混图副图那个改了，一样了」
+        #   → 右轴口径跟**单独那张 R_cascade 图**对齐：不再固定 0~2，改成
+        #     min(0.55, 窗内最低-0.05) ~ max(1.45, 窗内最高+0.05) 的自适应范围。
+        #     这样同一数值在两张图上落在几乎相同的高度，不会再看着像两个指标。
+        _lo = float(np.nanmin(rc))
+        _hi = float(np.nanmax(rc))
+        _rc_axis = (min(0.55, _lo - 0.05), max(1.45, _hi + 0.05))
+        ax2.set_ylim(*_rc_axis)
         ax2.plot(x, rc, color=RC_LINE, lw=RC_LINE_W, alpha=0.92, zorder=9,
-                 solid_capstyle="round", label="R_cascade（右轴 0~2）")
-        ax2.set_ylim(*RC_YLIM)       # (0, 2.0)
+                 solid_capstyle="round",
+                 label="R_cascade（右轴 %.2f~%.2f）" % _rc_axis)
+        _y0, _y1 = _rc_axis
         for yv, ls in ((1.2, "--"), (0.8, "--"), (0.75, "-.")):
+            if not (_y0 < yv < _y1):     # 不在可视区间就别画，免得压边
+                continue
             ax2.axhline(yv, color=RC_LINE, ls=ls, lw=0.8, alpha=0.32, zorder=1)
-        # 0.8 与 0.75 在 0~2 轴上只差 2.5% 高度 → 标签合并一行，避免撞字
-        # 放**绘图区内左侧**：放右侧会顶到右轴刻度、甚至出画布（audit 会报）
-        for yv, lab, va in ((1.2, "1.2 危险", "bottom"), (0.775, "0.8 安全 / 0.75 深坑", "top")):
+        # 标签放**绘图区内左侧**：放右侧会顶到右轴刻度、甚至出画布（audit 会报）
+        _span = max(_y1 - _y0, 1e-6)
+        for yv, lab, va in ((1.2, "1.2 危险", "bottom"),
+                            (0.775, "0.8 安全 / 0.75 深坑", "top")):
+            if not (_y0 < yv < _y1):
+                continue
+            # 太靠近上下边界时把标签翻到另一侧，避免出画布
+            if (yv - _y0) / _span < 0.06:
+                va = "bottom"
+            elif (_y1 - yv) / _span < 0.06:
+                va = "top"
             ax2.text(0.006, yv, lab, fontsize=f_tick - 2, color=RC_LINE,
                      alpha=0.8, va=va, ha="left", zorder=11,
                      transform=blended_transform_factory(ax2.transAxes, ax2.transData))
-        ax2.set_ylim(*RC_YLIM)
-    ax2.set_ylabel("R_cascade（0~2）", fontsize=f_y - 2, color=RC_LINE)
+    ax2.set_ylabel("R_cascade（%.2f~%.2f）" % _rc_axis if np.isfinite(rc).any()
+                   else "R_cascade", fontsize=f_y - 2, color=RC_LINE)
     ax2.tick_params(axis="y", colors=RC_LINE, labelsize=f_tick - 0.5)
     ax2.spines["right"].set_color(RC_LINE)
     ax2.spines["right"].set_linewidth(1.6)

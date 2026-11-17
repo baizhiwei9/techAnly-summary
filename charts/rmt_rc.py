@@ -14,7 +14,15 @@
   λ1/λ2          = 第一 / 第二特征值之比
   λ1/Σλ          = λ1 / Σ(λ1…λ50)                与 AR5 同分母
   outlier_energy = Σ(λi | λi > (1+√(N/T))²) / N   超 MP 上界的特征值占总能量比（迹 = N）
-  RC             = σ(近 20 日组合收益) / σ(T 日组合收益)
+  RC             = **直接调 misc/engine/rcascade.py::compute()**（唯一实现）
+                   · 标的自己的日线算 σ20/σ60 → 跟单独那张 R_cascade 图**完全同口径**
+                   · 自有行情取不到 → 回退成分股等权组合的 σ20/σ60（旧口径）
+
+标的可以是：
+  · 宽基（沪深300/中证500/中证1000/创业板指/科创50/上证50，也认 hs300/500/1000/创业板/科创）
+  · 申万行业（如 半导体、白酒）
+  · 同花顺行业板块 / 概念板块（如 稀土永磁）
+  · 6 位指数代码（如 000300）
 
 用法：
   # 单图（一个指数）
@@ -25,6 +33,9 @@
 
   # 五个宽基全画
   python3 charts/rmt_rc.py --targets 沪深300,中证500,中证1000,创业板指,科创50 --cols 2
+
+  # 行业 / 概念也能画（RC 用该行业指数自己的日线）
+  python3 charts/rmt_rc.py --targets 半导体,稀土永磁
 
   # 分位告警（超 90% 就发邮件）
   python3 charts/rmt_rc.py --targets 沪深300,科创50 --alert --email
@@ -108,6 +119,127 @@ def _resolve_target(text):
         if t.upper() in (code.upper(), etf.upper()):
             return name
     raise SystemExit("未知标的：%s（可选：%s）" % (t, "、".join(TARGETS)))
+
+
+# ───────────────── 任意标的（指数 / 申万行业 / 同花顺板块）─────────────────
+# 2026-11-17 大佬：「不单单是宽基，也有可能是指数，也有可能是行业」
+#   → 宽基仍走 TARGETS（指数成分股 + ETF）；行业/概念名走板块口径。
+KIND_WIDE, KIND_SW, KIND_IND, KIND_CON = "wide", "sw", "industry", "concept"
+
+
+def _dh_lists(dh):
+    """板块清单（行业 / 概念）+ 申万行业清单，全部吃 DataHub 缓存。"""
+    out = {"ind": {}, "con": {}, "sw": {}}
+    for key, kind in (("ind", "行业"), ("con", "概念")):
+        try:
+            df = dh.get_sector_list(kind)
+            for _, r in df.iterrows():
+                out[key][str(r["name"])] = (str(r["code"]), kind)
+        except Exception:                                        # noqa: BLE001
+            pass
+    for lv in (1, 2):
+        try:
+            df = dh.get_sw_classify(level=lv)
+            for _, r in df.iterrows():
+                out["sw"].setdefault(str(r["sw_name"]), str(r["sw_code"]))
+        except Exception:                                        # noqa: BLE001
+            pass
+    return out
+
+
+def resolve_any_target(text, dh=None):
+    """解析标的名 → dict(kind, name, code, etf, etfname)。
+
+    顺序：宽基别名 → 申万行业 → 同花顺行业板块 → 同花顺概念 → 6 位指数代码。
+    """
+    t = str(text or "").strip()
+    try:
+        name = _resolve_target(t)
+        code, etf = TARGETS[name]
+        return dict(kind=KIND_WIDE, name=name, code=code, etf=etf, etfname="ETF")
+    except SystemExit:
+        pass
+    dh = dh or _datahub()
+    L = _dh_lists(dh)
+    if t in L["sw"]:
+        return dict(kind=KIND_SW, name=t, code=L["sw"][t], etf=None, etfname="申万指数")
+    if t in L["ind"]:
+        return dict(kind=KIND_IND, name=t, code=L["ind"][t][0], etf=None, etfname="板块指数")
+    if t in L["con"]:
+        return dict(kind=KIND_CON, name=t, code=L["con"][t][0], etf=None, etfname="概念指数")
+    if t.isdigit() and len(t) == 6:            # 纯代码 → 当指数
+        suf = ".SZ" if t[0] in ("3", "0") else ".SH"
+        return dict(kind=KIND_WIDE, name=t, code=t + suf, etf=None, etfname="指数")
+    raise SystemExit("未知标的：%s（可用：宽基名 / 申万行业 / 同花顺行业 / 概念 / 6 位指数代码）" % t)
+
+
+def _rc_type(kind, code):
+    """标的数据源类型 → rcascade.compute() 的 typ。"""
+    if kind == KIND_SW:
+        return "sw"
+    if kind == KIND_IND:
+        return "sector_ind"
+    if kind == KIND_CON:
+        return "sector_con"
+    return "index_sz" if str(code).upper().endswith(".SZ") else "index_sh"
+
+
+def rc_series_via_lib(typ, code):
+    """R_cascade 序列 —— **直接调唯一实现** misc/engine/rcascade.py::compute()。
+
+    2026-11-17 大佬：「统一一下算法，用原来的代码不就行了？」
+    → 这里不再自己算 ln/std20/std60，只做「换数据源」这一件事：
+      宽基/指数：typ=index_sh / index_sz
+      申万行业  ：typ=sw
+      同花顺行业：typ=sector_ind
+      同花顺概念：typ=sector_con
+    返回 DataFrame(index=YYYYMMDD str, col "RC")；取不到返回 None。
+    """
+    import importlib.util
+    fp = os.path.join(WS, "misc", "engine", "rcascade.py")
+    if not os.path.exists(fp):
+        print("[rmt] 找不到 rcascade.py（%s），RC 只能回退成分股等权" % fp, flush=True)
+        return None
+    try:
+        if "rcascade" in sys.modules:
+            RC = sys.modules["rcascade"]
+        else:
+            spec = importlib.util.spec_from_file_location("rcascade", fp)
+            RC = importlib.util.module_from_spec(spec)
+            sys.modules["rcascade"] = RC
+            spec.loader.exec_module(RC)
+        d = RC.compute(typ, str(code))
+    except Exception as ex:                                       # noqa: BLE001
+        print("[rmt] rcascade.compute(%s,%s) 失败：%s" % (typ, code, str(ex)[:100]), flush=True)
+        return None
+    out = pd.DataFrame({"RC": d["RC"].astype(float)})
+    out.index = [str(x).replace("-", "")[:8] for x in d.index]
+    return out
+
+
+def own_close_via_lib(typ, code):
+    """标的自身日线收盘（走 rcascade.load，与 RC 同源）。取不到返回空 Series。"""
+    import importlib.util
+    fp = os.path.join(WS, "misc", "engine", "rcascade.py")
+    if not os.path.exists(fp):
+        return pd.Series(dtype=float)
+    try:
+        if "rcascade" in sys.modules:
+            RC = sys.modules["rcascade"]
+        else:
+            spec = importlib.util.spec_from_file_location("rcascade", fp)
+            RC = importlib.util.module_from_spec(spec)
+            sys.modules["rcascade"] = RC
+            spec.loader.exec_module(RC)
+        d, _src = RC.load(typ, str(code))
+    except Exception as ex:                                       # noqa: BLE001
+        print("[rmt] 自身日线(%s,%s) 失败：%s" % (typ, code, str(ex)[:90]), flush=True)
+        return pd.Series(dtype=float)
+    if d is None or not len(d):
+        return pd.Series(dtype=float)
+    s = pd.Series(d["close"].astype(float).values,
+                  index=[str(x).replace("-", "")[:8] for x in d["dt"]])
+    return s[~s.index.duplicated(keep="last")].sort_index()
 
 
 def _datahub():
@@ -367,9 +499,9 @@ def _style_axis_y(ax, color, label, size=15):
 
 
 def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
-                   etf, etfname, win, dpi_note=""):
-    """一个指数 = 上 ETF + 下 RMT 三轴（占 gridspec 的 2 行同列）"""
-    # ---- 上：ETF ----
+                   etf, etfname, win, dpi_note="", rc_src="comps", kind=None):
+    """一个标的 = 上：对应价格；下：RMT 三轴（RC 已换成与单独图同口径）"""
+    # ---- 上：价格 ----
     ax0 = fig.add_subplot(gs[r0, c0])
     px = px[px.index >= show_from] if len(px) else px
     if len(px):
@@ -383,7 +515,10 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
     ax0.set_ylabel("%s 收盘价（元）" % etfname, fontsize=14.5*FSZ, color=GOLD)
     ax0.tick_params(axis="y", colors=GOLD, labelsize=12.5*FSZ)
     ax0.spines["left"].set_color(GOLD)
-    ax0.set_title("%s · 对应 ETF（%s %s）" % (name, etfname, etf), fontsize=19*FSZ, pad=9, color=GOLD)
+    _title = "%s · %s" % (name, etfname)
+    if etf:
+        _title += "（%s %s）" % (etfname, etf)
+    ax0.set_title(_title, fontsize=19*FSZ, pad=9, color=GOLD)
     ax0.grid(alpha=0.22, axis="y")
     ax0.set_xticklabels([])
 
@@ -405,7 +540,7 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
     ax1.plot(x, d.l1s.values, color=PURPLE, lw=1.9, marker="v", ms=3.2, alpha=0.88,
              label="λ1/Σλ（同分母）")
     ax1.plot(x, d.rc.values, color=ORANGE, lw=1.8, marker="s", ms=3, alpha=0.85,
-             label="RC = σ20/σ60")
+             label="RC = σ20/σ60（%s）" % ("自身行情" if rc_src == "own" else "成分股等权"))
     ax1.set_ylim(0, 1.6)
     ax1.set_ylabel("AR5 ｜ λ1/Σλ ｜ RC（右轴）", fontsize=15*FSZ)
     ax1.yaxis.set_major_locator(MultipleLocator(0.2))
@@ -466,48 +601,117 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
 
 def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
            dpi=150, force=False, lookback=420):
-    """出图主函数：单标的=1 列，多标的=多列（每列一个指数，上下两行）。"""
+    """出图主函数：单标的=1 列，多标的=多列（每列一个标的，上下两行）。
+
+    targets 里的元素可以是字符串（名字 / 代码），也可以是 resolve_any_target() 出来的 dict。
+    """
     dh = _datahub()
     end = end or datetime.now().strftime("%Y%m%d")
     # 面板起点：展示起点往前推至少 lookback 天 → 历史分位数才有稳定基准
     need_start = (datetime.strptime(show_from, "%Y%m%d") - timedelta(days=lookback)) \
         .strftime("%Y%m%d")
+    # RC 要 60 日窗口，回看更久一点更安全
+    rc_start = (datetime.strptime(show_from, "%Y%m%d") - timedelta(days=lookback + 120)) \
+        .strftime("%Y%m%d")
+
+    metas = [t if isinstance(t, dict) else resolve_any_target(t, dh) for t in targets]
+    names = [m["name"] for m in metas]
 
     codes_all, per = [], {}
-    for name in targets:
-        code, etf = TARGETS[name]
-        # ETF 优先用 DataHub 映射表里登记的主 ETF
-        try:
-            m = (dh.WIDE_INDEX_ETFS or {}).get(name) or {}
-            etf = (m.get("main") or etf)
-        except Exception:
-            pass
-        comps = [str(x) for x in dh.get_index_components(code)]
-        etfname = "ETF"
-        try:
-            etfname = (dh.WIDE_INDEX_ETF_NAMES or {}).get(etf, "ETF")
-        except Exception:
-            pass
-        per[name] = dict(code=code, etf=etf, etfname=etfname, comps=comps)
+    for m in metas:
+        name, kind = m["name"], m["kind"]
+        code, etf = m["code"], m.get("etf")
+        comps = []
+        if kind == KIND_WIDE:
+            # ETF 优先用 DataHub 映射表里登记的主 ETF
+            try:
+                mm = (dh.WIDE_INDEX_ETFS or {}).get(name) or {}
+                etf = (mm.get("main") or etf)
+            except Exception:                                    # noqa: BLE001
+                pass
+            try:
+                comps = [str(x) for x in dh.get_index_components(code)]
+                if etf:
+                    try:
+                        m["etfname"] = (dh.WIDE_INDEX_ETF_NAMES or {}).get(etf, "ETF")
+                    except Exception:                            # noqa: BLE001
+                        m["etfname"] = "ETF"
+            except Exception as ex:                              # noqa: BLE001
+                print("[rmt] %s 成分股取数失败：%s" % (name, str(ex)[:80]), flush=True)
+        else:
+            # 行业/概念：成分股优先申万官网 / tushare 板块成分，取不到就跑纯指数 RC
+            try:
+                if kind == KIND_SW:
+                    mm = dh.get_sw_members(str(code))
+                    comps = [str(x) for x in mm["con_code"]]
+                elif kind == KIND_CON:
+                    mm = dh.fetch_concept_members(ths_code=str(code))
+                    comps = [str(x) for x in mm["con_code"]]
+                else:
+                    mm = dh.get_sector_members(str(code), kind="行业")
+                    comps = [str(x) for x in mm["code"]]
+            except Exception as ex:                              # noqa: BLE001
+                print("[rmt] %s 板块成分取不到（只用自身指数 RC）：%s"
+                      % (name, str(ex)[:80]), flush=True)
+                comps = []
+            comps = [c if "." in c else (c + (".SZ" if c[0] in "03" else ".SH")) for c in comps]
+        per[name] = dict(kind=kind, code=code, etf=etf, comps=comps,
+                         etfname=m.get("etfname") or "指数", typ=_rc_type(kind, code))
         codes_all += comps
 
     codes_all = list(dict.fromkeys(codes_all))
-    close = get_panel(codes_all, need_start, end, force=force)
-    close.index = close.index.astype(str)
-    ret = (close.pct_change().iloc[1:] * 100).clip(-30, 30)
+    close = get_panel(codes_all, need_start, end, force=force) if codes_all \
+        else pd.DataFrame()
+    if len(close):
+        close.index = close.index.astype(str)
+        ret = (close.pct_change().iloc[1:] * 100).clip(-30, 30)
+    else:
+        ret = pd.DataFrame()
 
     meta = {}
-    for name in targets:
+    for name in names:
         info = per[name]
-        full = rmt_series(ret, info["comps"], win=win)
-        d, last, q = metrics_now(full, show_from)
-        px = get_etf_close(info["etf"], need_start, end)
-        meta[name] = dict(info=info, full=full, d=d, last=last, q=q, px=px)
-        print("[rmt] %-8s %d 窗 %s~%s | outlier_energy=%.4f AR5=%.3f λ1/λ2=%.2f λ1/Σλ=%.3f RC=%.2f"
-              % (name, len(d), d.index[0], d.index[-1], last.oe, last.ar5, last.l1l2,
-                 last.l1s, last.rc), flush=True)
+        full = pd.DataFrame()
+        if len(ret.columns) and info["comps"]:
+            try:
+                full = rmt_series(ret, info["comps"], win=win)
+            except SystemExit:
+                full = pd.DataFrame()
+        if not len(full):
+            # 没有成分股面板 → 用标的自身 RC 的长度做骨架（RMT 那几列留空）
+            probe = rc_series_via_lib(info["typ"], info["code"])
+            if probe is None or not len(probe):
+                raise SystemExit("%s 既没有成分股面板、也没有自身行情，无法出图" % name)
+            full = pd.DataFrame(index=[str(x) for x in probe.index], data={
+                "N": 1, "thr": np.nan, "ar5": np.nan, "l1l2": np.nan,
+                "l1s": np.nan, "oe": np.nan, "oc": np.nan, "rc": np.nan})
+            print("[rmt] %s 无成分股面板 → 只画自身指数+RC" % name, flush=True)
 
-    n = len(targets)
+        # ── RC 口径统一（2026-11-17 大佬：「统一一下算法，用原来的代码不就行了？」）：
+        #   直接调 misc/engine/rcascade.py::compute()（唯一实现），只换数据源类型：
+        #     宽基/指数 index_sh|index_sz / 申万 sw / 同花顺行业 sector_ind / 概念 sector_con
+        #   拿不到该标的自有行情 → 保留成分股等权组合的 σ20/σ60（旧口径）。
+        rc_src = "comps"
+        own_rc = rc_series_via_lib(info["typ"], info["code"])
+        if own_rc is not None and len(own_rc):
+            full = full.copy()
+            full["rc"] = own_rc["RC"].reindex(full.index).ffill()
+            rc_src = "own"
+        else:
+            print("[rmt] %s 自身行情不可用，RC 回退成分股等权组合" % name, flush=True)
+
+        d, last, q = metrics_now(full, show_from)
+        if info.get("etf"):
+            px = get_etf_close(info["etf"], need_start, end)
+        else:
+            px = own_close_via_lib(info["typ"], info["code"])
+            px = px[px.index >= need_start] if len(px) else px
+        meta[name] = dict(info=info, full=full, d=d, last=last, q=q, px=px, rc_src=rc_src)
+        print("[rmt] %-8s %d 窗 %s~%s | outlier_energy=%.4f AR5=%.3f λ1/λ2=%.2f λ1/Σλ=%.3f RC=%.2f (%s)"
+              % (name, len(d), d.index[0], d.index[-1], last.oe, last.ar5, last.l1l2,
+                 last.l1s, last.rc, rc_src), flush=True)
+
+    n = len(names)
     ncol = cols or 1        # 默认纵向堆叠：并排会把画布拉宽 → 字被同比缩小
                             # 想要并排就显式给 --cols 2
     ncol = max(1, min(ncol, n))
@@ -519,7 +723,8 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
         (RED,    "L1/L2（右外轴·红）：第一与第二特征值之比，越大表示抱团越集中"),
         (GREEN,  "AR5（右轴·绿）：前 5 个特征值之和 ÷ 前 50 个之和"),
         (PURPLE, "L1/SUM（右轴·紫）：第一大特征值 ÷ 前 50 个之和，与 AR5 同分母"),
-        (ORANGE, "RC（右轴·橙）：20 日组合波动 ÷ 60 日组合波动（波动率级联比）"),
+        (ORANGE, "RC（右轴·橙）：直接调 rcascade 口径的 σ20/σ60；优先标的自身行情，"
+                  "取不到才用成分股等权（标题里会标）"),
     ]
     lh = 0.62 * FSZ                               # 每行高度（英寸，随字号放大）
     foot_h = lh * len(foot_lines) + 1.05          # 图例区总高
@@ -535,18 +740,20 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
                           bottom=(foot_h / fig_h), hspace=0.36, wspace=0.40,
                           height_ratios=heights)
 
-    for idx, name in enumerate(targets):
+    for idx, name in enumerate(names):
         m = meta[name]
         r0 = (idx // ncol) * 2
         c0 = idx % ncol
         draw_rmt_block(fig, gs, r0, c0, name, m["d"], m["last"], m["q"],
                        m["px"], m["last"].thr, show_from,
-                       m["info"]["etf"], m["info"]["etfname"], win)
+                       m["info"].get("etf") or "", m["info"].get("etfname") or "指数",
+                       win, rc_src=m.get("rc_src", "comps"),
+                       kind=m["info"].get("kind"))
 
     title = ("RMT + RC 联合监控图 ｜ %d 日滚动窗口 ｜ %s → 现在"
              % (win, datetime.strptime(show_from, "%Y%m%d").strftime("%Y-%m-%d")))
     if n > 1:
-        title += " ｜ " + " · ".join(targets)
+        title += " ｜ " + " · ".join(names)
     fig.suptitle(title, fontsize=24*FSZ if n <= 2 else 21, color="#e2e8f0",
                  y=1 - 0.26 / fig_h)
 
@@ -564,7 +771,7 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
 
     # ---- 最后一行：各标的历史分位 ----
     foot2 = []
-    for name in targets:
+    for name in names:
         q = meta[name]["q"]
         foot2.append("%s　outlier_energy %.0f%% ｜ AR5 %.0f%% ｜ L1/L2 %.0f%% ｜ "
                      "L1/SUM %.0f%% ｜ RC %.0f%%"
@@ -637,7 +844,9 @@ def main(argv=None):
         description="RMT + RC 联合监控图（单图/多图）+ 分位告警")
     ap.add_argument("--targets", "--target", dest="targets",
                     default="沪深300,科创50",
-                    help="逗号分隔，如 沪深300,科创50；也认 hs300/500/1000/创业板/科创")
+                    help="逗号分隔：宽基名（沪深300/中证500/中证1000/创业板指/科创50/上证50，"
+                         "也认 hs300/500/1000/创业板/科创）、申万行业（如 半导体）、"
+                         "同花顺行业/概念（如 白酒、稀土永磁）、或 6 位指数代码")
     ap.add_argument("--out", default=None, help="输出 png 路径（默认 reports/charts/rmt/...）")
     ap.add_argument("--win", type=int, default=60, help="滚动窗口天数（默认 60）")
     ap.add_argument("--start", default="20260601", help="展示起始日 YYYYMMDD（默认 20260601）")
@@ -655,15 +864,16 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     raw = [x.strip() for x in str(a.targets).replace("，", ",").split(",") if x.strip()]
-    targets = []
+    metas, names2 = [], []
     for x in raw:
-        n = _resolve_target(x)
-        if n not in targets:
-            targets.append(n)
-    if not targets:
+        m = resolve_any_target(x)
+        if m["name"] not in names2:
+            names2.append(m["name"])
+            metas.append(m)
+    if not metas:
         raise SystemExit("至少要一个标的")
 
-    slug = "_".join(targets) if len(targets) <= 3 else "multi%d" % len(targets)
+    slug = "_".join(names2) if len(names2) <= 3 else "multi%d" % len(names2)
     out = a.out or os.path.join(WS, "reports", "charts", "rmt",
                                 "rmt_rc_%s_%s.png" % (slug, a.start))
 
@@ -673,12 +883,12 @@ def main(argv=None):
     chart = None
     meta = None
     if not a.no_chart:
-        chart, meta = render(targets, out, win=a.win, show_from=a.start,
+        chart, meta = render(metas, out, win=a.win, show_from=a.start,
                              end=a.end, cols=a.cols, dpi=a.dpi, force=a.force,
                              lookback=a.lookback)
     else:
         # 只算告警：复用 render 的数据流程但不落图
-        chart, meta = render(targets, out, win=a.win, show_from=a.start,
+        chart, meta = render(metas, out, win=a.win, show_from=a.start,
                              end=a.end, cols=a.cols, dpi=a.dpi, force=a.force,
                              lookback=a.lookback)
 
