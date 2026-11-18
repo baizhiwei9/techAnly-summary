@@ -57,6 +57,13 @@ from datetime import datetime, timedelta
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (sys.path / net_guard / 中文字体 / Agg)
+from charts.rmt import (  # noqa: F401  统一 RMT 算法源（2026-11-18）
+    ar5,
+    correlation_matrix,
+    eigen_decompose,
+    mp_bounds,
+    volatility_ratio,
+)
 
 import numpy as np
 import pandas as pd
@@ -323,23 +330,21 @@ def rmt_series(ret, comps, win=60):
         if w.shape[1] < 20:
             continue
         w = w.fillna(0.0)
-        C = np.nan_to_num(np.asarray(np.corrcoef(w.values.T), float))
-        np.fill_diagonal(C, 1.0)
-        ev = np.sort(np.linalg.eigvalsh(C))[::-1]
+        C = correlation_matrix(w.values)          # 相关矩阵（去均值标准化）
+        ev, _ = eigen_decompose(C)                # 降序特征值
         n = len(ev)
         s50 = ev[:min(50, n)].sum()
-        thr = (1 + np.sqrt(n / win)) ** 2
+        thr, _ = mp_bounds(n / win)               # MP 上界 (1+√(N/T))²
         out = ev[ev > thr]
         port = w.mean(axis=1)
-        v20, v_all = port.iloc[-20:].std(), port.std()
         rows.append(dict(
             date=P.index[i], N=n, thr=thr,
-            ar5=ev[:5].sum() / s50,
+            ar5=ar5(ev, top=5, denom=50),
             l1l2=ev[0] / max(ev[1], 1e-9),
             l1s=ev[0] / s50,
             oe=out.sum() / n,                     # outlier_energy
             oc=int(len(out)),
-            rc=(v20 / v_all) if v_all > 0 else np.nan,
+            rc=volatility_ratio(port.values, short=20),
         ))
     if not rows:
         raise SystemExit("窗口不足，算不出 RMT（检查面板长度 / 成分股覆盖）")
@@ -413,17 +418,16 @@ def rmt_series_fast(ret, comps, win=60):
         sd = w.std(axis=0, ddof=1)
         sd[sd < 1e-12] = 1e-12
         Z = (w - w.mean(axis=0)) / sd
-        sv = np.linalg.svd(Z, compute_uv=False)
+        sv = np.linalg.svd(Z, compute_uv=False)   # 快版特征分解（SVD，等价 eigh(C)）
         ev = np.sort(sv ** 2 / (win - 1))[::-1]
         s50 = ev[:min(50, n)].sum()
-        thr = (1 + np.sqrt(n / win)) ** 2
+        thr, _ = mp_bounds(n / win)               # MP 上界 (1+√(N/T))²
         out = ev[ev > thr]
         port = w.mean(axis=1)
-        v20, vall = port[-20:].std(ddof=1), port.std(ddof=1)
-        rows.append(dict(N=n, thr=thr, ar5=ev[:5].sum() / s50,
+        rows.append(dict(N=n, thr=thr, ar5=ar5(ev, top=5, denom=50),
                          l1l2=ev[0] / max(ev[1], 1e-9), l1s=ev[0] / s50,
                          oe=out.sum() / n, oc=int(len(out)),
-                         rc=(v20 / vall) if vall > 0 else np.nan))
+                         rc=volatility_ratio(port, short=20)))
         idx.append(dates[i])
     if not rows:
         raise SystemExit("窗口不足，算不出 RMT（面板长度 / 成分股覆盖不够）")

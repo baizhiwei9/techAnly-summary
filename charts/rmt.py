@@ -7,7 +7,7 @@
 口径（2026-11-18 定稿，与大佬硬约束一致）：
   1. 相关矩阵构建      correlation_matrix()
   2. 特征值分解 eigh    eigen_decompose()
-  3. MP 边界           mp_bounds()          Q = T/N = 60/N
+  3. MP 边界           mp_bounds()          Q = N/T（经典 MP，如 50/60=0.833）
   4. 谱隙              spectral_gap()       gap = λ1 − λ2
   5. 谱熵              spectral_entropy()   H = −Σ p_i·ln(p_i)，p_i = λi/Σλ（可归一化）
   6. 参与率            participation_ratio()  PR_k = (Σ v²)² / Σ v⁴ = 1/IPR_k
@@ -148,12 +148,13 @@ def mp_bounds(Q: float) -> Tuple[float, float]:
     """Marchenko–Pastur 边界（假设 σ²=1 标准化）。
 
     Args:
-        Q: 观测/资产比 Q = T/N（大佬口径，如 T=60、N=50 → Q=1.2）。
+        Q: 资产/观测比 Q = N/T（经典 MP 口径，如 N=50、T=60 → Q=0.833）。
+           与库内 charts/rmt_rc.py 的 `(1+√(N/T))²` 阈值一致。
 
     Returns:
         (lambda_max_mp, lambda_min_mp) = ((1+√Q)², (1−√Q)²)。
 
-    注：Q>1（N<T）时 √Q>1，下界 (1−√Q)² 仍为小正数，MP 体量集中在
+    注：N<T 时 Q<1，下界 (1−√Q)² 为小正数，MP 体量集中在
     [λ_min, λ_max]；市场模式 λ1 通常远超 λ_max。
     """
     Q = float(Q)
@@ -289,8 +290,8 @@ def volatility_ratio(port_returns, short: int = 20) -> float:
     r = r[np.isfinite(r)]
     if r.size < 3:
         return float("nan")
-    s_all = float(np.nanstd(r))
-    s_short = float(np.nanstd(r[-int(short):])) if r.size >= short else s_all
+    s_all = float(np.nanstd(r, ddof=1))
+    s_short = float(np.nanstd(r[-int(short):], ddof=1)) if r.size >= short else s_all
     return s_short / s_all if s_all > 1e-12 else float("nan")
 
 
@@ -309,7 +310,7 @@ def rmt_window_metrics(
 
     Returns:
         dict，含：
-          N, T, Q                    资产数 / 观测数 / Q=T/N
+          N, T, Q                    资产数 / 观测数 / Q=N/T
           mp_max, mp_min             MP 上、下边界
           lam1, lam2, lam1_share     最大、次大特征值及 λ1 能量占比
           gap                        λ1 − λ2（谱隙）
@@ -329,7 +330,7 @@ def rmt_window_metrics(
     pr = participation_ratio(evecs)
     ipr = inverse_participation_ratio(evecs)
 
-    Q = T / max(N, 1)
+    Q = N / max(T, 1)
     lam_max, lam_min = mp_bounds(Q)
     lam1 = float(evals[0]) if evals.size else float("nan")
     lam2 = float(evals[1]) if evals.size > 1 else float("nan")
