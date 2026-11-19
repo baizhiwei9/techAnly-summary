@@ -14,6 +14,7 @@
   · 相关矩阵 → 相关距离 → UMAP 2D          （MT.umap_embed）
   · 相关网络 → Ollivier-Ricci 曲率           （MT.ollivier_ricci）
   · 连通簇 Betti_0 / 闭环 Betti_1 / 结构分    （MT.corr_manifold_inputs / MT.hermer2_score）
+  · Betti 连通簇分组（β0/β1 口径的子结构关系）  （本文件 _betti_components，面板⑥）
   · 趋势层（含方向）                          （MT.trend_layer）
 
 多空判定规则（写死、可复现）：
@@ -89,7 +90,7 @@ GRIDC = GRID
 
 # ───────────── 版面常量 ─────────────
 DEFAULT_W = 20.5        # 画布宽（英寸）——5 个面板并排需要更宽
-ROW_H = 7.0             # 每个标的占一行（结论条 + 5 个面板）的高度（英寸）
+ROW_H = 10.0            # 每个标的占一行（结论条 + ①~⑤ 五个面板 + ⑥ Betti 分组条）的高度（英寸）
 DPI = 104
 FS = dict(
     sub_name=30, sub_label=21, struct=18.5, detail=16.0,
@@ -121,6 +122,30 @@ def panel_from_csv_dir(dirpath, codes, n_days=61):
     panel = pd.concat(frames, axis=1).T          # 行=日期，列=代码
     panel = panel.dropna(axis=1, how="any")
     return list(panel.index), panel
+
+def _betti_components(corr, c_min):
+    """Betti 口径下的「连通簇」分组（与 β0 同阈值：corr ≥ c_min 的边连通）。
+
+    相关距离 d=√(2(1-corr)) 的 Betti 阈值 r 等价于相关阈值 c_min=1−r²/2：
+    两条边在半径 r 内相连 ⟺ 相关 ≥ c_min。返回 (comps, label)：
+      comps = 成员下标列表（按大小降序），label = 每只所属簇号。
+    """
+    n = corr.shape[0]
+    if not np.isfinite(c_min) or n == 0:
+        return [], np.zeros(n, dtype=int)
+    Gc = nx.Graph()
+    Gc.add_nodes_from(range(n))
+    iu = np.triu_indices(n, 1)
+    for i, j in zip(iu[0], iu[1]):
+        if corr[i, j] >= c_min:
+            Gc.add_edge(int(i), int(j))
+    comps = sorted(nx.connected_components(Gc), key=len, reverse=True)
+    label = np.zeros(n, dtype=int)
+    for ci, comp in enumerate(comps):
+        for i in comp:
+            label[i] = ci
+    return comps, label
+
 
 def topo_calc(close, index_code=None, days=60):
     close = close.dropna(axis=1, how="any")
@@ -159,10 +184,17 @@ def topo_calc(close, index_code=None, days=60):
 
     gt = _gap_trend(ret, diag["lab"])
 
+    # Betti 子结构：β0=连通簇（阈值半径下互不连通的组），β1=独立闭环。
+    # 与 manifold_topo 的 betti_numbers 完全同阈值，直接在相关矩阵上做连通分量。
+    betti_c_min = 1.0 - mf["thresh"] ** 2 / 2.0
+    betti_comps, betti_label = _betti_components(corr, betti_c_min)
+
     return dict(emb=emb, mom5=mom5, curv=curv, deg=deg, corr=corr, mkt=mkt,
                 trend=trend, b0=b0, b1=b1, n=len(codes), codes=codes, days=days,
                 diag=diag, gap_trend=gt, sync_abs=sync_abs,
-                agg=float(A), mom=float(M))
+                agg=float(A), mom=float(M),
+                betti_comps=betti_comps, betti_label=betti_label,
+                betti_c_min=betti_c_min)
 
 def verdict(trend, mkt):
     """明确多空结论：3 票制（近5日/近10日/vs MA60）。返回 (标签, 颜色, 明细行)。"""
@@ -547,9 +579,98 @@ def draw_umap(ax, T):
             bbox=dict(boxstyle="round,pad=0.32", fc="white", ec="#dedede", lw=1.0, alpha=0.95))
 
 
+# ═══════════════════════ 画：子结构（Betti 分组）═══════════════════════
+def draw_betti(ax, T):
+    """⑥ 子结构（Betti 分组）：β0 连通簇 + β1 闭环 —— 把「谁跟谁是一伙」画出来。
+
+    与 manifold_topo 的 betti_numbers 完全同阈值：相关距离 d=√(2(1-corr))，
+    阈值 r=d>0 的 35 分位。每个 β0 连通簇一个颜色 + 虚线外接圈，游离单股直接标名字；
+    β1 闭环数单独标注（独立方向环）。
+    """
+    emb = T["emb"]
+    codes = T["codes"]
+    names = T.get("names") or {}
+    b0, b1 = T["b0"], T["b1"]
+    comps, blabel = T["betti_comps"], T["betti_label"]
+    c_min = T["betti_c_min"]
+    ax.set_facecolor("white")
+
+    if not len(comps) or b0 < 0:
+        ax.text(0.5, 0.5, "Betti 不可算（成分不足 / ripser 失败）",
+                transform=ax.transAxes, ha="center", va="center",
+                fontsize=FS["legend"], color=MUTED)
+        ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        return
+
+    # 点：按连通簇着色（簇色沿用 BLOC_CMAP，但含义是 Betti 连通簇，靠标题/图例区分）
+    cols = [BLOC_CMAP[int(blabel[i]) % len(BLOC_CMAP)] for i in range(len(emb))]
+    ax.scatter(emb[:, 0], emb[:, 1], s=34, c=cols, alpha=0.92,
+               edgecolors="white", linewidths=0.7, zorder=3)
+
+    # 虚线外接圈 + 簇标签（多成员簇画圈，游离单股直接标名字）
+    for ci, comp in enumerate(comps):
+        idx = sorted(comp)
+        col = BLOC_CMAP[ci % len(BLOC_CMAP)]
+        if len(idx) == 1:
+            i = idx[0]
+            ax.annotate(names.get(codes[i], codes[i]), (emb[i, 0], emb[i, 1]),
+                        textcoords="offset points", xytext=(0, 11),
+                        fontsize=FS["legend"] - 2.5, color=col, ha="center", weight="bold",
+                        zorder=6,
+                        path_effects=[matplotlib.patheffects.withStroke(linewidth=3.0,
+                                                                        foreground="white")])
+            continue
+        pts = emb[idx]
+        c = pts.mean(0)
+        r = max(np.ptp(pts[:, 0]), np.ptp(pts[:, 1])) * 0.55 + 0.16
+        ax.add_patch(plt.Circle(c, r, color=col, alpha=0.05, lw=1.5, ls="--",
+                                fill=True, zorder=0))
+        ax.text(c[0], c[1] + r + 0.12, "簇%d · %d只" % (ci + 1, len(idx)),
+                fontsize=FS["legend"] - 2.0, color=col, ha="center", weight="bold",
+                zorder=7,
+                path_effects=[matplotlib.patheffects.withStroke(linewidth=3.0,
+                                                                foreground="white")])
+
+    # 底部：β0/β1 含义（子结构关系的硬数字）
+    ax.text(0.5, 0.015,
+            "β0 连通簇 = %d（分裂成 %d 伙）｜β1 闭环 = %d（内部独立方向环）｜阈值 corr≥%.2f"
+            % (b0, b0, b1, c_min),
+            transform=ax.transAxes, ha="center", va="bottom",
+            fontsize=FS["legend"] - 3.5, color="#0d2b5e", weight="bold",
+            bbox=dict(boxstyle="round,pad=0.32", fc="white", ec="#d5d5d5", lw=1.0,
+                      alpha=0.95), zorder=8)
+
+    # 图例：每个连通簇的成员（簇太多时只列前 6 个，其余并入「其他」）
+    handles = []
+    for ci, comp in enumerate(comps[:6]):
+        idx = sorted(comp)
+        top = "、".join(names.get(codes[i], codes[i]) for i in idx[:2])
+        if len(idx) > 2:
+            top += "…"
+        handles.append(Line2D([], [], marker="o", ls="", ms=9,
+                              mfc=BLOC_CMAP[ci % len(BLOC_CMAP)], mec="white",
+                              label="簇%d（%d）：%s" % (ci + 1, len(idx), top)))
+    if len(comps) > 6:
+        handles.append(Line2D([], [], marker="o", ls="", ms=9, mfc="none", mec="none",
+                              label="…共 %d 簇" % len(comps)))
+    if handles:
+        ax.legend(handles=handles, loc="lower left", frameon=True, framealpha=0.92,
+                  fontsize=FS["legend"] - 3.0, handletextpad=0.35, borderpad=0.5,
+                  edgecolor="#e0e0e0", ncol=1)
+
+    ax.margins(0.14)
+    ax.set_xticks([]); ax.set_yticks([])
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+    ax.set_title("⑥ 子结构（Betti 分组）· β0＝几伙人 / β1＝几个独立闭环",
+                 fontsize=FS["p_title"], color=INK, pad=8, loc="left", weight="bold")
+
+
 # ═══════════════════════ 行 ═══════════════════════
 def draw_row(fig, sub, name, T):
-    """一行＝结论条 + 5 个面板：① UMAP ② 阵营块图 ③ 刻度尺 ④ 联动网络 ⑤ 阵营内外走势"""
+    """一行＝结论条 + 5 个面板 + ⑥ Betti 分组条：① UMAP ② 阵营块图 ③ 刻度尺 ④ 联动网络 ⑤ 阵营内外走势"""
     s_word, s_col, o_word, o_col, adv, detail = verdict_line(T)
 
     axh = fig.add_subplot(sub[0, :])
@@ -578,6 +699,7 @@ def draw_row(fig, sub, name, T):
     draw_gauge(fig.add_subplot(sub[1, 2]), T)
     draw_network(fig.add_subplot(sub[1, 3]), T)
     draw_gap_trend(fig.add_subplot(sub[1, 4]), T)
+    draw_betti(fig.add_subplot(sub[2, :]), T)
 
 
 _NAMES_CACHE = {}
@@ -791,7 +913,7 @@ def build(out=None, panel_dir=None, days=60, targets=None):
     draw_quadrant(fig, outer[0], rows)
 
     for i, (name, T) in enumerate(rows):
-        sub = outer[i + 1].subgridspec(2, 5, height_ratios=[0.26, 1.0],
+        sub = outer[i + 1].subgridspec(3, 5, height_ratios=[0.26, 1.0, 0.58],
                                        width_ratios=[1.16, 0.96, 0.84, 1.20, 0.96],
                                        hspace=0.13, wspace=0.16)
         draw_row(fig, sub, name, T)
@@ -802,7 +924,7 @@ def build(out=None, panel_dir=None, days=60, targets=None):
     fig.text(0.020, 1 - 0.86 / fig_h,
              "先看顶上四象限定「机会还是风险」，再逐行看「结构到底撕裂到什么程度」："
              "① UMAP 结构位置 ② 阵营块图（对角=同伙/非对角=不同伙） ③ 聚合度刻度尺 "
-             "④ 联动网络（里奇曲率+里奇流） ⑤ 阵营内外相关走势　"
+             "④ 联动网络（里奇曲率+里奇流） ⑤ 阵营内外相关走势 ⑥ 子结构（Betti 分组：β0/β1 连通簇）　"
              "（窗口默认 60，可用 --days 20/40/60/120 切换）",
              fontsize=FS["fig_note"], color=MUTED, va="top")
     fig.text(0.020, 0.20 / fig_h,
