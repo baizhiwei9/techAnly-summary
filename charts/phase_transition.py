@@ -5,18 +5,32 @@
 数据一律经 DataHub 统一入口获取（其内部 tushare > akshare > web 逐级降级），
 本模块不直连任何单一数据源，也不在本地重算 DataHub 已有的口径。
 
-指标（对标的成分股日收益做滚动窗口相关矩阵并特征分解）：
+指标（2026-11-19 扩充，算法在 charts/phase_signals.py）
+-----------------------------------------------------------
+截面口径（成分股日收益滚动相关矩阵特征分解）：
   M(t)  = λ1 / N                 序参量（最大特征值占比＝集体模式强度）
   ξ(t)  = ρ_avg / (1 - ρ_avg)    关联长度（跨股票共振强度）
   AR(1) = corr(M_t, M_{t-1})     临界慢化（滚动 ar_window 个 M 值）
+  M5    = λ1 / N（去当日截面共同因子）  吸收比率 Kritzman —— 与 M 口径不同，别混
+
+时序口径（等权组合收益，charts/phase_signals.py）：
+  M1    = AR(1) of [log(等权价) − MA20]   恢复力衰减，阈值 > 0.6 连续 3 日
+  M2    = σ20(t) − σ20(t−20)，对比 σ 自身的 20 日标准差   方差放大，阈值 3σ
+  M3    = σ / λ²（λ 由 log ρ_k ~ k 斜率）   PSI 结构脆弱度，阈值破 120 日 P90
+
+双通道：
+  通道A = M1 AND M2   → 抓广谱顶（7 月型）
+  通道B = M5 破 P90 且收盘 > MA60 → 抓抱团顶（10 月型）
 
 注：λ1/λ2 与谱熵仍参与计算并打印，供命令行核对；不再单独出图（大佬 2026-11-17 定稿：
     删掉 RMT 那一栏，M 与 ξ 合并成一张双轴图）。
 
-三栏结构：
+五栏结构（2026-11-19 由三栏扩充）：
   ① 价格 + 成交量（单标的）／归一化价格对比（多标的）
   ② M（左轴实线）与 ξ（右轴虚线）合并
-  ③ AR(1)，并与 ② 一并在突破 90 分位的区间铺紫色底
+  ③ AR(1) of M，与 ② 一并在突破 90 分位区间铺紫底
+  ④ M1 AR(1) 恢复力 + M2 Δσ（双轴），橙底 = 通道A 亮
+  ⑤ M5 吸收比率 λ1/N + 120 日 P90 阈值，青底 = 通道B 亮
 
 用法：
   python3 charts/phase_transition.py --index 000688 --price-code 588000.SH
@@ -201,6 +215,75 @@ def compute_metrics(closes, window, ar_window):
         a, b = w[:-1], w[1:]
         ar.append(float(np.corrcoef(a, b)[0, 1]) if np.std(a) > 0 and np.std(b) > 0 else np.nan)
     m["ar1"] = ar
+
+    # ===== 2026-11-19 新增：接入 charts.phase_signals 的相变四指标 =====
+    # 原面板只有 M / xi / AR(1) of M（全是截面口径）。
+    # 这里补齐时序口径三项 + 去因子吸收比率一项：
+    #   M1 AR(1) 恢复力衰减   —— log(等权组合价)-MA20 残差的一阶自相关
+    #   M2 dsig 方差放大      —— sigma20(t) - sigma20(t-20)，对比 sigma 自身的 20 日标准差
+    #   M3 PSI 结构脆弱度     —— sigma / lambda^2，lambda 由 log(rho_k)~k 斜率给出
+    #   M5 吸收比率 lambda1/N —— 先减当日截面均值（去共同因子）再算，与上面 M 不同口径
+    try:
+        from charts.phase_signals import (ar1_resilience, ar1_alert, sigma_delta,
+                                          dsig_alert, ar_lambda, psi_fragility,
+                                          psi_alert, absorption_ratio_series,
+                                          absorption_alert)
+
+        # 时序指标在**全样本**上算（需要历史热身），最后按 m["date"] 对齐切片，
+        # 否则 m 只有 window 之后的行数，长度对不上（2026-11-19 踩过）。
+        eq_series = px.mean(axis=1, skipna=True).ffill()
+        eq_close_full = eq_series.to_numpy(float)
+        eq_ret_full = np.diff(np.log(eq_close_full), prepend=np.nan)
+        pos_of = {str(k): i for i, k in enumerate(eq_series.index)}
+        tgt_pos = [pos_of.get(d.strftime("%Y%m%d"), -1) for d in m["date"]]
+        if any(p_ < 0 for p_ in tgt_pos):
+            raise ValueError("日期对不齐，跳过相变四指标")
+        # 在全样本上算完再按目标日期取（保证 60 日窗口 + 120 日分位有足够热身）
+        ai = np.asarray(tgt_pos, int)
+
+        ar1_full = ar1_resilience(eq_ret_full, eq_close_full, "resid")
+        ar1_a_full = ar1_alert(ar1_full)
+        m["m1_ar"] = ar1_full[ai]
+        m["m1_alert"] = ar1_a_full[ai].astype(int)
+
+        sig_f, sd_f, dsig_f = sigma_delta(eq_ret_full)
+        ds_a_f = dsig_alert(dsig_f, sd_f)
+        m["m2_sig"] = sig_f[ai]
+        m["m2_dsig"] = dsig_f[ai]
+        m["m2_alert"] = ds_a_f[ai].astype(int)
+
+        lam_f = ar_lambda(eq_ret_full)
+        psi_f = psi_fragility(sig_f, lam_f)
+        psi_thr_f, psi_a_f = psi_alert(psi_f)
+        m["m3_lam"] = lam_f[ai]
+        m["m3_psi"] = psi_f[ai]
+        m["m3_psi_thr"] = psi_thr_f[ai]
+        m["m3_alert"] = psi_a_f[ai].astype(int)
+
+        # M5：吸收比率（去当日截面共同因子，2026-11-02 本机口径）
+        ret_panel = ret.dropna(axis=1, thresh=int(len(ret) * 0.9)).dropna()
+        if ret_panel.shape[1] >= 15:
+            abs_ser = absorption_ratio_series(ret_panel, win=window)
+            date8 = [d.strftime("%Y%m%d") for d in m["date"]]
+            # 收盘价直接用等权序列对齐（已在上面按 m 的日期切片）
+            close_aligned = eq_close_full[ai]
+            m5_a, m5_v, m5_thr = absorption_alert(abs_ser, date8, close_aligned)
+            m["m5_ar"] = m5_v
+            m["m5_thr"] = m5_thr
+            m["m5_alert"] = m5_a
+
+        # 双通道：A = M1 AND M2（抓广谱顶）| B = M5（抓抱团顶）
+        if "m1_alert" in m and "m2_alert" in m:
+            m["chA"] = (m["m1_alert"].astype(bool) & m["m2_alert"].astype(bool)).astype(int)
+        if "m5_alert" in m:
+            m["chB"] = m["m5_alert"].astype(int)
+        if "chA" in m and "chB" in m:
+            m["dual"] = ((m["chA"] == 1) | (m["chB"] == 1)).astype(int)
+            m["dual_lv"] = np.where((m["chA"] == 1) & (m["chB"] == 1), 2,
+                                    np.where(m["dual"] == 1, 1, 0)).astype(int)
+    except Exception as _e:  # 相变四指标失败不能拖垮原面板
+        print("    [phase] 相变四指标计算失败（M/xi/AR1 不受影响）: %s" % str(_e)[:100])
+
     return m
 
 
@@ -308,8 +391,9 @@ def _fmt(d):
 
 def plot_panel(targets, start, end, out_path):
     multi = len(targets) > 1
-    fig, axes = plt.subplots(3, 1, figsize=(18, 18), sharex=True,
-                             gridspec_kw={"height_ratios": [1.15, 1, 1]})
+    # 2026-11-19：从 3 栏扩到 5 栏，后两栏是接入 charts.phase_signals 的相变四指标
+    fig, axes = plt.subplots(5, 1, figsize=(18, 26), sharex=True,
+                             gridspec_kw={"height_ratios": [1.15, 1, 1, 1, 1]})
 
     # ---------- ① 价格 ----------
     ax1 = axes[0]
@@ -415,16 +499,72 @@ def plot_panel(targets, start, end, out_path):
     if multi:
         ax3.legend(loc="upper left", fontsize=13, ncol=2, framealpha=0.85)
 
-    ax3.xaxis.set_major_locator(mdates.MonthLocator())
-    ax3.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
-    ax3.set_xlabel("日期", fontsize=16)
+    # ---------- ④ 相变时序三指标（M1 AR(1) / M2 Δσ / M3 PSI）----------
+    ax4 = axes[3]
+    have_sig = ("m1_ar" in m.columns) if not multi else True
+    if not multi and have_sig:
+        mm = m
+        ax4.plot(mm["date"], mm["m1_ar"], color="#2e7d32", lw=1.8, label="M1 AR(1) 恢复力")
+        ax4.axhline(0.6, color="#2e7d32", ls=":", lw=1.2)
+        ax4.text(mm["date"].iloc[0], 0.6, " AR(1) 阈值 0.60", color="#2e7d32",
+                 fontsize=10.5, va="bottom")
+        ax4b = ax4.twinx()
+        ax4b.plot(mm["date"], mm["m2_dsig"], color="#e65100", lw=1.2, alpha=0.85,
+                  label="M2 Δσ（右轴）")
+        ax4b.axhline(0, color="#e65100", lw=0.6, alpha=0.5)
+        for s_, e_ in segments_by_pos((mm["chA"] == 1).values, mm["date"].dt.to_pydatetime()):
+            ax4.axvspan(s_, e_, color="#ffcc80", alpha=0.5)
+        ax4.set_ylabel("M1 AR(1)", fontsize=15, color="#2e7d32")
+        ax4b.set_ylabel("M2 Δσ", fontsize=15, color="#e65100")
+        ax4.set_title("相变时序通道A：M1 AR(1) 恢复力衰减（左轴） + M2 Δσ 方差放大（右轴）",
+                      fontsize=18, pad=26)
+        ax4.text(0.5, 1.005,
+                 "橙底 = 通道A 亮（M1 且 M2 同时触发，抓广谱顶）　⚠️ 2026 年样本实测该通道零信息甚至反向",
+                 transform=ax4.transAxes, fontsize=12.5, color="#8a4b00", ha="center", va="bottom")
+        ax4.grid(alpha=0.25)
+        lines1, labels1 = ax4.get_legend_handles_labels()
+        lines2, labels2 = ax4b.get_legend_handles_labels()
+        ax4.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=12,
+                   framealpha=0.85)
+    else:
+        ax4.set_ylabel("M1 / M2", fontsize=15)
+        ax4.set_title("相变时序通道A（多标的模式暂只画单标的）", fontsize=18, pad=26)
+        ax4.grid(alpha=0.25)
+
+    # ---------- ⑤ 通道B 吸收比率 λ1/N ----------
+    ax5 = axes[4]
+    if not multi and "m5_ar" in m.columns and m["m5_ar"].notna().any():
+        ax5.plot(m["date"], m["m5_ar"], color="#00695c", lw=1.8, label="M5 吸收比率 λ1/N（去共同因子）")
+        ax5.plot(m["date"], m["m5_thr"], color="#b71c1c", ls="--", lw=1.2, label="120 日 P90 阈值")
+        for s_, e_ in segments_by_pos((m["chB"] == 1).values, m["date"].dt.to_pydatetime()):
+            ax5.axvspan(s_, e_, color="#80cbc4", alpha=0.5)
+        ax5.set_ylabel("λ1/N", fontsize=15)
+        ax5.set_title("相变截面通道B：吸收比率 λ1/N（Kritzman，去当日共同因子，含 MA60 方向约束）",
+                      fontsize=18, pad=26)
+        ax5.text(0.5, 1.005,
+                 "青底 = 通道B 亮（破 120 日 P90 且收盘在 MA60 上，抓抱团顶）　"
+                 "⚠️ 强同步/滞后指标，顶部当天常常不亮（科创50 20260630 顶部 AR=0.210 < 0.218）",
+                 transform=ax5.transAxes, fontsize=12.5, color="#00564c", ha="center", va="bottom")
+        ax5.legend(loc="upper left", fontsize=12, framealpha=0.85)
+        ax5.grid(alpha=0.25)
+    else:
+        ax5.set_ylabel("λ1/N", fontsize=15)
+        ax5.set_title("相变截面通道B：吸收比率（多标的模式暂只画单标的）", fontsize=18, pad=26)
+        ax5.grid(alpha=0.25)
+
+    axes[-1].xaxis.set_major_locator(mdates.MonthLocator())
+    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
+    axes[-1].set_xlabel("日期", fontsize=16)
 
     fig.suptitle("%s 相变监控面板 (%s - %s)" % ("、".join(t.name for t in targets),
                                               _fmt(start), _fmt(end)), fontsize=22, y=0.996)
     fig.text(0.5, 0.006,
              "判读总则（已按 2026-06~11 科创50 样本校正方向）：风险＝M↓ + ξ↓（集体模式瓦解）且 AR(1) 处相对高位；"
              "机会＝M↑ + ξ↑ 且谱熵抬升。\n"
-             "M 与 ξ 近共线（ρ≈0.91），只能当一个信号读；紫底为对应指标突破 90 分位。数据：DataHub。",
+             "M 与 ξ 近共线（ρ≈0.91），只能当一个信号读；紫底为对应指标突破 90 分位。数据：DataHub。\n"
+             "⚠️ 2026-11-19 全样本实测：相变族（M1 AR(1)/Δσ/PSI/吸收比率）对 2026-07 大跌【无预警能力】——"
+             "通道A 亮灯后 20 日均值 +1.6%、通道B 亮灯后 +0.3%（非重叠检验）。"
+             "可作结构状态描述，不可当交易信号。真正提前的是位置类指标（dev60 / VWAP 偏离）。",
              ha="center", va="bottom", fontsize=13, color="#333333", linespacing=1.6)
     fig.tight_layout(rect=[0, 0.045, 1, 0.985])
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)

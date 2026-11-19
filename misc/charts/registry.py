@@ -17,6 +17,19 @@
 
 CHARTS = [
     dict(
+        name="phase-transition",
+        keywords=["相变监控", "相变图", "临界慢化", "序参量", "吸收比率图", "画相变"],
+        desc="相变监控面板（五栏）：①价格 ②序参量 M + 关联长度 ξ ③AR(1) of M "
+             "④M1 AR(1) 恢复力 + M2 Δσ（通道A）⑤M5 吸收比率 λ1/N（通道B）。"
+             "算法在 charts/phase_signals.py。⚠️ 2026-11-19 实测：相变族对 2026-07 大跌无预警能力，"
+             "只能当结构状态描述，不可当交易信号",
+        module="charts/phase_transition.py",
+        default_out="reports/charts/phase_transition",
+        out_kind="file",
+        kind="script",
+        entry=None,
+    ),
+    dict(
         name="chan-fractal",
         keywords=["缠论分型版", "分型版K线", "画缠论图", "缠论图"],
         desc="缠论·分型版单标的出图（包含→分型→笔→中枢→背驰，K线+MACD）",

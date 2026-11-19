@@ -10,3 +10,4 @@ chanlun/multiscale/reports/
 *.orig
 *.rej
 reports/
+charts/*.bak.*
