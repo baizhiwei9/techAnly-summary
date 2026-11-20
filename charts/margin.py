@@ -278,32 +278,46 @@ def plot(d: pd.DataFrame, out: str, title_extra: str = "") -> str:
     ax3.legend(loc="upper left", ncol=3, fontsize=9)
     ax3.grid(alpha=0.2)
 
-    # ---------- ④ 两融账户存量：个人投资者 + 有融资融券负债（同量纲，万户/万人）----------
-    # 大佬 2026-11-20 指定：这一格就要这两条线 —— 个人投资者数量、有融资融券负债的投资者，
-    # 单位统一成「万」，同一根纵轴，不再混机构（名）那种差 4 个量级的序列。
+    # ---------- ④ 两融账户存量：个人投资者 + 有融资融券负债 ----------
+    # 大佬 2026-11-20：「个人投资者数量、有融资融券负债的数量」放这一格。
+    # 两者量级差 4 倍（847.9 万户 vs 198.8 万人），若共用一根轴、且轴范围被
+    # 强行拉宽（之前下延到 100），两条线会各自压成一条几乎水平的直线，
+    # 完全看不出形态 —— 所以用**双轴、各自自适应范围**（对齐大佬发来的图：
+    # 左轴 ~780-850，右轴 ~185-205），颜色与左右轴一一对应。
     ax4 = fig.add_subplot(gs[3], sharex=ax1)
-    # 两条线同量纲（万）：个人投资者「万户」、有融资融券负债「万人」
-    # —— 大佬 2026-11-20 指定这一格就画这两条，同一根纵轴直接可比。
     ax4.plot(x, d["n_indiv"], color="#1f6fb4", lw=1.9,
-             label="个人投资者数量（万户）")
-    ax4.plot(x, d["n_debt"], color="#c0392b", lw=1.9,
-             label="有融资融券负债的投资者（万人）")
-    ax4.fill_between(x, d["n_debt"], d["n_indiv"], color="#1f6fb4", alpha=0.09, lw=0)
-    ax4.set_ylabel("两融账户\n（万户 / 万人）", **_CN)
-    # 纵轴下限留白，避免负债线贴着坐标轴看不出波动
-    _lo = float(min(d["n_debt"].min(), d["n_indiv"].min()))
-    ax4.set_ylim(max(0.0, _lo * 0.55), float(d["n_indiv"].max()) * 1.14)
-    ax4.legend(loc="upper left", ncol=2, fontsize=9.5, framealpha=0.9)
+             label="个人投资者数量（万户，左轴）")
+    ax4.set_ylabel("个人投资者\n（万户）", **_CN, color="#1f6fb4")
+    ax4.tick_params(axis="y", colors="#1f6fb4")
+
+    ax4r = ax4.twinx()
+    ax4r.plot(x, d["n_debt"], color="#c0392b", lw=1.9,
+              label="有融资融券负债的投资者（万人，右轴）")
+    ax4r.set_ylabel("有融资融券负债\n（万人）", **_CN, color="#c0392b")
+    ax4r.tick_params(axis="y", colors="#c0392b")
+
+    # 各自按自身数据留 8% 边距（不做跨轴共享范围，否则两条线都会被压平）
+    def _tight(ax, s):
+        lo, hi = float(s.min()), float(s.max())
+        pad = (hi - lo) * 0.08 or max(abs(hi) * 0.01, 1.0)
+        ax.set_ylim(lo - pad, hi + pad)
+    _tight(ax4, d["n_indiv"])
+    _tight(ax4r, d["n_debt"])
+
+    h4, l4 = ax4.get_legend_handles_labels()
+    h4r, l4r = ax4r.get_legend_handles_labels()
+    ax4.legend(h4 + h4r, l4 + l4r, loc="upper left", ncol=2, fontsize=9.5,
+               framealpha=0.9)
     ax4.grid(alpha=0.2)
 
     # 末端数值标注（对齐大佬发来的样式：「个人 847.9万户 | 有负债 198.8万人」）
     _li, _ld = d["n_indiv"].iloc[-1], d["n_debt"].iloc[-1]
-    ax4.annotate("%.1f万户" % _li, xy=(x.iloc[-1], _li), xytext=(-6, 8),
+    ax4.annotate("%.1f万户" % _li, xy=(x.iloc[-1], _li), xytext=(-6, 9),
                  textcoords="offset points", ha="right", fontsize=9,
                  color="#1f6fb4", fontweight="bold")
-    ax4.annotate("%.1f万人" % _ld, xy=(x.iloc[-1], _ld), xytext=(-6, -15),
-                 textcoords="offset points", ha="right", fontsize=9,
-                 color="#c0392b", fontweight="bold")
+    ax4r.annotate("%.1f万人" % _ld, xy=(x.iloc[-1], _ld), xytext=(-6, -15),
+                  textcoords="offset points", ha="right", fontsize=9,
+                  color="#c0392b", fontweight="bold")
     ax4.text(0.012, 0.06, "个人 %.1f万户 ｜ 有负债 %.1f万人 ｜ 负债账户占比 %.1f%%"
              % (_li, _ld, _ld / _li * 100 if _li else 0),
              transform=ax4.transAxes, fontsize=10, color="#333",

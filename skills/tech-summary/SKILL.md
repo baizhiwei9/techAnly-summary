@@ -62,7 +62,7 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 > | `misc/engine/sector_buypoint_top20.py` | 板块买点 Top20 |
 > | `misc/engine/simple_chart.py` | 单图速览 |
 > | `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60，三指数；`--chart` 出图） |
-> | `charts/margin.py` | **A股两融全景图**（融资余额+MACD(10,20,5) / 融券 / 净买入 / 账户数 / 维持担保比例）｜数据只读 **DataHub EDB `cn_market`**（`CN.EQ.MARGIN.*` 11 条，库内保留 250 天 ≈ 8 个月） |
+> | `charts/margin.py` | **A股两融全景图**（融资余额+MACD(10,20,5) / 融券 / 净买入 / 账户数 / 维持担保比例）｜数据只读 **DataHub EDB `cn_market`**（`CN.EQ.MARGIN.*` 11 条，库内保留 500 自然日 ≈340 交易日） |
 > | `chanlun/fractal/chan_smc_index.py` | 缠论·分型版（几何 + SMC 摘要） |
 > | `chanlun/fractal/chan_chart.py` | 缠论·分型版出图 |
 > | `chanlun/ma/chan_ma_trend_v2.py` | 缠论·均线版核心 |
@@ -400,7 +400,8 @@ python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直�
 | 模块 | `data_hub/edb`（category = `cn_market`） |
 | 序列（11 条） | `CN.EQ.MARGIN.BALANCE` 融资余额 / `.SHORT` 融券余额 / `.TOTAL` 两融余额 / `.BUY` 融资买入额 / `.SHORTSELL` 融券卖出额 / `.ACCT.INDIV` 个人投资者(万名) / `.ACCT.INST` 机构投资者(名) / `.ACCT.ACTIVE` 参与交易(万名) / `.ACCT.DEBT` 有负债(万名) / `.COLLATERAL` 担保物总价值 / `.RATIO` 平均维持担保比例 |
 | 抓取器 | `edb/fetchers/margin_account.py` → **只调 `core/sources/AKShareSource.fetch_margin_account_info()`**（DataHub 统一数据源，2012 至今全量）。**禁止在抓取器里 import akshare / 直连 HTTP** |
-| 保留期 | `edb/store.py::_PRUNABLE["cn_market"] = 250` 天（≈8 个月，>3 个月硬下限） |
+| 保留期 | `edb/store.py::_PRUNABLE["cn_market"] = 500` **自然日**（≈340 交易日 ≈16 个月，>3 个月硬下限） |
+| ⚠️ 单位坑 | 保留期是**自然日**，画图 `--days` 是**交易日**：250 自然日只有 168 交易日。要对齐「近 250 交易日」必须存 ≥365 自然日（2026-11-20 实测踩坑） |
 | 日更 | `bin/edb_margin_refresh.py`，cron 08:10 / 19:40（工作日，两融 T+1） |
 
 **为什么放 EDB 而不是个股两融模块**：EDB 是「日期→数值」的指标序列层，融资余额 /
