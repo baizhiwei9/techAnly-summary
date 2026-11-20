@@ -169,7 +169,7 @@ CHARTS = [
              "②融券余额 ③融资买入/偿还+单日净买入 "
              "④两融账户存量（个人投资者万户 + 有融资融券负债万人，同轴可比）"
              "⑤参与交易（万人）+机构投资者（万家）⑥平均维持担保比例+担保物总价值。"
-             "数据只读 DataHub EDB cn_market（CN.EQ.MARGIN.*，保留 250 天）。"
+             "数据只读 DataHub EDB cn_market（CN.EQ.MARGIN.*，保留 500 自然日≈340 交易日）。"
              "--days 250 默认最近 250 交易日；--json 只回数值；--refresh 先补库",
         module="charts/margin.py",
         default_out="reports/charts/margin",

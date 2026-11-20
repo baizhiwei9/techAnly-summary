@@ -371,7 +371,7 @@ python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直�
 > 说「画拓扑结构图 / 拓扑图」→ `five-topo`；说「画流形拓扑图 / 流形结构图」→ `topology-manifold`；说「画流形图」→ `topology-spd`；
 > 说「画地形图 / 黎曼地形图」→ `topology-terrain`；
 > 说「画 RMT 矩阵图 / RMT 图 / 双 Y 轴 RMT / outlier_energy」→ `rmt-rc`；
-> 说「两融图 / A股两融 / 融资融券余额 / 两融账户 / 维持担保比例」→ `margin`。
+> 说「两融图 / A股两融 / 融资融券余额 / 两融账户 / 维持担保比例 / **个人投资者数量 / 有融资融券负债**」→ `margin`。
 
 | 大佬说（关键词） | 走哪张图 | 命令 |
 |---|---|---|
@@ -381,7 +381,7 @@ python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直�
 | 画地形图 / 黎曼地形图 | 黎曼流形地形图（地形 + 持续同调条码 + 相关矩阵曲面） | `python3 misc/charts/run.py topology-terrain --target 沪深300` |
 | **画 RMT 矩阵图 / RMT 监控图 / 双 Y 轴 RMT / outlier_energy** | **RMT + RC 联合监控图**（60 日滚动窗；左内 outlier_energy、右外 λ1/λ2、右轴 AR5/λ1Σλ/RC） | `python3 misc/charts/run.py rmt-rc --targets 沪深300,科创50`<br>单图：`--targets 科创50`；五大宽基：`--targets 沪深300,中证500,中证1000,创业板指,科创50 --cols 2` |
 | 缠论图（分型版 / 均线版） | chan-fractal / chan-ma | `python3 misc/charts/run.py chan-fractal --target 中证500`<br>`python3 misc/charts/run.py chan-ma --target 中证500` |
-| **两融图 / A股两融 / 融资融券余额 / 两融账户 / 维持担保比例** | **A股两融全景图**（6 面板：①融资余额+MA5/MA20+MACD(10,20,5) ②融券余额 ③融资买入/偿还+单日净买入 ④两融账户存量（个人投资者万户 + 有融资融券负债万人）⑤参与交易+机构投资者 ⑥维持担保比例+担保物） | `python3 misc/charts/run.py margin`<br>近 500 日：`--days 500`；指定起点：`--start 2024-01-01`；只回数值：`--json` |
+| **两融图 / A股两融 / 融资融券余额 / 两融账户 / 个人投资者数量 / 有融资融券负债 / 维持担保比例** | **A股两融全景图**（6 面板：①融资余额+MA5/MA20+MACD(10,20,5) ②融券余额 ③融资买入/偿还+单日净买入 ④两融账户存量（个人投资者万户 + 有融资融券负债万人）⑤参与交易+机构投资者 ⑥维持担保比例+担保物） | `python3 misc/charts/run.py margin`<br>近 500 日：`--days 500`；指定起点：`--start 2024-01-01`；只回数值：`--json` |
 
 > **「拓扑结构图」≠「流形图」，这两句分得很清，别串：**
 > - 「拓扑结构图 / 拓扑图」→ `five-topo`（拓扑结构总览：UMAP + 里奇曲率 + 撕裂/聚集）
@@ -425,6 +425,9 @@ AKShare 接口 → AKShareSource（统一限流/凭据/DataResult）→ edb/fetc
 - 两融 **T+1 入库**，D 日数据 D+1 才全；画图前若库内最新值超前 5 天会自动先补库
 
 ```bash
+# 自检（登记/路由/出图/数据层/直连审计 一次全过）
+python3 misc/charts/selfcheck/margin_selfcheck.py
+
 # 出图（只读 EDB）
 python3 charts/margin.py --days 250      # 默认近 250 交易日
 python3 charts/margin.py --days 120      # 只画近 3 个月
