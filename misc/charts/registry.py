@@ -20,9 +20,10 @@ CHARTS = [
         name="phase-transition",
         keywords=["相变监控", "相变图", "临界慢化", "序参量", "吸收比率图", "画相变"],
         desc="相变监控面板（五栏）：①价格 ②序参量 M + 关联长度 ξ ③AR(1) of M "
-             "④M1 AR(1) 恢复力 + M2 Δσ（通道A）⑤M5 吸收比率 λ1/N（通道B）。"
-             "算法在 charts/phase_signals.py。⚠️ 2026-11-19 实测：相变族对 2026-07 大跌无预警能力，"
-             "只能当结构状态描述，不可当交易信号",
+             "④M1 AR(1) 恢复力 + M2 Δσ（通道A）⑤吸收比率 λ1/N（通道B）。"
+             "算法唯一来源 charts/phase_signals.py（2026-11-20 已并入本机 pws_compute 全部算子，"
+             "含 compute()/snapshot()/M5 λmax/α 接口，口径逐列对齐）。"
+             "⚠️ 2026-11-19 实测：相变族对 2026-07 大跌无预警能力，只能当结构状态描述，不可当交易信号",
         module="charts/phase_transition.py",
         default_out="reports/charts/phase_transition",
         out_kind="file",

@@ -6,6 +6,51 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-20 08:40
+
+**refactor(phase_signals): 本机 `bin/pws_compute.py` 全部算子并入 `charts/phase_signals.py`，口径逐列对齐**
+
+大佬 2026-11-20 08:20：「TechAnly-summary 下边那个相变（PHASE 开头）的库，它画图肯定得用计算……
+但是它跟本地应该有点区别，本地的指标那头没有。所以我的意思是把你本地的指标放在那里边，
+但是你不用画图」。
+
+也就是说：**相变指标只留一份实现**，放在库里，工作区只调不复制；出图照旧走 `charts/phase_transition.py`。
+
+### 合并进来的（原来只在 workspace/bin 里有）
+
+| 原位置 | 现在的位置 | 说明 |
+|---|---|---|
+| `pws_compute.compute()` / `snapshot()` / `Result` | `phase_signals.compute/snapshot/Result` | 完整版入口：吃 px + xsec_lmax/abs_ratio/panel，吐逐日表 |
+| `pws_compute.xsec_lmax_calc/xsec_alert/xsec_align` | 同名 | M5 截面 λmax（相关矩阵**不**去因子） |
+| `pws_compute.m1_ar1/m1_alert/m2_dsig/m2_alert/m3_lambda/m3_psi/m3_alert` | 作为别名保留 | 老名字照常 import |
+| `pws_compute._drawdowns / m4_alpha / m4_alert` | 同名 | α 已下线，仅留接口可复算 |
+| `pws_absratio` 的 AR_dm 计算 + 告警 | `absorption_ratio_series/absorption_alert` | 去因子 λ1/N + 120 日 P90 + MA60 方向约束 |
+
+### 关键口径修正（对比 2026-11-19 那版）
+
+1. **M6 滚动分位起点**：原版 `min(ref*0.5, 30)` 且不卡 `i>=ref`，本地 `pws_absratio.alert` 是
+   `for t in range(ref, n)` + `len(w)>=60` → 两版在中证1000 上 `m5_thr` 差 71 个点、
+   `m5_alert/votes/dual` 有分歧。**已按本地生产版对齐**（现逐列零误差）。
+2. **M1 默认口径**：库默认改回 `mode='ret'` + `persist=True`（本机 2026-11-03 定稿）；
+   原版写死 `resid` + 单调上升。
+3. **M5/M6 编号补回**：原版把 M5=λmax 那层拿掉、只留吸收比率，编号与 `pws_compute` 对不上。
+   现在 M5 截面 λmax（df 列 `m4_lmax`）、M6 吸收比率（df 列 `m5_ar`）都在，
+   列名与 `pws_compute` **逐字一致**，`snapshot()` 也一致。
+
+### 验证（2026-11-20）
+
+- 五个宽基（沪深300 / 中证500 / 中证1000 / 科创50 / 创业板指）本地 `pws_compute.compute`
+  vs 新 `phase_signals.compute`：**23 列逐列零误差**（含 NaN 位置）→ ALL PASS
+- M5 λmax：`pws_compute.xsec_lmax_calc` vs 新版，16 个重叠点最大相对误差 **0.000e+00**
+- M6 AR_dm：`pws_absratio._ar_one` 逐窗口 vs 新版，77 个窗口最大绝对误差 **0.000e+00**
+- 备份：`/tmp/phase_signals.py.orig.20261120-*`（本地）→ 已成事实的旧版 git 里还有 `34a7820`
+
+### 影响文件
+
+- `charts/phase_signals.py`（主改）
+- `charts/phase_transition.py`（图侧 M1 显式传 `"resid"` + `persist=False`，**保持出图口径不变**）
+- `misc/charts/registry.py`（描述同步）
+
 ## 2026-11-16 18:05
 
 **feat(mailer): 邮件统一走库内 `misc/core/mailer.py`，地址/口令全程脱敏 + R_cascade 数据超时报警**

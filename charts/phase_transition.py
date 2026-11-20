@@ -241,8 +241,10 @@ def compute_metrics(closes, window, ar_window):
         # 在全样本上算完再按目标日期取（保证 60 日窗口 + 120 日分位有足够热身）
         ai = np.asarray(tgt_pos, int)
 
+        # ⚠️ 图侧口径保持原样：M1 用 resid（log价-MA20 残差）+ **persist 持续口径**，
+        #    跟本机默认的 'ret' 不同前，别改。改图口径是另一件事，大佬没发话前不动。
         ar1_full = ar1_resilience(eq_ret_full, eq_close_full, "resid")
-        ar1_a_full = ar1_alert(ar1_full)
+        ar1_a_full = ar1_alert(ar1_full, persist=True)
         m["m1_ar"] = ar1_full[ai]
         m["m1_alert"] = ar1_a_full[ai].astype(int)
 
