@@ -29,12 +29,14 @@
 MACD 口径：**10/20/5**（本库全库统一口径，禁止 12/26/9），
       DIF = EMA10 − EMA20，DEA = EMA(DIF,5)，柱 = 2×(DIF−DEA)，作用在**融资余额**上。
 
-面板（纵向 5 段，共享 x 轴）：
-  ① 融资余额 + MA5/MA20 + MACD(10,20,5)
+面板（纵向 6 段，共享 x 轴）：
+  ① 融资余额 + MA5/MA20 + MACD(10,20,5)（双轴）
   ② 融券余额
   ③ 融资买入额 vs 融资偿还额 + 单日净买入
-  ④ 两融账户：个人 / 机构 / 参与交易 / 有负债（万名）
-  ⑤ 平均维持担保比例（%）+ 担保物总价值（万亿元，右轴）
+  ④ 两融账户存量：个人投资者（万户）+ 有融资融券负债（万人）
+       —— 大佬 2026-11-20 指定：这一格就要这两条线，单位统一成「万」同轴可比
+  ⑤ 参与交易的投资者（万人）+ 机构投资者（万家，右轴）
+  ⑥ 平均维持担保比例（%）+ 担保物总价值（万亿元，右轴）
 
 用法：
   python3 charts/margin.py                     # 近 250 交易日（默认）
@@ -222,8 +224,9 @@ def summary(df: pd.DataFrame) -> dict:
 def plot(d: pd.DataFrame, out: str, title_extra: str = "") -> str:
     dif, dea, hist = macd_series(d["bal"])
     x = d["d"]
-    fig = plt.figure(figsize=(15, 15))
-    gs = fig.add_gridspec(5, 1, height_ratios=[3.0, 1.0, 1.5, 1.3, 1.4], hspace=0.10)
+    fig = plt.figure(figsize=(15, 17))
+    gs = fig.add_gridspec(6, 1, height_ratios=[3.0, 1.0, 1.4, 1.5, 1.1, 1.4],
+                          hspace=0.10)
 
     UP, DN = "#c0392b", "#1e8449"
 
@@ -275,24 +278,54 @@ def plot(d: pd.DataFrame, out: str, title_extra: str = "") -> str:
     ax3.legend(loc="upper left", ncol=3, fontsize=9)
     ax3.grid(alpha=0.2)
 
-    # ---------- ④ 两融账户 ----------
+    # ---------- ④ 两融账户存量：个人投资者 + 有融资融券负债（同量纲，万户/万人）----------
+    # 大佬 2026-11-20 指定：这一格就要这两条线 —— 个人投资者数量、有融资融券负债的投资者，
+    # 单位统一成「万」，同一根纵轴，不再混机构（名）那种差 4 个量级的序列。
     ax4 = fig.add_subplot(gs[3], sharex=ax1)
-    ax4.plot(x, d["n_indiv"], color="#2980b9", lw=1.6, label="个人投资者（万名）")
-    ax4.plot(x, d["n_inst"], color="#b9770e", lw=1.6, label="机构投资者（名，右轴）")
-    ax4r = ax4.twinx()
-    ax4r.plot(x, d["n_debt"], color="#c0392b", lw=1.2, ls="--",
-              label="有融资融券负债（万名，右轴2）")
-    ax4r.plot(x, d["n_active"], color="#7f8c8d", lw=1.0, ls=":",
-              label="参与交易（万名，右轴2）")
-    ax4.set_ylabel("个人投资者\n（万名）", **_CN)
-    ax4r.set_ylabel("机构（名）/ 负债·参与交易（万名）", **_CN)
-    h4, l4 = ax4.get_legend_handles_labels()
-    h4r, l4r = ax4r.get_legend_handles_labels()
-    ax4.legend(h4 + h4r, l4 + l4r, loc="upper left", ncol=2, fontsize=9)
+    # 两条线同量纲（万）：个人投资者「万户」、有融资融券负债「万人」
+    # —— 大佬 2026-11-20 指定这一格就画这两条，同一根纵轴直接可比。
+    ax4.plot(x, d["n_indiv"], color="#1f6fb4", lw=1.9,
+             label="个人投资者数量（万户）")
+    ax4.plot(x, d["n_debt"], color="#c0392b", lw=1.9,
+             label="有融资融券负债的投资者（万人）")
+    ax4.fill_between(x, d["n_debt"], d["n_indiv"], color="#1f6fb4", alpha=0.09, lw=0)
+    ax4.set_ylabel("两融账户\n（万户 / 万人）", **_CN)
+    # 纵轴下限留白，避免负债线贴着坐标轴看不出波动
+    _lo = float(min(d["n_debt"].min(), d["n_indiv"].min()))
+    ax4.set_ylim(max(0.0, _lo * 0.55), float(d["n_indiv"].max()) * 1.14)
+    ax4.legend(loc="upper left", ncol=2, fontsize=9.5, framealpha=0.9)
     ax4.grid(alpha=0.2)
 
-    # ---------- ⑤ 平均维持担保比例 + 担保物 ----------
-    ax5 = fig.add_subplot(gs[4], sharex=ax1)
+    # 末端数值标注（对齐大佬发来的样式：「个人 847.9万户 | 有负债 198.8万人」）
+    _li, _ld = d["n_indiv"].iloc[-1], d["n_debt"].iloc[-1]
+    ax4.annotate("%.1f万户" % _li, xy=(x.iloc[-1], _li), xytext=(-6, 8),
+                 textcoords="offset points", ha="right", fontsize=9,
+                 color="#1f6fb4", fontweight="bold")
+    ax4.annotate("%.1f万人" % _ld, xy=(x.iloc[-1], _ld), xytext=(-6, -15),
+                 textcoords="offset points", ha="right", fontsize=9,
+                 color="#c0392b", fontweight="bold")
+    ax4.text(0.012, 0.06, "个人 %.1f万户 ｜ 有负债 %.1f万人 ｜ 负债账户占比 %.1f%%"
+             % (_li, _ld, _ld / _li * 100 if _li else 0),
+             transform=ax4.transAxes, fontsize=10, color="#333",
+             bbox=dict(facecolor="white", alpha=0.78, edgecolor="#ccc", lw=0.6))
+
+    # ---------- ⑤ 两融账户活跃度：参与交易（万人）+ 机构（名，右轴）----------
+    ax4b = fig.add_subplot(gs[4], sharex=ax1)
+    ax4b.fill_between(x, 0, d["n_active"], color="#7f8c8d", alpha=0.30, lw=0)
+    ax4b.plot(x, d["n_active"], color="#4d5656", lw=1.5,
+              label="参与交易的投资者（万人）")
+    ax4b.set_ylabel("参与交易\n（万人）", **_CN)
+    ax4br = ax4b.twinx()
+    ax4br.plot(x, d["n_inst"] / 1e4, color="#b9770e", lw=1.4, ls="--",
+               label="机构投资者（万家，右轴）")
+    ax4br.set_ylabel("机构投资者（万家）", **_CN)
+    h4b, l4b = ax4b.get_legend_handles_labels()
+    h4br, l4br = ax4br.get_legend_handles_labels()
+    ax4b.legend(h4b + h4br, l4b + l4br, loc="upper left", ncol=2, fontsize=9)
+    ax4b.grid(alpha=0.2)
+
+    # ---------- ⑥ 平均维持担保比例 + 担保物 ----------
+    ax5 = fig.add_subplot(gs[5], sharex=ax1)
     ax5.plot(x, d["ratio"], color="#c0392b", lw=1.8, label="平均维持担保比例（%）")
     ax5.axhline(150, color="#e67e22", ls="--", lw=1.0, label="150% 警戒")
     ax5.axhline(130, color="#c0392b", ls="--", lw=1.0, label="130% 平仓")
@@ -307,7 +340,7 @@ def plot(d: pd.DataFrame, out: str, title_extra: str = "") -> str:
     ax5.grid(alpha=0.2)
     ax5.set_xlabel("")
 
-    for ax in (ax1, ax2, ax3, ax4, ax5):
+    for ax in (ax1, ax2, ax3, ax4, ax4b, ax5):
         ax.tick_params(axis="x", labelrotation=0, labelsize=8)
 
     fig.text(0.5, 0.005,

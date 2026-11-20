@@ -381,7 +381,7 @@ python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直�
 | 画地形图 / 黎曼地形图 | 黎曼流形地形图（地形 + 持续同调条码 + 相关矩阵曲面） | `python3 misc/charts/run.py topology-terrain --target 沪深300` |
 | **画 RMT 矩阵图 / RMT 监控图 / 双 Y 轴 RMT / outlier_energy** | **RMT + RC 联合监控图**（60 日滚动窗；左内 outlier_energy、右外 λ1/λ2、右轴 AR5/λ1Σλ/RC） | `python3 misc/charts/run.py rmt-rc --targets 沪深300,科创50`<br>单图：`--targets 科创50`；五大宽基：`--targets 沪深300,中证500,中证1000,创业板指,科创50 --cols 2` |
 | 缠论图（分型版 / 均线版） | chan-fractal / chan-ma | `python3 misc/charts/run.py chan-fractal --target 中证500`<br>`python3 misc/charts/run.py chan-ma --target 中证500` |
-| **两融图 / A股两融 / 融资融券余额 / 两融账户 / 维持担保比例** | **A股两融全景图**（5 面板：①融资余额+MA5/MA20+MACD(10,20,5) ②融券余额 ③融资买入/偿还+单日净买入 ④两融账户 ⑤维持担保比例+担保物） | `python3 misc/charts/run.py margin`<br>近 500 日：`--days 500`；指定起点：`--start 2024-01-01`；只回数值：`--json` |
+| **两融图 / A股两融 / 融资融券余额 / 两融账户 / 维持担保比例** | **A股两融全景图**（6 面板：①融资余额+MA5/MA20+MACD(10,20,5) ②融券余额 ③融资买入/偿还+单日净买入 ④两融账户存量（个人投资者万户 + 有融资融券负债万人）⑤参与交易+机构投资者 ⑥维持担保比例+担保物） | `python3 misc/charts/run.py margin`<br>近 500 日：`--days 500`；指定起点：`--start 2024-01-01`；只回数值：`--json` |
 
 > **「拓扑结构图」≠「流形图」，这两句分得很清，别串：**
 > - 「拓扑结构图 / 拓扑图」→ `five-topo`（拓扑结构总览：UMAP + 里奇曲率 + 撕裂/聚集）
@@ -399,13 +399,23 @@ python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直�
 |---|---|
 | 模块 | `data_hub/edb`（category = `cn_market`） |
 | 序列（11 条） | `CN.EQ.MARGIN.BALANCE` 融资余额 / `.SHORT` 融券余额 / `.TOTAL` 两融余额 / `.BUY` 融资买入额 / `.SHORTSELL` 融券卖出额 / `.ACCT.INDIV` 个人投资者(万名) / `.ACCT.INST` 机构投资者(名) / `.ACCT.ACTIVE` 参与交易(万名) / `.ACCT.DEBT` 有负债(万名) / `.COLLATERAL` 担保物总价值 / `.RATIO` 平均维持担保比例 |
-| 抓取器 | `edb/fetchers/margin_account.py`（`akshare:stock_margin_account_info`，2012 至今全量） |
+| 抓取器 | `edb/fetchers/margin_account.py` → **只调 `core/sources/AKShareSource.fetch_margin_account_info()`**（DataHub 统一数据源，2012 至今全量）。**禁止在抓取器里 import akshare / 直连 HTTP** |
 | 保留期 | `edb/store.py::_PRUNABLE["cn_market"] = 250` 天（≈8 个月，>3 个月硬下限） |
 | 日更 | `bin/edb_margin_refresh.py`，cron 08:10 / 19:40（工作日，两融 T+1） |
 
 **为什么放 EDB 而不是个股两融模块**：EDB 是「日期→数值」的指标序列层，融资余额 /
 账户数 / 担保比例属于流动性口径，不涉及个股明细；个股两融明细（`CN.MARKET.MARGIN.DETAIL`）
 是数据集层，按 trade_date + ts_code 存，用途完全不同。
+
+**取数链路铁律（大佬 2026-11-20：「数据获取必须用 DataHub 来获取，不能用直连的方式」）**：
+
+```
+AKShare 接口 → AKShareSource（统一限流/凭据/DataResult）→ edb/fetchers/margin_account.py → EDB → charts/margin.py
+```
+
+- `edb/fetchers/margin_account.py` 里**一行 akshare 都不许有**，只能持有 `AKShareSource` 实例
+- 要加字段/换源 → 先在 `core/sources/` 加适配器方法，再在抓取器里取
+- 回归自检：把 `AKShareSource.fetch_margin_account_info` 打桩成必失败，`fetch_margin_account()` 必须返回 0 行（有数据就说明存在直连后门）
 
 口径要点：
 - **两融余额 = 融资余额 + 融券余额**，在抓取器里直接相加（engine 的 `derived_from` 只支持相减，
