@@ -62,7 +62,7 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 > | `misc/engine/sector_buypoint_top20.py` | 板块买点 Top20 |
 > | `misc/engine/simple_chart.py` | 单图速览 |
 > | `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60，三指数；`--chart` 出图） |
-> | `charts/margin.py` | **A股两融全景图**（融资余额+MACD(10,20,5) / 融券 / 净买入 / 账户数 / 维持担保比例） |
+> | `charts/margin.py` | **A股两融全景图**（融资余额+MACD(10,20,5) / 融券 / 净买入 / 账户数 / 维持担保比例）｜数据只读 **DataHub EDB `cn_market`**（`CN.EQ.MARGIN.*` 11 条，库内保留 250 天 ≈ 8 个月） |
 > | `chanlun/fractal/chan_smc_index.py` | 缠论·分型版（几何 + SMC 摘要） |
 > | `chanlun/fractal/chan_chart.py` | 缠论·分型版出图 |
 > | `chanlun/ma/chan_ma_trend_v2.py` | 缠论·均线版核心 |
@@ -96,7 +96,7 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 | `misc/engine/buypoint_chart.py` | 买点图（日线 / 60m / 均线版三面板）+ `draw_stock_grid()` 多标的网格图 |
 | `misc/engine/wyckoff_buypoint_v2.py` | **盘中吸筹买点分析 v2**：威科夫吸筹 → 四层过滤 → Top10 行业 → Top20 个股 → 多子图 |
 | `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60）三指数 + 出图 + 报警判定（不属四层，独立指标） |
-| `charts/margin.py` | **A股两融全景图**：融资余额+MA5/MA20+MACD(10,20,5) / 融券余额 / 融资买入·净买入 / 两融账户数 / 平均维持担保比例+担保物。数据源 akshare `stock_margin_account_info`（2012 至今） |
+| `charts/margin.py` | **A股两融全景图**：融资余额+MA5/MA20+MACD(10,20,5) / 融券余额 / 融资买入·净买入 / 两融账户数 / 平均维持担保比例+担保物。**数据只读 EDB**（`CN.EQ.MARGIN.*`，见 3.0.2 节） |
 | `misc/core/mailer.py` | **全库唯一发信通道**：收件人/口令只从环境变量或 `~/.config/openclaw/mail.json` 读，日志里邮箱一律脱敏（`exa***456@qq.com` 这种） |
 
 ---
@@ -351,7 +351,7 @@ out.sort(key=lambda x: (not x["accept"], x["pri"], x.get("age", 0)))
 | 按级别跑（m15/h1/day/week） | `python3 misc/strategies/run_level.py --target 600519 --level week` |
 | 缠论分型版 / 均线版出图 | `python3 chanlun/fractal/chan_chart.py --target 中证500`<br>`python3 chanlun/ma/chan_ma_chart.py --target 中证500` |
 | 小波趋势层 | `python3 wavelet/acvmd_layer.py --target 中证500` |
-| **A股两融全景图**（融资/融券/账户/担保比例 + MACD） | `python3 charts/margin.py --days 250`<br>统一入口：`python3 misc/charts/run.py margin` |
+| **A股两融全景图**（融资/融券/账户/担保比例 + MACD） | `python3 charts/margin.py --days 250`<br>统一入口：`python3 misc/charts/run.py margin`<br>只画近3个月：`--days 120`；库里没数据先补：`--refresh` |
 | **黎曼流形地形图**（封面图） | `python3 topology/terrain.py --target 沪深300`<br>（云上部署可用）`python3 ~/.openclaw/workspace/bin/terrain.py --target 沪深300` |
 | 拓扑流形四合一图 + 相位图 | `python3 topology/run.py --target 沪深300` |
 | **流形拓扑图**（左 UMAP 2D + 右 里奇曲率网络） | `python3 topology/manifold_topo.py --target 科创50`<br>指定代码/本地面板：`--index 000688.SH --name 科创50 --csv /tmp/kc50_close.csv` |
@@ -390,6 +390,45 @@ python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直�
 > - 「地形图」→ `topology-terrain`
 >
 > 输出目录统一在 `reports/charts/<name>/`。
+
+### 3.0.2 💰 两融图的数据层（EDB `cn_market` · 大佬 2026-11-20 定）
+
+**两融数据必须落库、至少保存 3 个月。** 已经按要求进 DataHub EDB 序列层，不再现场抓。
+
+| 项目 | 值 |
+|---|---|
+| 模块 | `data_hub/edb`（category = `cn_market`） |
+| 序列（11 条） | `CN.EQ.MARGIN.BALANCE` 融资余额 / `.SHORT` 融券余额 / `.TOTAL` 两融余额 / `.BUY` 融资买入额 / `.SHORTSELL` 融券卖出额 / `.ACCT.INDIV` 个人投资者(万名) / `.ACCT.INST` 机构投资者(名) / `.ACCT.ACTIVE` 参与交易(万名) / `.ACCT.DEBT` 有负债(万名) / `.COLLATERAL` 担保物总价值 / `.RATIO` 平均维持担保比例 |
+| 抓取器 | `edb/fetchers/margin_account.py`（`akshare:stock_margin_account_info`，2012 至今全量） |
+| 保留期 | `edb/store.py::_PRUNABLE["cn_market"] = 250` 天（≈8 个月，>3 个月硬下限） |
+| 日更 | `bin/edb_margin_refresh.py`，cron 08:10 / 19:40（工作日，两融 T+1） |
+
+**为什么放 EDB 而不是个股两融模块**：EDB 是「日期→数值」的指标序列层，融资余额 /
+账户数 / 担保比例属于流动性口径，不涉及个股明细；个股两融明细（`CN.MARKET.MARGIN.DETAIL`）
+是数据集层，按 trade_date + ts_code 存，用途完全不同。
+
+口径要点：
+- **两融余额 = 融资余额 + 融券余额**，在抓取器里直接相加（engine 的 `derived_from` 只支持相减，
+  登记成派生会算成「融资−融券」）
+- 单位陷阱：原表「个人投资者」已是万名，「参与交易 / 有负债」是**人**，抓取时 ÷10000 折成万名
+- 两融 **T+1 入库**，D 日数据 D+1 才全；画图前若库内最新值超前 5 天会自动先补库
+
+```bash
+# 出图（只读 EDB）
+python3 charts/margin.py --days 250      # 默认近 250 交易日
+python3 charts/margin.py --days 120      # 只画近 3 个月
+python3 charts/margin.py --refresh       # 库里没数据时先补库再画
+python3 charts/margin.py --json          # 只回数值，不出图
+
+# 数据层
+python3 bin/edb_margin_refresh.py        # 手动补库（本机兼容路径）
+```
+
+```python
+from data_hub import edb
+edb.get_series("CN.EQ.MARGIN.RATIO")    # 任意一条序列
+edb.health(category="cn_market")        # 11 条覆盖度体检
+```
 
 > 所有命令都从**仓库根目录**执行。脚本内部会自动探测仓库根（向上找同时含
 > `chanlun/` 与 `misc/` 的那层），所以从子目录跑也能用。
