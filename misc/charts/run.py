@@ -76,6 +76,7 @@ def _print_list():
     print("  「画流形图」                        → topology-spd（SPD 流形 + TDA + 相位图）")
     print("  「画地形图 / 黎曼地形图」          → topology-terrain")
     print("  「画RMT矩阵图 / RMT监控图 / 双Y轴RMT」 → rmt-rc（RMT+RC 监控图）")
+    print("  「两融图 / A股两融 / 融资融券余额 / 两融账户 / 维持担保比例」 → margin（两融全景图）")
     print("  「画五大宽基 / 五个指数一张图 / 宽基总览」 → five-index（缠论买卖点 + 拓扑结构，日报配图）")
 
 

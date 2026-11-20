@@ -62,6 +62,7 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 > | `misc/engine/sector_buypoint_top20.py` | 板块买点 Top20 |
 > | `misc/engine/simple_chart.py` | 单图速览 |
 > | `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60，三指数；`--chart` 出图） |
+> | `charts/margin.py` | **A股两融全景图**（融资余额+MACD(10,20,5) / 融券 / 净买入 / 账户数 / 维持担保比例） |
 > | `chanlun/fractal/chan_smc_index.py` | 缠论·分型版（几何 + SMC 摘要） |
 > | `chanlun/fractal/chan_chart.py` | 缠论·分型版出图 |
 > | `chanlun/ma/chan_ma_trend_v2.py` | 缠论·均线版核心 |
@@ -95,6 +96,7 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 | `misc/engine/buypoint_chart.py` | 买点图（日线 / 60m / 均线版三面板）+ `draw_stock_grid()` 多标的网格图 |
 | `misc/engine/wyckoff_buypoint_v2.py` | **盘中吸筹买点分析 v2**：威科夫吸筹 → 四层过滤 → Top10 行业 → Top20 个股 → 多子图 |
 | `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60）三指数 + 出图 + 报警判定（不属四层，独立指标） |
+| `charts/margin.py` | **A股两融全景图**：融资余额+MA5/MA20+MACD(10,20,5) / 融券余额 / 融资买入·净买入 / 两融账户数 / 平均维持担保比例+担保物。数据源 akshare `stock_margin_account_info`（2012 至今） |
 | `misc/core/mailer.py` | **全库唯一发信通道**：收件人/口令只从环境变量或 `~/.config/openclaw/mail.json` 读，日志里邮箱一律脱敏（`exa***456@qq.com` 这种） |
 
 ---
@@ -349,6 +351,7 @@ out.sort(key=lambda x: (not x["accept"], x["pri"], x.get("age", 0)))
 | 按级别跑（m15/h1/day/week） | `python3 misc/strategies/run_level.py --target 600519 --level week` |
 | 缠论分型版 / 均线版出图 | `python3 chanlun/fractal/chan_chart.py --target 中证500`<br>`python3 chanlun/ma/chan_ma_chart.py --target 中证500` |
 | 小波趋势层 | `python3 wavelet/acvmd_layer.py --target 中证500` |
+| **A股两融全景图**（融资/融券/账户/担保比例 + MACD） | `python3 charts/margin.py --days 250`<br>统一入口：`python3 misc/charts/run.py margin` |
 | **黎曼流形地形图**（封面图） | `python3 topology/terrain.py --target 沪深300`<br>（云上部署可用）`python3 ~/.openclaw/workspace/bin/terrain.py --target 沪深300` |
 | 拓扑流形四合一图 + 相位图 | `python3 topology/run.py --target 沪深300` |
 | **流形拓扑图**（左 UMAP 2D + 右 里奇曲率网络） | `python3 topology/manifold_topo.py --target 科创50`<br>指定代码/本地面板：`--index 000688.SH --name 科创50 --csv /tmp/kc50_close.csv` |
@@ -367,7 +370,8 @@ python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直�
 > **「说人话」路由已实装**：`registry.py` 每条带 `keywords`，`run.py` 用最长匹配反查。
 > 说「画拓扑结构图 / 拓扑图」→ `five-topo`；说「画流形拓扑图 / 流形结构图」→ `topology-manifold`；说「画流形图」→ `topology-spd`；
 > 说「画地形图 / 黎曼地形图」→ `topology-terrain`；
-> 说「画 RMT 矩阵图 / RMT 图 / 双 Y 轴 RMT / outlier_energy」→ `rmt-rc`。
+> 说「画 RMT 矩阵图 / RMT 图 / 双 Y 轴 RMT / outlier_energy」→ `rmt-rc`；
+> 说「两融图 / A股两融 / 融资融券余额 / 两融账户 / 维持担保比例」→ `margin`。
 
 | 大佬说（关键词） | 走哪张图 | 命令 |
 |---|---|---|
@@ -377,6 +381,7 @@ python3 misc/charts/run.py "画流形图" --target 沪深300    # 也可以直�
 | 画地形图 / 黎曼地形图 | 黎曼流形地形图（地形 + 持续同调条码 + 相关矩阵曲面） | `python3 misc/charts/run.py topology-terrain --target 沪深300` |
 | **画 RMT 矩阵图 / RMT 监控图 / 双 Y 轴 RMT / outlier_energy** | **RMT + RC 联合监控图**（60 日滚动窗；左内 outlier_energy、右外 λ1/λ2、右轴 AR5/λ1Σλ/RC） | `python3 misc/charts/run.py rmt-rc --targets 沪深300,科创50`<br>单图：`--targets 科创50`；五大宽基：`--targets 沪深300,中证500,中证1000,创业板指,科创50 --cols 2` |
 | 缠论图（分型版 / 均线版） | chan-fractal / chan-ma | `python3 misc/charts/run.py chan-fractal --target 中证500`<br>`python3 misc/charts/run.py chan-ma --target 中证500` |
+| **两融图 / A股两融 / 融资融券余额 / 两融账户 / 维持担保比例** | **A股两融全景图**（5 面板：①融资余额+MA5/MA20+MACD(10,20,5) ②融券余额 ③融资买入/偿还+单日净买入 ④两融账户 ⑤维持担保比例+担保物） | `python3 misc/charts/run.py margin`<br>近 500 日：`--days 500`；指定起点：`--start 2024-01-01`；只回数值：`--json` |
 
 > **「拓扑结构图」≠「流形图」，这两句分得很清，别串：**
 > - 「拓扑结构图 / 拓扑图」→ `five-topo`（拓扑结构总览：UMAP + 里奇曲率 + 撕裂/聚集）
