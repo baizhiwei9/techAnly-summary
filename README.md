@@ -132,6 +132,10 @@ python3 misc/strategies/run_level.py --target 600519 --level week   # 周线（�
 
 ---
 
+> **接口与参数（给程序 / AI）**：完整签名、参数默认值、返回值、异常、环境变量、数据契约
+> 全部收在 **[docs/API.md](docs/API.md)** —— **只读这一份就能正确调用，不需要逐个翻源码**。
+> 本文只讲定位、架构与运维；调用细节以 docs/API.md 为准。
+
 ## 目录
 
 | 章节 |
