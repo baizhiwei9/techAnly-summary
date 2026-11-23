@@ -72,7 +72,8 @@ def _datahub():
     env = os.environ.get("DATA_HUB_PATH")
     if env:
         cands.append(os.path.abspath(os.path.expanduser(env)))
-    cands.append(os.path.join(os.path.dirname(WS), "datahub-three-tier"))
+    cands.append(os.path.join(os.path.dirname(WS), "datahub-multi-tier"))
+    cands.append(os.path.join(os.path.dirname(WS), "datahub-three-tier"))  # 兼容旧目录名
     cands.append(os.path.join(WS, "optstack"))
     for base in cands:
         if not os.path.isdir(base):

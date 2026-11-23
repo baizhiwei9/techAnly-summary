@@ -261,7 +261,8 @@ def _datahub():
     env = os.environ.get("DATA_HUB_PATH")
     if env:
         cands.append(os.path.abspath(os.path.expanduser(env)))
-    cands.append(os.path.join(os.path.dirname(WS), "datahub-three-tier"))
+    cands.append(os.path.join(os.path.dirname(WS), "datahub-multi-tier"))
+    cands.append(os.path.join(os.path.dirname(WS), "datahub-three-tier"))  # 兼容旧目录名
     cands.append(os.path.join(WS, "optstack"))
     cands.append("/root/.openclaw/workspace/optstack")
     for base in cands:
@@ -276,7 +277,7 @@ def _datahub():
         except Exception:
             continue
     if mod is None:
-        raise SystemExit("找不到 data_hub（试过 DATA_HUB_PATH / ../datahub-three-tier / optstack）")
+        raise SystemExit("找不到 data_hub（试过 DATA_HUB_PATH / ../datahub-multi-tier / optstack）")
     return mod
 
 

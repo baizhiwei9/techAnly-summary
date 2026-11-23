@@ -3,7 +3,7 @@
 """data_loader.py · 拓扑流形分析取数层
 ====================================
 统一从 techAnly 的取数桥（dh_bridge）取数；本地无 dh_bridge 时回退到
-data_hub（用 DATA_HUB_PATH 指向 datahub-three-tier，便于本地开发验证）。
+data_hub（用 DATA_HUB_PATH 指向 datahub-multi-tier，便于本地开发验证）。
 
 原则：
   · 只做「取数 + 归一化成 close 面板」，不含任何 SPD 计算 / 画图逻辑

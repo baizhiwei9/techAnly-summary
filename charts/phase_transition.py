@@ -69,6 +69,10 @@ def _ensure_datahub():
         if os.environ.get(env):
             cands.append(os.environ[env])
     cands.extend([
+        os.path.join(WS, "..", "datahub-multi-tier"),
+        os.path.join(WS, "..", "..", "projects", "datahub-multi-tier"),
+        "/workspace/projects/datahub-multi-tier",
+        # 兼容旧目录名（改名前的本地副本）
         os.path.join(WS, "..", "datahub-three-tier"),
         os.path.join(WS, "..", "..", "projects", "datahub-three-tier"),
         "/workspace/projects/datahub-three-tier",
