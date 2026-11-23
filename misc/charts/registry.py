@@ -125,10 +125,10 @@ CHARTS = [
         name="rmt-rc",
         keywords=["RMT矩阵图", "RMT 矩阵图", "RMT图", "RMT监控图", "RMT+RC", "RMT",
                   "outlier_energy", "特征值吸收率", "双Y轴RMT", "λ1/λ2"],
-        desc="RMT + RC 联合监控图（60 日滚动窗口）。单图/多图都行："
+        desc="RMT + MFDFA Δα 联合监控图（60 日滚动窗口）。单图/多图都行："
              "--targets 科创50 出一张；--targets 沪深300,科创50 出并排两张；"
-             "左内轴 outlier_energy、右外轴 λ1/λ2、右轴 AR5/λ1Σλ/RC；"
-             "页脚多行图例（大字号）+ 历史分位一行；--alert 分位>90% 可发邮件",
+             "左内轴 outlier_energy、右外轴 λ1/λ2、右轴 AR5/λ1Σλ/Δα（多分形谱宽）；"
+             "页脚多行图例（大字号）+ 历史分位一行；--alert 分位>90% 可发邮件（Δα 亦入列）",
         module="charts/rmt_rc.py",
         default_out="reports/charts/rmt",
         out_kind="file",
