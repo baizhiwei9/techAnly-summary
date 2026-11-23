@@ -751,3 +751,12 @@ python3 misc/tools/publish_techanly.py \
 - 为什么不用 `git push`：本机 `github.com:443` 间歇性阻断（TLS 半路断/超时），
   只有 `api.github.com` 可用 → 全流程走 REST。
 - ⚠️ 老脚本 `gh_publish_techsummary.py` 已改为**转发**到 `gh_publish_techanly.py`，不会推错库。
+
+## 许可
+
+双许可：
+
+- **非商用免费**：`LICENSE`（BSD-3-Clause + Commons Clause）——个人学习、公司内部使用、非收费的开源项目；
+- **商用收费**：`LICENSE-COMMERCIAL.md`——把本项目（或其衍生作品）作为收费产品/服务的一部分提供给第三方（含 SaaS、私有化交付、代部署与托管运维），需先取得商业许可；Commons Clause 已明确排除 "Sell" 权。
+
+商用联系：`sales@example.com`（**占位地址，发布前替换成真实商务邮箱**）。签约前建议由律师确认"商用"边界。
