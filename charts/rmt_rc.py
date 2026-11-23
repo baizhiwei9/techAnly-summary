@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""charts/rmt_rc.py · RMT + RC 联合监控图（单图 / 多图都支持）
+"""charts/rmt_rc.py · RMT + MFDFA Δα 联合监控图（单图 / 多图都支持）
 =========================================================================
 大佬口径（2026-11-15 定稿）：
   · 60 天滚动窗口（--win 60，可改）
@@ -14,9 +14,9 @@
   λ1/λ2          = 第一 / 第二特征值之比
   λ1/Σλ          = λ1 / Σ(λ1…λ50)                与 AR5 同分母
   outlier_energy = Σ(λi | λi > (1+√(N/T))²) / N   超 MP 上界的特征值占总能量比（迹 = N）
-  RC             = **直接调 misc/engine/rcascade.py::compute()**（唯一实现）
-                   · 标的自己的日线算 σ20/σ60 → 跟单独那张 R_cascade 图**完全同口径**
-                   · 自有行情取不到 → 回退成分股等权组合的 σ20/σ60（旧口径）
+  Δα             = **直接调 charts/phase_mfdfa.rolling_delta_alpha**（唯一实现）
+                   · 标的自己的日线算 MF-DFA 滚动多分形谱宽（N=250，scales=[20,30,50,80,125]）
+                   · 90 分位 = 告警阈值（--alert / --email 分位>90% 发邮件）
 
 标的可以是：
   · 宽基（沪深300/中证500/中证1000/创业板指/科创50/上证50，也认 hs300/500/1000/创业板/科创）
@@ -34,7 +34,7 @@
   # 五个宽基全画
   python3 charts/rmt_rc.py --targets 沪深300,中证500,中证1000,创业板指,科创50 --cols 2
 
-  # 行业 / 概念也能画（RC 用该行业指数自己的日线）
+  # 行业 / 概念也能画（Δα 用该行业指数自己的日线）
   python3 charts/rmt_rc.py --targets 半导体,稀土永磁
 
   # 分位告警（超 90% 就发邮件）
@@ -62,8 +62,8 @@ from charts.rmt import (  # noqa: F401  统一 RMT 算法源（2026-11-18）
     correlation_matrix,
     eigen_decompose,
     mp_bounds,
-    volatility_ratio,
 )
+from charts.phase_mfdfa import rolling_delta_alpha  # noqa: E402  MF-DFA Δα 唯一实现
 
 import numpy as np
 import pandas as pd
@@ -181,7 +181,7 @@ def resolve_any_target(text, dh=None):
 
 
 def _rc_type(kind, code):
-    """标的数据源类型 → rcascade.compute() 的 typ。"""
+    """标的数据源类型 → 数据源 typ（供日线取数用，宽基/指数/申万/行业/概念）。"""
     if kind == KIND_SW:
         return "sw"
     if kind == KIND_IND:
@@ -191,21 +191,21 @@ def _rc_type(kind, code):
     return "index_sz" if str(code).upper().endswith(".SZ") else "index_sh"
 
 
-def rc_series_via_lib(typ, code):
-    """R_cascade 序列 —— **直接调唯一实现** misc/engine/rcascade.py::compute()。
+def da_series_via_lib(typ, code):
+    """MF-DFA 多分形谱宽 Δα 序列 —— **直接调唯一实现** charts/phase_mfdfa.rolling_delta_alpha。
 
-    2026-11-17 大佬：「统一一下算法，用原来的代码不就行了？」
-    → 这里不再自己算 ln/std20/std60，只做「换数据源」这一件事：
+    标的自己的日线算滚动 Δα（N=250，scales=[20,30,50,80,125]，q=[-4..4]）：
       宽基/指数：typ=index_sh / index_sz
       申万行业  ：typ=sw
       同花顺行业：typ=sector_ind
       同花顺概念：typ=sector_con
-    返回 DataFrame(index=YYYYMMDD str, col "RC")；取不到返回 None。
+    日线走 misc/engine/rcascade.py::load()（只取数，不算 RC）。
+    返回 DataFrame(index=YYYYMMDD str, col "da")；取不到返回 None。
     """
     import importlib.util
     fp = os.path.join(WS, "misc", "engine", "rcascade.py")
     if not os.path.exists(fp):
-        print("[rmt] 找不到 rcascade.py（%s），RC 只能回退成分股等权" % fp, flush=True)
+        print("[rmt] 找不到 rcascade.py（%s），Δα 无日线可用" % fp, flush=True)
         return None
     try:
         if "rcascade" in sys.modules:
@@ -215,17 +215,23 @@ def rc_series_via_lib(typ, code):
             RC = importlib.util.module_from_spec(spec)
             sys.modules["rcascade"] = RC
             spec.loader.exec_module(RC)
-        d = RC.compute(typ, str(code))
+        d, _src = RC.load(typ, str(code))
     except Exception as ex:                                       # noqa: BLE001
-        print("[rmt] rcascade.compute(%s,%s) 失败：%s" % (typ, code, str(ex)[:100]), flush=True)
+        print("[rmt] rcascade.load(%s,%s) 失败：%s" % (typ, code, str(ex)[:100]), flush=True)
         return None
-    out = pd.DataFrame({"RC": d["RC"].astype(float)})
-    out.index = [str(x).replace("-", "")[:8] for x in d.index]
+    if d is None or not len(d):
+        return None
+    close = d.set_index("dt")["close"].astype(float)
+    da = rolling_delta_alpha(close, N=250)
+    if da is None or not len(da):
+        return None
+    out = pd.DataFrame({"da": da.astype(float)})
+    out.index = [x.strftime("%Y%m%d") for x in pd.to_datetime(da.index)]
     return out
 
 
 def own_close_via_lib(typ, code):
-    """标的自身日线收盘（走 rcascade.load，与 RC 同源）。取不到返回空 Series。"""
+    """标的自身日线收盘（走 rcascade.load，与 Δα 同源）。取不到返回空 Series。"""
     import importlib.util
     fp = os.path.join(WS, "misc", "engine", "rcascade.py")
     if not os.path.exists(fp):
@@ -322,7 +328,7 @@ def get_etf_close(etf, start, end):
 
 # ───────────────────────── 指标计算 ─────────────────────────
 def rmt_series(ret, comps, win=60):
-    """滚动窗口 → AR5 / λ1/λ2 / λ1/Σλ / outlier_energy / RC"""
+    """滚动窗口 → AR5 / λ1/λ2 / λ1/Σλ / outlier_energy（Δα 由自身日线另算，不在此列）"""
     P = ret[[c for c in comps if c in ret.columns]]
     rows = []
     for i in range(win - 1, len(P)):
@@ -336,7 +342,6 @@ def rmt_series(ret, comps, win=60):
         s50 = ev[:min(50, n)].sum()
         thr, _ = mp_bounds(n / win)               # MP 上界 (1+√(N/T))²
         out = ev[ev > thr]
-        port = w.mean(axis=1)
         rows.append(dict(
             date=P.index[i], N=n, thr=thr,
             ar5=ar5(ev, top=5, denom=50),
@@ -344,7 +349,6 @@ def rmt_series(ret, comps, win=60):
             l1s=ev[0] / s50,
             oe=out.sum() / n,                     # outlier_energy
             oc=int(len(out)),
-            rc=volatility_ratio(port.values, short=20),
         ))
     if not rows:
         raise SystemExit("窗口不足，算不出 RMT（检查面板长度 / 成分股覆盖）")
@@ -423,11 +427,9 @@ def rmt_series_fast(ret, comps, win=60):
         s50 = ev[:min(50, n)].sum()
         thr, _ = mp_bounds(n / win)               # MP 上界 (1+√(N/T))²
         out = ev[ev > thr]
-        port = w.mean(axis=1)
         rows.append(dict(N=n, thr=thr, ar5=ar5(ev, top=5, denom=50),
                          l1l2=ev[0] / max(ev[1], 1e-9), l1s=ev[0] / s50,
-                         oe=out.sum() / n, oc=int(len(out)),
-                         rc=volatility_ratio(port, short=20)))
+                         oe=out.sum() / n, oc=int(len(out))))
         idx.append(dates[i])
     if not rows:
         raise SystemExit("窗口不足，算不出 RMT（面板长度 / 成分股覆盖不够）")
@@ -464,9 +466,9 @@ def series_for(name, win=60, force=False, panel_days=560, verbose=True):
     full = rmt_series_fast(ret, comps, win=win)
     if verbose:
         last = full.iloc[-1]
-        print("[rmt] %s 算出 %d 窗 %s~%s | oe=%.4f AR5=%.3f λ1/λ2=%.2f λ1/Σλ=%.3f RC=%.2f"
+        print("[rmt] %s 算出 %d 窗 %s~%s | oe=%.4f AR5=%.3f λ1/λ2=%.2f λ1/Σλ=%.3f"
               % (name, len(full), full.index[0], full.index[-1], last.oe, last.ar5,
-                 last.l1l2, last.l1s, last.rc), flush=True)
+                 last.l1l2, last.l1s), flush=True)
     full.index = [str(x) for x in full.index]
     full.to_csv(fp)
     return full
@@ -482,7 +484,7 @@ def pct_rank(s, v):
 FSZ = 1.45         # 全局字号倍数：聊天窗按宽度缩放显示，字号/画布宽 的比值才决定可读性
 
 METRICS = [("oe", "outlier_energy"), ("ar5", "AR5"), ("l1l2", "λ1/λ2"),
-           ("l1s", "λ1/Σλ"), ("rc", "RC")]
+           ("l1s", "λ1/Σλ"), ("da", "MFDFA Δα")]
 
 
 def metrics_now(full, show_from):
@@ -503,8 +505,8 @@ def _style_axis_y(ax, color, label, size=15):
 
 
 def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
-                   etf, etfname, win, dpi_note="", rc_src="comps", kind=None):
-    """一个标的 = 上：对应价格；下：RMT 三轴（RC 已换成与单独图同口径）"""
+                   etf, etfname, win, dpi_note="", da_p90=None, kind=None):
+    """一个标的 = 上：对应价格；下：RMT 三轴（RC 已换成 MF-DFA Δα，与单独图同口径）"""
     # ---- 上：价格 ----
     ax0 = fig.add_subplot(gs[r0, c0])
     px = px[px.index >= show_from] if len(px) else px
@@ -543,17 +545,20 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
              label="AR5 = (λ1..λ5)/Σ(λ1..λ50)")
     ax1.plot(x, d.l1s.values, color=PURPLE, lw=1.9, marker="v", ms=3.2, alpha=0.88,
              label="λ1/Σλ（同分母）")
-    ax1.plot(x, d.rc.values, color=ORANGE, lw=1.8, marker="s", ms=3, alpha=0.85,
-             label="RC = σ20/σ60（%s）" % ("自身行情" if rc_src == "own" else "成分股等权"))
+    ax1.plot(x, d.da.values, color=ORANGE, lw=1.8, marker="s", ms=3, alpha=0.85,
+             label="MF-DFA Δα（N=250，多分形谱宽）")
     ax1.set_ylim(0, 1.6)
-    ax1.set_ylabel("AR5 ｜ λ1/Σλ ｜ RC（右轴）", fontsize=15*FSZ)
+    ax1.set_ylabel("AR5 ｜ λ1/Σλ ｜ Δα（右轴）", fontsize=15*FSZ)
     ax1.yaxis.set_major_locator(MultipleLocator(0.2))
     ax1.tick_params(labelsize=13*FSZ)
-    for yv, c, txt in [(0.30, GREEN, "AR5 0.30"), (0.50, RED, "AR5 0.50 危险"),
-                       (1.00, ORANGE, "RC 1.0"), (1.20, GOLD, "RC 1.2 警戒")]:
+    for yv, c, txt in [(0.30, GREEN, "AR5 0.30"), (0.50, RED, "AR5 0.50 危险")]:
         ax1.axhline(yv, color=c, ls="--", lw=0.85, alpha=0.42)
         ax1.text(len(d) - 0.5, yv, txt, fontsize=11.5*FSZ, color=c, alpha=0.9,
                  ha="right", va="bottom")
+    if da_p90 is not None and pd.notna(da_p90):
+        ax1.axhline(da_p90, color=ORANGE, ls="--", lw=1.1, alpha=0.75)
+        ax1.text(len(d) - 0.5, da_p90, "Δα P90 %.3f（告警）" % da_p90,
+                 fontsize=11.5*FSZ, color=ORANGE, alpha=0.95, ha="right", va="bottom")
 
     axr = ax.twinx()
     axr.spines["right"].set_position(("outward", 54))
@@ -586,9 +591,9 @@ def draw_rmt_block(fig, gs, r0, c0, name, d, last, q, px, thr, show_from,
 
     # 右上角：只放数值（分位在页脚）
     ax1.text(0.995, 0.985,
-             "最新 %s　outlier_energy = %.4f　|　AR5=%.3f　λ1/λ2=%.2f　λ1/Σλ=%.3f　RC=%.2f"
+             "最新 %s　outlier_energy = %.4f　|　AR5=%.3f　λ1/λ2=%.2f　λ1/Σλ=%.3f　Δα=%.3f"
              % (d.index[-1][4:6] + "/" + d.index[-1][6:], last.oe, last.ar5,
-                last.l1l2, last.l1s, last.rc),
+                last.l1l2, last.l1s, last.da),
              transform=ax1.transAxes, ha="right", va="top", fontsize=13.5*FSZ,
              color="#e2e8f0", bbox=dict(boxstyle="round,pad=0.34", fc="#0f1a2c",
                                        ec=GRIDC, alpha=0.95))
@@ -614,9 +619,7 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
     # 面板起点：展示起点往前推至少 lookback 天 → 历史分位数才有稳定基准
     need_start = (datetime.strptime(show_from, "%Y%m%d") - timedelta(days=lookback)) \
         .strftime("%Y%m%d")
-    # RC 要 60 日窗口，回看更久一点更安全
-    rc_start = (datetime.strptime(show_from, "%Y%m%d") - timedelta(days=lookback + 120)) \
-        .strftime("%Y%m%d")
+    # Δα 要 250 日滚动窗口 + 多分形尺度，回看更久一点更安全（need_start 已含 lookback）
 
     metas = [t if isinstance(t, dict) else resolve_any_target(t, dh) for t in targets]
     names = [m["name"] for m in metas]
@@ -682,27 +685,25 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
             except SystemExit:
                 full = pd.DataFrame()
         if not len(full):
-            # 没有成分股面板 → 用标的自身 RC 的长度做骨架（RMT 那几列留空）
-            probe = rc_series_via_lib(info["typ"], info["code"])
+            # 没有成分股面板 → 用标的自身 Δα 的长度做骨架（RMT 那几列留空）
+            probe = da_series_via_lib(info["typ"], info["code"])
             if probe is None or not len(probe):
                 raise SystemExit("%s 既没有成分股面板、也没有自身行情，无法出图" % name)
             full = pd.DataFrame(index=[str(x) for x in probe.index], data={
                 "N": 1, "thr": np.nan, "ar5": np.nan, "l1l2": np.nan,
-                "l1s": np.nan, "oe": np.nan, "oc": np.nan, "rc": np.nan})
-            print("[rmt] %s 无成分股面板 → 只画自身指数+RC" % name, flush=True)
+                "l1s": np.nan, "oe": np.nan, "oc": np.nan, "da": np.nan})
+            print("[rmt] %s 无成分股面板 → 只画自身指数+Δα" % name, flush=True)
 
-        # ── RC 口径统一（2026-11-17 大佬：「统一一下算法，用原来的代码不就行了？」）：
-        #   直接调 misc/engine/rcascade.py::compute()（唯一实现），只换数据源类型：
+        # ── Δα 口径唯一（直接调 charts/phase_mfdfa.rolling_delta_alpha）：
+        #   标的自己的日线算 MF-DFA 滚动多分形谱宽（N=250），只换数据源类型：
         #     宽基/指数 index_sh|index_sz / 申万 sw / 同花顺行业 sector_ind / 概念 sector_con
-        #   拿不到该标的自有行情 → 保留成分股等权组合的 σ20/σ60（旧口径）。
-        rc_src = "comps"
-        own_rc = rc_series_via_lib(info["typ"], info["code"])
-        if own_rc is not None and len(own_rc):
+        #   拿不到该标的自有行情 → Δα 留空（不再回退成分股等权）。
+        own_da = da_series_via_lib(info["typ"], info["code"])
+        if own_da is not None and len(own_da):
             full = full.copy()
-            full["rc"] = own_rc["RC"].reindex(full.index).ffill()
-            rc_src = "own"
+            full["da"] = own_da["da"].reindex(full.index).ffill()
         else:
-            print("[rmt] %s 自身行情不可用，RC 回退成分股等权组合" % name, flush=True)
+            print("[rmt] %s 自身行情不可用，Δα 留空" % name, flush=True)
 
         d, last, q = metrics_now(full, show_from)
         if info.get("etf"):
@@ -710,10 +711,11 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
         else:
             px = own_close_via_lib(info["typ"], info["code"])
             px = px[px.index >= need_start] if len(px) else px
-        meta[name] = dict(info=info, full=full, d=d, last=last, q=q, px=px, rc_src=rc_src)
-        print("[rmt] %-8s %d 窗 %s~%s | outlier_energy=%.4f AR5=%.3f λ1/λ2=%.2f λ1/Σλ=%.3f RC=%.2f (%s)"
+        da_p90 = float(full["da"].quantile(0.9)) if full["da"].notna().any() else None
+        meta[name] = dict(info=info, full=full, d=d, last=last, q=q, px=px, da_p90=da_p90)
+        print("[rmt] %-8s %d 窗 %s~%s | outlier_energy=%.4f AR5=%.3f λ1/λ2=%.2f λ1/Σλ=%.3f Δα=%.3f"
               % (name, len(d), d.index[0], d.index[-1], last.oe, last.ar5, last.l1l2,
-                 last.l1s, last.rc, rc_src), flush=True)
+                 last.l1s, last.da), flush=True)
 
     n = len(names)
     ncol = cols or 1        # 默认纵向堆叠：并排会把画布拉宽 → 字被同比缩小
@@ -727,8 +729,8 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
         (RED,    "L1/L2（右外轴·红）：第一与第二特征值之比，越大表示抱团越集中"),
         (GREEN,  "AR5（右轴·绿）：前 5 个特征值之和 ÷ 前 50 个之和"),
         (PURPLE, "L1/SUM（右轴·紫）：第一大特征值 ÷ 前 50 个之和，与 AR5 同分母"),
-        (ORANGE, "RC（右轴·橙）：直接调 rcascade 口径的 σ20/σ60；优先标的自身行情，"
-                  "取不到才用成分股等权（标题里会标）"),
+        (ORANGE, "Δα（右轴·橙）：MF-DFA 多分形谱宽（N=250）；标的自身日线，"
+                  "90 分位虚线为告警阈值"),
     ]
     lh = 0.62 * FSZ                               # 每行高度（英寸，随字号放大）
     foot_h = lh * len(foot_lines) + 1.05          # 图例区总高
@@ -751,10 +753,10 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
         draw_rmt_block(fig, gs, r0, c0, name, m["d"], m["last"], m["q"],
                        m["px"], m["last"].thr, show_from,
                        m["info"].get("etf") or "", m["info"].get("etfname") or "指数",
-                       win, rc_src=m.get("rc_src", "comps"),
+                       win, da_p90=m.get("da_p90"),
                        kind=m["info"].get("kind"))
 
-    title = ("RMT + RC 联合监控图 ｜ %d 日滚动窗口 ｜ %s → 现在"
+    title = ("RMT + MFDFA Δα 联合监控图 ｜ %d 日滚动窗口 ｜ %s → 现在"
              % (win, datetime.strptime(show_from, "%Y%m%d").strftime("%Y-%m-%d")))
     if n > 1:
         title += " ｜ " + " · ".join(names)
@@ -778,8 +780,8 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
     for name in names:
         q = meta[name]["q"]
         foot2.append("%s　outlier_energy %.0f%% ｜ AR5 %.0f%% ｜ L1/L2 %.0f%% ｜ "
-                     "L1/SUM %.0f%% ｜ RC %.0f%%"
-                     % (name, q["oe"], q["ar5"], q["l1l2"], q["l1s"], q["rc"]))
+                     "L1/SUM %.0f%% ｜ Δα %.0f%%"
+                     % (name, q["oe"], q["ar5"], q["l1l2"], q["l1s"], q["da"]))
     fig.text(0.030, (foot_h - 0.30 - len(foot_lines) * lh) / fig_h,
              "历史分位（全样本）：　" + "　　|　　".join(foot2),
              color="#94a3b8", fontsize=fs_foot - 0.8, ha="left", va="center")
@@ -814,7 +816,7 @@ def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None):
     if not os.path.exists(script):
         print("[alert] 找不到邮件脚本 %s，只打印告警" % script)
         return False
-    lines = ["## RMT + RC 分位告警（阈值 %.0f%%）" % threshold, "",
+    lines = ["## RMT + MFDFA Δα 分位告警（阈值 %.0f%%）" % threshold, "",
              "触发项 %d 个：" % len(alerts), ""]
     lines += ["- " + a for a in alerts]
     lines += ["", "---", "", "### 全部读数", "",
@@ -824,7 +826,7 @@ def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None):
                      % (r["target"], r["metric"], r["value"], r["pct"],
                         " 🔴" if r["hit"] else ""))
     lines += ["", "> outlier_energy = Σ(λi | λi > (1+√(N/T))²)/N；AR5=(λ1..λ5)/Σ(λ1..λ50)；"
-                  "λ1/λ2=第一/第二特征值比；λ1/Σλ 同分母；RC=σ20/σ60。"]
+                  "λ1/λ2=第一/第二特征值比；λ1/Σλ 同分母；Δα=MF-DFA 多分形谱宽（N=250）。"]
     body_file = os.path.join(panel_cache_dir(), "alert_body.md")
     open(body_file, "w", encoding="utf-8").write("\n".join(lines))
 
@@ -845,7 +847,7 @@ def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None):
 # ───────────────────────── CLI ─────────────────────────
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        description="RMT + RC 联合监控图（单图/多图）+ 分位告警")
+        description="RMT + MFDFA Δα 联合监控图（单图/多图）+ 分位告警")
     ap.add_argument("--targets", "--target", dest="targets",
                     default="沪深300,科创50",
                     help="逗号分隔：宽基名（沪深300/中证500/中证1000/创业板指/科创50/上证50，"
