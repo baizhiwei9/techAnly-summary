@@ -126,6 +126,35 @@ def _config_paths():
     return out
 
 
+def _legacy_sender_config() -> dict:
+    """复用工作区既有的 **163 → QQ** 统一发信账号（`email_sender.py` 的 DEFAULT_CONFIG）。
+
+    仓库里**不写任何真实地址/口令**：只在本地没配发件账号时，按路径去读那个
+    「全系统唯一出口」模块的 DEFAULT_CONFIG，运行时取值。路径可用 `EMAIL_SENDER_DIR`
+    覆盖；找不到 / 读失败就返回空 dict（照旧按「未配置」处理，不报错）。
+    """
+    d = os.environ.get("EMAIL_SENDER_DIR", "/Coze/Drive/蓁宝/所有对话/主对话")
+    fp = os.path.join(d, "email_sender.py")
+    if not os.path.exists(fp):
+        return {}
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_legacy_email_sender", fp)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        c = getattr(mod, "DEFAULT_CONFIG", {}) or {}
+        out = {}
+        for src, dst in (("from_addr", "from_addr"), ("from_pass", "from_pass"),
+                         ("smtp_host", "smtp_host"), ("to_addr", "to")):
+            if c.get(src):
+                out[dst] = c[src]
+        if c.get("smtp_port"):
+            out["smtp_port"] = int(c["smtp_port"])
+        return out
+    except Exception:                                            # noqa: BLE001
+        return {}
+
+
 def load_config(extra=None) -> dict:
     """读配置：环境变量 > 配置文件 > 调用方传入的默认值。返回 dict（可能缺项）。"""
     cfg = {}
@@ -143,6 +172,11 @@ def load_config(extra=None) -> dict:
             if v and str(v).strip():
                 cfg[k] = v.strip()
                 break
+    # ④ 本机既有 163→QQ 统一发信账号：只在本地没配发件账号时兜底（不覆盖显式配置）
+    if not (cfg.get("from_addr") and cfg.get("from_pass")):
+        for k, v in _legacy_sender_config().items():
+            if k not in cfg or not cfg.get(k):
+                cfg[k] = v
     if extra:
         for k, v in extra.items():
             if v not in (None, ""):

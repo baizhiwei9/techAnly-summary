@@ -8,7 +8,7 @@
 
 副图按级别区分（2026-11-16 大佬澄清：「小时级别和周线级别你还是用那个偏向的 MACD，
 我只是说你日线级别给我出图那会改一下子」）：
-  · 日线       → 期权（VIX + SKEW 偏度）+ R_cascade，双 Y 轴
+  · 日线       → 期权（VIX + SKEW 偏度）+ MF-DFA Δα，双 Y 轴
   · 小时线/周线 → MACD(10,20,5)，保持原样不动
 口径（与 chan_signal_monitor / chan_smc_index 完全一致）
   版本：缠论·分型版（包含处理→顶底分型→笔→中枢ZG/ZD→背驰）
@@ -568,17 +568,17 @@ def _paint_pcr_panel(ax, view, nv, pcr_series, f_tick, f_y):
 
 
 def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
-               fs=None, sub="vol", rc_series=None, vol_series=None,
-               rc_ax=True, xtick_every=10, vol_mode="vix",
+               fs=None, sub="vol", da_series=None, vol_series=None,
+               da_ax=True, xtick_every=10, vol_mode="vix",
                pcr_ax=None, pcr_series=None):
     """在给定 axes 上画一个完整指数的一段行情（价格面板 + 副图）。
 
     `sub` 决定副图画什么：
-      · "vol"（默认）  ：VIX + 偏度（左轴）／R_cascade（右轴）三条线，双 Y 轴
+      · "vol"（默认）  ：VIX + 偏度（左轴）／MF-DFA Δα（右轴）三条线，双 Y 轴
       · "macd"        ：MACD(10,20,5)
       · "kline"       ：日线 K 线图（K线+MA20）
 
-    `rc_series`：R_cascade（列 RC）；`vol_series`：期权波动率（列 vix/skew）。
+    `da_series`：MF-DFA 滚动 Δα（列 da）；`vol_series`：期权波动率（列 vix/skew）。
     两者都按日期对齐到 view，副图用 vol_series 时一起画。
     `xtick_every`：价格面板横轴刻度间隔（根）；0 = 不显示。
     """
@@ -747,14 +747,15 @@ def _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
 
 
     # ── 副图 ──────────────────────────────────────────────────────
-    # 2026-11-16 定稿：默认 **不带 MACD**，副图 = 期权(VIX+偏度) + R_cascade
-    #   · "vol"  ← 默认：VIX + 偏度（左轴 0~130）／R_cascade（右轴 0~2，深红粗线）
+    # 2026-11-24：默认 **不带 MACD**，副图 = 期权(VIX+偏度) + MF-DFA Δα
+    #   （原 R_cascade 位替换为 MF-DFA 多分形谱宽 Δα，口径唯一 charts/phase_mfdfa）
+    #   · "vol"  ← 默认：VIX + 偏度（左轴 0~130）／Δα（右轴自适应，深红粗线）
     #   · "macd" ：MACD(10,20,5) —— 传 with_macd=True 或 --sub macd
     #   · "kline"：日线 K 线（更早的临时方案，保留能力）
     if sub == "vol":
-        _v, _s, _r = _paint_vol_panel(axm, view, nv, rc_series, vol_series,
+        _v, _s, _r = _paint_vol_panel(axm, view, nv, da_series, vol_series,
                                       f_tick, f_y, vol_mode=vol_mode)
-        globals().setdefault("_VOL_LAST", {})[name] = {"vix": _v, "skew": _s, "rc": _r}
+        globals().setdefault("_VOL_LAST", {})[name] = {"vix": _v, "skew": _s, "da": _r}
     elif sub == "kline":
         _paint_kline_panel(axm, view, nv, f_tick, f_y)
     else:
@@ -857,16 +858,17 @@ def _paint_kline_panel(ax, view, nv, f_tick, f_y):
                     color=cols[-1], fontweight="bold")
 
 
-# ── R_cascade 叠加（双坐标轴，深红粗线）────────────────────────────
-RC_LINE = "#8b0000"          # 深红（dark red）
-RC_LINE_W = 3.4              # 粗线
+# ── MF-DFA Δα 叠加（双坐标轴，深红粗线）────────────────────────────
+DA_LINE = "#8b0000"          # 深红（dark red）
+DA_LINE_W = 3.4              # 粗线
 VOL_VIX = "#1d4ed8"          # VIX 蓝
 VOL_SKEW = "#b45309"         # 偏度 琥珀
 VOL_YLIM = (0.0, 100.0)      # 左轴固定范围：偏度**近一年分位** 0~100（VIX 20~40 落在同一轴上）
 SKEW_PCT_LINES = ((50, ":", "#94a3b8", "分位50"),
                   (80, "--", "#c2410c", "80 偏高"),
                   (95, "--", "#991b1b", "95 极危"))
-RC_YLIM = (0.0, 2.0)         # 右轴**默认/兜底**范围（2026-11-17 起改成自适应，见 _paint_vol_panel）
+DA_YLIM = (0.0, 2.0)         # 右轴**默认/兜底**范围（自适应，见 _paint_vol_panel）
+DA_THR_PCT = 90              # Δα 告警分位：窗口内 90 分位画阈值线（与 rmt_rc 告警同口径）
 PCR_LINE = "#6d28d9"         # 持仓量 PCR 主线（紫）
 PCR_FILL = "#8b5cf6"         # 持仓量 PCR 淡填充
 
@@ -895,47 +897,138 @@ def _vol_series_for(name):
         return None
 
 
-def _rc_series_for(name, code=None, df=None):
-    """取该指数的 R_cascade 序列（唯一实现在 misc/engine/rcascade.py）。
+def _da_series_for(name, code=None, df=None):
+    """取该指数的 MF-DFA 滚动 Δα 序列。
 
-    返回 DataFrame(index=YYYYMMDD str, col "RC")；取不到返回 None（画图不能因此炸）。
+    Δα **唯一实现**在 charts/phase_mfdfa.rolling_delta_alpha（N=250，多分形谱宽）；
+    日线数据走 misc/engine/rcascade.py::load()（**只取数，不算 RC**）。
+    优先复用已传入的日线 df，拿不到再去取。
+    返回 DataFrame(index=YYYYMMDD str, col "da")；取不到返回 None（画图不能因此炸）。
     """
     try:
-        _ENG = os.path.join(WS, "misc", "engine")
-        if _ENG not in sys.path:
-            sys.path.insert(0, _ENG)
-        import rcascade as RC
+        from charts.phase_mfdfa import rolling_delta_alpha
     except Exception as e:                                       # noqa: BLE001
-        print("[WARN] rcascade 不可用：%s" % str(e)[:100], flush=True)
+        print("[WARN] phase_mfdfa 不可用：%s" % str(e)[:100], flush=True)
         return None
-    typ = "index_sz" if str(code or "").upper().endswith(".SZ") else "index_sh"
-    num = str(code or "").split(".")[0]
+
+    close = None
+    if df is not None and "close" in getattr(df, "columns", []):
+        _dtc = "dt" if "dt" in df.columns else df.columns[0]
+        try:
+            close = pd.Series(df["close"].astype(float).values,
+                              index=pd.to_datetime(df[_dtc].values))
+        except Exception:                                        # noqa: BLE001
+            close = None
+    if close is None:
+        try:
+            _ENG = os.path.join(WS, "misc", "engine")
+            if _ENG not in sys.path:
+                sys.path.insert(0, _ENG)
+            import rcascade as RC
+        except Exception as e:                                   # noqa: BLE001
+            print("[WARN] rcascade 不可用：%s" % str(e)[:100], flush=True)
+            return None
+        typ = "index_sz" if str(code or "").upper().endswith(".SZ") else "index_sh"
+        num = str(code or "").split(".")[0]
+        try:
+            d, _src = RC.load(typ, num)
+            if d is None or not len(d):
+                return None
+            close = d.set_index("dt")["close"].astype(float)
+        except Exception as e:                                   # noqa: BLE001
+            print("[WARN] %s Δα 日线取数失败：%s" % (name, str(e)[:100]), flush=True)
+            return None
     try:
-        d = RC.compute(typ, num)
+        da = rolling_delta_alpha(close, N=250)
     except Exception as e:                                       # noqa: BLE001
-        print("[WARN] %s R_cascade 取数失败：%s" % (name, str(e)[:100]), flush=True)
+        print("[WARN] %s Δα 计算失败：%s" % (name, str(e)[:100]), flush=True)
         return None
-    out = pd.DataFrame({"RC": d["RC"].astype(float)})
-    out.index = [str(x).replace("-", "")[:8] for x in d.index]
+    if da is None or not len(da):
+        return None
+    out = pd.DataFrame({"da": da.astype(float)})
+    out.index = [x.strftime("%Y%m%d") for x in pd.to_datetime(da.index)]
     return out
 
 
-def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y,
+def _da_alert_item(name, da_df, threshold=DA_THR_PCT):
+    """单指数 Δα 告警项：当前值 / 窗内 P-threshold / 当前分位 / 是否触发。
+
+    与 charts/rmt_rc.py::build_alerts 同口径：**当前值在自身历史里的百分位 > 阈值**即告警。
+    """
+    if da_df is None or "da" not in getattr(da_df, "columns", []):
+        return None
+    s = pd.to_numeric(pd.Series(da_df["da"]), errors="coerce").dropna()
+    if len(s) < 30:
+        return None
+    vals = s.values.astype(float)
+    last = float(vals[-1])
+    pct = float((vals <= last).mean() * 100.0)
+    return dict(target=name, last=last,
+                thr=float(np.percentile(vals, threshold)),
+                pct=pct, hit=(pct > threshold))
+
+
+def send_da_alert_email(items, chart=None, threshold=DA_THR_PCT, to=None, dry_run=False):
+    """MF-DFA Δα 分位告警邮件（走库内统一 `misc/core/mailer.py`，可带图）。
+
+    复用本机既有 **163 → QQ** 发信账号（mailer 在未显式配置时会自动回落，
+    口令只从运行时读取，**不落库、不打印**）。发不出去只返回 False，不抛异常。
+    """
+    items = [x for x in (items or []) if x]
+    hit = [x for x in items if x["hit"]]
+    if not items:
+        print("[alert] 无 Δα 数据，不发邮件", flush=True)
+        return False
+    if not hit:
+        print("[alert] Δα 均未超 P%.0f，不发邮件" % threshold, flush=True)
+        return False
+    try:
+        _CORE = os.path.join(WS, "misc", "core")
+        if _CORE not in sys.path:
+            sys.path.insert(0, _CORE)
+        import mailer  # noqa: PLC0415
+    except Exception as e:                                       # noqa: BLE001
+        print("[alert] mailer 不可用，只打印告警：%s" % str(e)[:120], flush=True)
+        return False
+
+    lines = ["## 缠论分型版 · MF-DFA Δα 分位告警（阈值 P%.0f）" % threshold, "",
+             "触发 %d 个（当前 Δα 处于自身历史高位）：" % len(hit), ""]
+    for x in sorted(hit, key=lambda z: -z["pct"]):
+        lines.append("- **%s** Δα=%.3f，处 %.0f%% 分位（P%.0f=%.3f）"
+                     % (x["target"], x["last"], x["pct"], threshold, x["thr"]))
+    lines += ["", "---", "", "### 全部读数", "",
+              "| 标的 | Δα | 当前分位 | P%.0f |" % threshold, "|---|---|---|---|"]
+    for x in sorted(items, key=lambda z: -z["pct"]):
+        lines.append("| %s | %.3f | %.0f%% | %.3f |%s"
+                     % (x["target"], x["last"], x["pct"], x["thr"],
+                        " 🔴" if x["hit"] else ""))
+    lines += ["", "> Δα = MF-DFA 多分形谱宽（N=250，scales 20/30/50/80/125，q=-4..4）；"
+                  "分位 = 当前值在自身全样本中的百分位。"]
+
+    subject = "🚨 MF-DFA Δα 分位告警 · %s · %d 项超 P%.0f" % (
+        datetime.now().strftime("%Y-%m-%d"), len(hit), threshold)
+    ok = mailer.send(subject, "\n".join(lines), to=to,
+                     attach=chart if (chart and os.path.exists(chart)) else None,
+                     dry_run=dry_run)
+    print("[alert] mail %s" % ("ok" if ok else "fail"), flush=True)
+    return ok
+
+
+def _paint_vol_panel(ax, view, nv, da_series, vol_series, f_tick, f_y,
                      title_note="", vol_mode="vix"):
-    """副图：R_cascade / 偏度 / VIX 三条线，**双 Y 轴**（2026-11-16 终稿）。
+    """副图：MF-DFA Δα / 偏度 / VIX 三条线，**双 Y 轴**。
 
-    大佬原话：「底下那坐标轴…还是双 Y 轴，一个是卡斯卡的，一个是偏度，
-    一个是那个 VIX，就这仨在一块。就是，还是不要 MACD 了」
+    2026-11-24：原「右轴 R_cascade」按大佬要求替换为 **MF-DFA 滚动 Δα**
+    （多分形谱宽，唯一实现 charts/phase_mfdfa，N=250）。
 
-    · 左轴 **固定 0~130**：偏度 **SKEW 指数**（BKM 严格口径：100 − 10×RNSkew，
+    · 左轴 **固定 0~100**：偏度 **SKEW 指数**（BKM 严格口径：100 − 10×RNSkew，
                         固定带宽 0.85S~1.15S、≥8 档 OTM，档位不够为 NA）
-                        + VIX（30D ATM IV 插值，20~40 区间）——同量纲共轴
-    · 右轴 **固定 0~2**  ：R_cascade（std20/std60）—— 深红粗线，单独一根轴
-    大佬 2026-11-16：「左坐标轴 1~120 左右（偏度>110 危险）…VIX 在 20~40 之间…
-    卡斯卡的是 0.5~1.5，右坐标轴 0~2 差不多就能显示出来」
+                        取**近一年滚动分位** + VIX（30D ATM IV 插值）——同量纲共轴
+    · 右轴（自适应）    ：Δα 多分形谱宽 —— 深红粗线，单独一根轴；
+                        窗内 **90 分位** 画告警阈值线（与 rmt_rc 告警同口径）
 
     `with_macd`：副图带不带 MACD（默认 False）。
-      False → 期权（VIX+偏度）+ R_cascade（2026-11-16 定稿）
+      False → 期权（VIX+偏度）+ MF-DFA Δα
       True  → MACD(10,20,5)
     返回最后一天的三元组，供标题/日志使用。
     """
@@ -958,7 +1051,7 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y,
     if not np.isfinite(vix).any() and _col != "vix":
         vix = _align(vol_series, "vix")          # 隐波缺列时回退 VIX
     skew_pct = _align(vol_series, "skew_pct")
-    rc = _align(rc_series, "RC")
+    da = _align(da_series, "da")
 
     # ── 左轴：**偏度近一年分位 0~100** + VIX ────────────────────────
     # 2026-11-17 大佬：「偏度的那个图你改一下子，因为我看出来都是 100 左右，
@@ -987,44 +1080,38 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y,
     ax.grid(True, ls=":", color="#cccccc", alpha=0.45)
     ax.tick_params(labelsize=f_tick)
 
-    # ── 右轴：R_cascade（深红粗线，**固定 0~2**，大佬指定）──
+    # ── 右轴：MF-DFA 滚动 Δα（多分形谱宽，深红粗线）──
+    # 2026-11-24 大佬：「R_cascade 那个位置替换成带 MFDFA 的」→ 右轴改画 Δα；
+    #   口径唯一实现 charts/phase_mfdfa.rolling_delta_alpha(N=250)，
+    #   阈值线与 charts/rmt_rc.py build_alerts 同口径（窗内 90 分位）。
     ax2 = ax.twinx()
-    _rc_axis = RC_YLIM
-    if np.isfinite(rc).any():
-        # 2026-11-17 大佬：「混图副图那个改了，一样了」
-        #   → 右轴口径跟**单独那张 R_cascade 图**对齐：不再固定 0~2，改成
-        #     min(0.55, 窗内最低-0.05) ~ max(1.45, 窗内最高+0.05) 的自适应范围。
-        #     这样同一数值在两张图上落在几乎相同的高度，不会再看着像两个指标。
-        _lo = float(np.nanmin(rc))
-        _hi = float(np.nanmax(rc))
-        _rc_axis = (min(0.55, _lo - 0.05), max(1.45, _hi + 0.05))
-        ax2.set_ylim(*_rc_axis)
-        ax2.plot(x, rc, color=RC_LINE, lw=RC_LINE_W, alpha=0.92, zorder=9,
+    _da_axis = DA_YLIM
+    _da_fin = da[np.isfinite(da)] if len(da) else np.array([])
+    if _da_fin.size:
+        _lo = float(np.min(_da_fin))
+        _hi = float(np.max(_da_fin))
+        _pad = max((_hi - _lo) * 0.08, 0.05)
+        _da_axis = (max(0.0, _lo - _pad), max(_hi + _pad, _lo + 0.10))
+        ax2.set_ylim(*_da_axis)
+        ax2.plot(x, da, color=DA_LINE, lw=DA_LINE_W, alpha=0.92, zorder=9,
                  solid_capstyle="round",
-                 label="R_cascade（右轴 %.2f~%.2f）" % _rc_axis)
-        _y0, _y1 = _rc_axis
-        for yv, ls in ((1.2, "--"), (0.8, "--"), (0.75, "-.")):
-            if not (_y0 < yv < _y1):     # 不在可视区间就别画，免得压边
-                continue
-            ax2.axhline(yv, color=RC_LINE, ls=ls, lw=0.8, alpha=0.32, zorder=1)
-        # 标签放**绘图区内左侧**：放右侧会顶到右轴刻度、甚至出画布（audit 会报）
+                 label="MF-DFA Δα（右轴 %.2f~%.2f）" % _da_axis)
+        # 90 分位告警阈值（与 charts/rmt_rc.py 的 90% 分位告警同口径）
+        _da90 = float(np.percentile(_da_fin, DA_THR_PCT))
+        _y0, _y1 = _da_axis
         _span = max(_y1 - _y0, 1e-6)
-        for yv, lab, va in ((1.2, "1.2 危险", "bottom"),
-                            (0.775, "0.8 安全 / 0.75 深坑", "top")):
-            if not (_y0 < yv < _y1):
-                continue
-            # 太靠近上下边界时把标签翻到另一侧，避免出画布
-            if (yv - _y0) / _span < 0.06:
-                va = "bottom"
-            elif (_y1 - yv) / _span < 0.06:
-                va = "top"
-            ax2.text(0.006, yv, lab, fontsize=f_tick - 2, color=RC_LINE,
-                     alpha=0.8, va=va, ha="left", zorder=11,
+        if _y0 < _da90 < _y1:
+            ax2.axhline(_da90, color=DA_LINE, ls="--", lw=0.9, alpha=0.4, zorder=1)
+            # 标签放**绘图区内左侧**，靠近边界时翻到另一侧，避免出画布
+            _va = "bottom" if (_da90 - _y0) / _span < 0.06 else "top"
+            ax2.text(0.006, _da90, "Δα P%.0f %.2f" % (DA_THR_PCT, _da90),
+                     fontsize=f_tick - 2, color=DA_LINE, alpha=0.8,
+                     va=_va, ha="left", zorder=11,
                      transform=blended_transform_factory(ax2.transAxes, ax2.transData))
-    ax2.set_ylabel("R_cascade（%.2f~%.2f）" % _rc_axis if np.isfinite(rc).any()
-                   else "R_cascade", fontsize=f_y - 2, color=RC_LINE)
-    ax2.tick_params(axis="y", colors=RC_LINE, labelsize=f_tick - 0.5)
-    ax2.spines["right"].set_color(RC_LINE)
+    ax2.set_ylabel("MF-DFA Δα（%.2f~%.2f）" % _da_axis if _da_fin.size
+                   else "MF-DFA Δα", fontsize=f_y - 2, color=DA_LINE)
+    ax2.tick_params(axis="y", colors=DA_LINE, labelsize=f_tick - 0.5)
+    ax2.spines["right"].set_color(DA_LINE)
     ax2.spines["right"].set_linewidth(1.6)
 
     # 图例合并（左轴两条 + 右轴一条）
@@ -1046,7 +1133,7 @@ def _paint_vol_panel(ax, view, nv, rc_series, vol_series, f_tick, f_y,
     def _last(arr):
         a = arr[np.isfinite(arr)]
         return float(a[-1]) if len(a) else float("nan")
-    return _last(vix), _last(skew_pct), _last(rc)
+    return _last(vix), _last(skew_pct), _last(da)
 
 
 def _audit_stack(fig):
@@ -1198,9 +1285,9 @@ def _pcr_oi_series_for(name):
 
 
 def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
-               with_rc=True, sub=None, with_macd=False, vol_mode="vix",
-               with_pcr=True):
-    """多指数**纵向堆叠**：一个指数两块（上=缠论价格 / 下=VIX+偏度+R_cascade 双轴），往下垒。
+               with_da=True, sub=None, with_macd=False, vol_mode="vix",
+               with_pcr=True, alert_sink=None, alert_thr=DA_THR_PCT):
+    """多指数**纵向堆叠**：一个指数两块（上=缠论价格 / 下=VIX+偏度+MF-DFA Δα 双轴），往下垒。
 
     大佬 2026-11-14 23:13：「我就不明白，你就把这几个子图粘到一块就行了，为什么要压缩呀？
     …你要能力不行，还是恢复到以前，一个指数一个图吧。」
@@ -1214,9 +1301,9 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
 
     两层结构（2026-11-16 最终定稿）：
       ① 上：**原来的缠论图**（笔 / 中枢 ZG-ZD / 买卖点 / VWAP ±1σ2σ3σ），不加任何叠加线
-      ② 下：**VIX + 偏度 + R_cascade 三条线，双 Y 轴**
+      ② 下：**VIX + 偏度 + MF-DFA Δα 三条线，双 Y 轴**
              左轴（波动率点）：VIX（30D ATM IV 插值）、偏度（BKM 严格口径 SKEW 指数）
-             右轴（比值）    ：R_cascade（std20/std60，深红粗线）
+             右轴（多分形）  ：MF-DFA 滚动 Δα（谱宽，N=250，深红粗线；附 90 分位告警线）
     大佬原话：「算了算了，你不要这么整了，还是原来的是原来的，底下那坐标轴…
     还是双 Y 轴，一个是卡斯卡的，一个是偏度，一个是那个 VIX，就这仨在一块。
     就是，还是不要 MACD 了」
@@ -1237,20 +1324,16 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
     globals()["_VOL_LAST"] = {}
     # 2026-11-16 大佬：「有个参数要传进去，就是带不带对应的 MACD。现在我就不需要你带了，
     # 也只要带期权和那个 CASC 的了」
-    #   with_macd=False（默认）→ 副图 = 期权（VIX+偏度）+ R_cascade
+    #   with_macd=False（默认）→ 副图 = 期权（VIX+偏度）+ MF-DFA Δα
     #   with_macd=True          → 副图 = MACD(10,20,5)
     #   sub 显式给值时优先（向后兼容 --sub kline 等）
     sub_mode = sub if sub else ("macd" if with_macd else "vol")
-    rc_map, vol_map, pcr_map = {}, {}, {}
+    vol_map, pcr_map = {}, {}
     for _n, _c in pairs:
         if sub_mode == "vol":
             _v = _vol_series_for(_n)
             if _v is not None:
                 vol_map[_n] = _v
-        if with_rc:
-            _r = _rc_series_for(_n, _c)
-            if _r is not None:
-                rc_map[_n] = _r
         if with_pcr:
             _p = _pcr_oi_series_for(_n)
             if _p is not None:
@@ -1260,6 +1343,14 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
         df = _index_day(code)
         if df is None or len(df) < 60:
             raise RuntimeError("%s(%s) 数据不足" % (name, code))
+        # Δα 用**本行已取好的日线**现算（N=250，唯一实现 charts/phase_mfdfa），
+        # 不再单独回源，避免重复取数；取不到就置 None，副图只画期权两条线。
+        _da = (_da_series_for(name, code, df=df)
+               if (with_da and sub_mode == "vol") else None)
+        if alert_sink is not None and _da is not None:
+            _item = _da_alert_item(name, _da, threshold=alert_thr)
+            if _item is not None:
+                alert_sink.append(_item)
         total = len(df)
         start = max(0, total - n_show)
         nv = min(n_show, total)
@@ -1278,10 +1369,10 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
         axm = fig.add_subplot(sub[1, 0], sharex=ax)
         axp = fig.add_subplot(sub[2, 0], sharex=ax) if _has_pcr else None
         _paint_row(fig, ax, axm, name, code, df, start, nv, geo, ck, zs, P, last_ts,
-                   sub=sub_mode, rc_series=rc_map.get(name),
+                   sub=sub_mode, da_series=_da,
                    vol_series=vol_map.get(name), vol_mode=vol_mode,
                    pcr_ax=axp, pcr_series=pcr_map.get(name))
-    fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）｜下：VIX／偏度分位／R_cascade 双轴 + 持仓量PCR",
+    fig.suptitle("缠论·分型版 · 五大宽基日线（每指数一行）｜下：VIX／偏度分位／MF-DFA Δα 双轴 + 持仓量PCR",
                  fontsize=19,
                  y=1 - 0.42 / _h, va="center")
     # 2026-11-17：口径说明原来一整行长文本，实测宽 2765px > 画布 1200px，
@@ -1292,7 +1383,7 @@ def draw_stack(pairs, out=None, n_show=160, row_h=7.8, width=12.0, dpi=150,
              "黄框=中枢　蓝线=笔　紫线=VWAP　虚线=±1σ/2σ/3σ",
              ha="center", va="center", fontsize=13.5, color="#444444")
     fig.text(0.5, 1 - 0.99 / _h,
-             "中：蓝=VIX(30D)　琥珀=偏度近一年分位(252日滚动)　深红=R_cascade(右轴)　｜　"
+             "中：蓝=VIX(30D)　琥珀=偏度近一年分位(252日滚动)　深红=MF-DFA Δα(右轴，虚线=P90)　｜　"
              "底：持仓量PCR(剔≤5天，1.0 上方=认沽占优)",
              ha="center", va="center", fontsize=13.5, color="#444444")
     if os.environ.get("CHAN_AUDIT"):
@@ -1323,10 +1414,19 @@ def main():
     ap.add_argument("--stack-n", type=int, default=160,
                     help="堆叠图显示最近多少根K线")
     ap.add_argument("--row-h", type=float, default=7.6, help="堆叠图每行高度（英寸）")
-    ap.add_argument("--no-rc", action="store_true",
-                    help="副图不画 R_cascade")
+    ap.add_argument("--alert-email", action="store_true",
+                    help="堆叠图出完后：Δα 分位超阈值的指数发预警邮件（带图；走 163→QQ）")
+    ap.add_argument("--alert-threshold", type=float, default=90.0,
+                    help="Δα 分位告警阈值（默认 90）")
+    ap.add_argument("--mail-to", default=None,
+                    help="收件人（默认走 mailer 配置，本机=工作区 163→QQ 账号）")
+    ap.add_argument("--email-dry-run", action="store_true",
+                    help="配合 --alert-email：只打印（脱敏）不真发")
+    ap.add_argument("--no-da", "--no-rc", dest="with_da", action="store_false",
+                    help="副图不画 MF-DFA Δα（--no-rc 是旧名，保留兼容）")
+    ap.set_defaults(with_da=True)
     ap.add_argument("--sub", default=None, choices=["vol", "macd", "kline"],
-                    help="副图内容（一般不用给）：vol=VIX/偏度/R_cascade（默认）；macd；kline")
+                    help="副图内容（一般不用给）：vol=VIX/偏度/MF-DFA Δα（默认）；macd；kline")
     ap.add_argument("--vol-mode", default="vix", choices=["vix", "iv"],
                     help="副图波动率用 VIX（默认）还是窄月 ATM 隐波")
     ap.add_argument("--pcr", dest="with_pcr", action="store_true",
@@ -1335,9 +1435,9 @@ def main():
                     help="不出持仓量 PCR 薄面板")
     ap.set_defaults(with_pcr=True)
     ap.add_argument("--macd", dest="with_macd", action="store_true",
-                    help="副图带 MACD（默认不带，带期权+R_cascade）")
+                    help="副图带 MACD（默认不带，带期权+MF-DFA Δα）")
     ap.add_argument("--no-macd", dest="with_macd", action="store_false",
-                    help="副图不带 MACD（默认，带期权+R_cascade）")
+                    help="副图不带 MACD（默认，带期权+MF-DFA Δα）")
     ap.set_defaults(with_macd=False)
     a = ap.parse_args()
 
@@ -1366,11 +1466,16 @@ def main():
         if not pairs:
             print("[ERR] --stack 至少需要一个指数", flush=True)
             return 2
+        _sink = []
         p = draw_stack(pairs, a.out, a.stack_n, row_h=a.row_h,
-                       with_rc=not a.no_rc, sub=a.sub,
+                       with_da=a.with_da, sub=a.sub,
                        with_macd=a.with_macd, vol_mode=a.vol_mode,
-                       with_pcr=a.with_pcr)
+                       with_pcr=a.with_pcr,
+                       alert_sink=_sink, alert_thr=a.alert_threshold)
         print("[OK]", p)
+        if a.alert_email:
+            send_da_alert_email(_sink, chart=p, threshold=a.alert_threshold,
+                                to=a.mail_to, dry_run=a.email_dry_run)
         return 0
 
     if a.compare:

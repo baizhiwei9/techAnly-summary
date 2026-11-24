@@ -810,13 +810,27 @@ def build_alerts(meta, threshold=90.0):
     return rows, alerts
 
 
-def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None):
-    """调用 workspace 的 send_email.py（路径可用 TECH_EMAIL_SCRIPT 覆盖）"""
-    script = os.environ.get("TECH_EMAIL_SCRIPT",
-                            "/root/.openclaw/workspace/scripts/send_email.py")
-    if not os.path.exists(script):
-        print("[alert] 找不到邮件脚本 %s，只打印告警" % script)
+def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None, dry_run=False):
+    """发送 Δα 分位告警邮件（走库内统一 `misc/core/mailer.py`）。
+
+    2026-11-24：原来 subprocess 调 `/root/.openclaw/workspace/scripts/send_email.py`，
+    本机根本没这个文件 → `--email` 从来没真正发出去过。现改用库内 mailer：
+      · 账号优先环境变量 / `~/.config/openclaw/mail.json`；
+      · 都没有时 mailer 会回落到工作区 `email_sender.py` 的 **163 → QQ** 账号（不落库）。
+    附件为监控图。发不出去只返回 False，不抛异常（报警链路不能把主流程带死）。
+    """
+    if not alerts:
+        print("[alert] 无告警项，不发邮件")
         return False
+    try:
+        _CORE = os.path.join(WS, "misc", "core")
+        if _CORE not in sys.path:
+            sys.path.insert(0, _CORE)
+        import mailer
+    except Exception as e:                                       # noqa: BLE001
+        print("[alert] mailer 不可用，只打印告警：%s" % str(e)[:120])
+        return False
+
     lines = ["## RMT + MFDFA Δα 分位告警（阈值 %.0f%%）" % threshold, "",
              "触发项 %d 个：" % len(alerts), ""]
     lines += ["- " + a for a in alerts]
@@ -828,21 +842,14 @@ def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None):
                         " 🔴" if r["hit"] else ""))
     lines += ["", "> outlier_energy = Σ(λi | λi > (1+√(N/T))²)/N；AR5=(λ1..λ5)/Σ(λ1..λ50)；"
                   "λ1/λ2=第一/第二特征值比；λ1/Σλ 同分母；Δα=MF-DFA 多分形谱宽（N=250）。"]
-    body_file = os.path.join(panel_cache_dir(), "alert_body.md")
-    open(body_file, "w", encoding="utf-8").write("\n".join(lines))
 
-    cmd = [sys.executable, script,
-           "--subject", "[RMT告警] %d 项分位超 %.0f%%" % (len(alerts), threshold),
-           "--body-file", body_file]
-    if to:
-        cmd += ["--to", to]
-    if chart and os.path.exists(chart):
-        cmd += ["--attach", chart]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
-    print("[alert] mail rc=%d" % r.returncode)
-    if r.returncode != 0:
-        print((r.stderr or r.stdout or "")[-400:])
-    return r.returncode == 0
+    subject = "🚨 RMT + MF-DFA Δα 分位告警 · %s · %d 项超 %.0f%%" % (
+        datetime.now().strftime("%Y-%m-%d"), len(alerts), threshold)
+    ok = mailer.send(subject, "\n".join(lines), to=to,
+                     attach=chart if (chart and os.path.exists(chart)) else None,
+                     dry_run=dry_run)
+    print("[alert] mail %s" % ("ok" if ok else "fail"))
+    return ok
 
 
 # ───────────────────────── CLI ─────────────────────────
@@ -867,6 +874,8 @@ def main(argv=None):
     ap.add_argument("--alert-threshold", type=float, default=90.0)
     ap.add_argument("--email", action="store_true", help="配合 --alert：超阈值时发邮件")
     ap.add_argument("--mail-to", default=None)
+    ap.add_argument("--email-dry-run", action="store_true",
+                    help="配合 --email：只打印（脱敏）不真发")
     ap.add_argument("--no-chart", action="store_true", help="只算告警，不出图")
     a = ap.parse_args(argv)
 
@@ -909,7 +918,8 @@ def main(argv=None):
                 print("   - " + x)
             if a.email:
                 send_alert_email(rows, alerts, chart=chart,
-                                 threshold=a.alert_threshold, to=a.mail_to)
+                                 threshold=a.alert_threshold, to=a.mail_to,
+                                 dry_run=a.email_dry_run)
     return 0
 
 

@@ -6,6 +6,37 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-24
+
+**feat(chart/alert): 技术分析汇总日线「R_cascade 位」替换为 MF-DFA Δα；Δα 高位邮件预警接回 163→QQ**
+
+大佬 2026-11-24：「技术分析汇总带那个 R_cascade 你就把那个位置替换了……一调用它，
+那不就邮件预警就有了吗？……用那个 163 邮箱往 QQ 邮箱发。以前就有。」
+
+### 改了什么
+
+| 文件 | 改动 |
+|---|---|
+| `charts/chan_fractal.py` | `draw_stack`（五宽基日线堆叠）副图**右轴由 R_cascade 改为 MF-DFA Δα**：深红粗线 + 窗内 P90 虚线阈值；新增 `--alert-email / --alert-threshold / --mail-to / --email-dry-run`，出图后 Δα 分位超阈值即发**带图**邮件。`--no-rc` 保留为 `--no-da` 旧名 |
+| `charts/chan_fractal.py` | 新增 `_da_series_for()`（Δα 唯一实现 `charts/phase_mfdfa.rolling_delta_alpha`，日线复用 `rcascade.load()` **只取数**）、`_da_alert_item()`（与 `rmt_rc.build_alerts` 同口径）、`send_da_alert_email()`（走 `misc/core/mailer.py`） |
+| `charts/rmt_rc.py` | `send_alert_email()` 原来 shell 调不存在的 `/root/.openclaw/workspace/scripts/send_email.py`（`--email` 从未真正发出）→ 改用库内 `mailer.send`；新增 `--email-dry-run` |
+| `misc/core/mailer.py` | 新增 ④ 兜底：本机无显式发信配置时，运行时读工作区 `email_sender.py` 的 `DEFAULT_CONFIG`（**163 → QQ**），口令不落库、不打印 |
+| `misc/charts/registry.py` / `run.py` / `skills/tech-summary/SKILL.md` | 文档与路由同步：`rmt-rc` = RMT+Δα；`rcascade` 标注为「仅取数库，已并入 MF-DFA」 |
+
+### 固定调用（替代原 R_cascade 日报）
+
+```bash
+python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板指,科创50 --alert-email
+```
+
+### 验证（2026-11-24）
+
+- `py_compile` 全部通过；`_paint_vol_panel` 合成数据出图正常（右轴 `MF-DFA Δα` + `Δα P90` 标签）；
+- `_da_series_for` 合成 700 日序列 → 450 行有效 Δα；
+- `mailer` 实测解析到 `son***951@163.com → 410***229@qq.com`（`pass_set=True`，全程未打印口令）；
+- `send_da_alert_email` / `rmt_rc.send_alert_email` dry-run 均 `[alert] mail ok`（带图附件）。
+- 注：本沙箱无 `data_hub`/tushare token，真机全链出图需在有数据的部署环境复跑。
+
 ## 2026-11-20 08:40
 
 **refactor(phase_signals): 本机 `bin/pws_compute.py` 全部算子并入 `charts/phase_signals.py`，口径逐列对齐**

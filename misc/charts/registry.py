@@ -45,8 +45,11 @@ CHARTS = [
     ),
     dict(
         name="chan-fractal",
-        keywords=["缠论分型版", "分型版K线", "画缠论图", "缠论图"],
-        desc="缠论·分型版单标的出图（包含→分型→笔→中枢→背驰，K线+MACD）",
+        keywords=["缠论分型版", "分型版K线", "画缠论图", "缠论图",
+                  "技术分析汇总", "五大宽基日线", "宽基堆叠", "MF-DFA双轴"],
+        desc="缠论·分型版出图：单标的（包含→分型→笔→中枢→背驰，K线+MACD）"
+             "；`--stack 沪深300,中证500,...` 出「五大宽基日线」堆叠图——副图右轴画 "
+             "MF-DFA Δα（原 R_cascade 位已替换），`--alert-email` 可对 Δα 高位发预警邮件（带图）",
         module="chanlun/fractal/chan_chart.py",
         default_out="reports/charts/chan-fractal",
         out_kind="file",
@@ -137,7 +140,8 @@ CHARTS = [
     dict(
         name="rmt-rc",
         keywords=["RMT矩阵图", "RMT 矩阵图", "RMT图", "RMT监控图", "RMT+RC", "RMT",
-                  "outlier_energy", "特征值吸收率", "双Y轴RMT", "λ1/λ2"],
+                  "outlier_energy", "特征值吸收率", "双Y轴RMT", "λ1/λ2",
+                  "MF-DFA告警", "Δα告警", "多分形谱宽"],
         desc="RMT + MFDFA Δα 联合监控图（60 日滚动窗口）。单图/多图都行："
              "--targets 科创50 出一张；--targets 沪深300,科创50 出并排两张；"
              "左内轴 outlier_energy、右外轴 λ1/λ2、右轴 AR5/λ1Σλ/Δα（多分形谱宽）；"
@@ -163,9 +167,10 @@ CHARTS = [
         name="rcascade",
         keywords=["R_cascade", "rcascade", "级联比", "波动率级联比", "波动率级联",
                   "波动率吉连比", "吉连比", "R cascade"],
-        desc="R_cascade 波动率级联比（平滑版 std20/std60）：科创50ETF / 创业板指 / 中证1000 "
-             "三面板（K线+MA20 / R曲线）。--chart 出图；带「数据截止」列 + 历史计数。"
-             "阈值 🔴>1.2 连3日 报警 / 🟣<0.75 连5日 报警 / 🟢<0.8 安全 / 🟡中性",
+        desc="【已并入 MF-DFA Δα，R_cascade 仅作取数库】原 R_cascade 波动率级联比"
+             "（平滑版 std20/std60）：科创50ETF / 创业板指 / 中证1000 三面板（K线+MA20 / R曲线）。"
+             "现在日线副图右轴改画 MF-DFA Δα（见 chan-fractal --stack、rmt-rc），"
+             "邮件预警走 `charts/rmt_rc.py --alert --email` 或 `chan_fractal.py --stack ... --alert-email`",
         module="misc/engine/rcascade.py",
         default_out="reports/charts/rcascade",
         out_kind="file",

@@ -22,6 +22,21 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 
 > 只在点名时才用别的入口：`tech_buypoint.py --targets`（指定板块）、`wyckoff_buypoint_v2.py`（威科夫吸筹版）。
 
+## 📈 技术分析汇总·日线（五宽基）+ MF-DFA Δα 预警
+
+大佬 2026-11-24 定：日线汇总里**原 R_cascade 的位置换成 MF-DFA Δα**，
+调用一次 = 出图 + Δα 高位自动发预警邮件（复用既有 **163 → QQ** 发信通道）：
+
+```bash
+python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板指,科创50 \
+        --alert-email                # 只出图不发信就去掉 --alert-email
+```
+
+- 副图右轴 = **MF-DFA 滚动 Δα**（N=250，唯一实现 `charts/phase_mfdfa.py`），虚线 = 窗内 P90；
+- 某指数 `Δα` 当前分位 > `--alert-threshold`（默认 90）→ 发**带图邮件**到 QQ；
+- 同口径独立监控：`python3 charts/rmt_rc.py --targets 沪深300,科创50 --alert --email`
+  （左内轴 outlier_energy，右轴 AR5 / λ1Σλ / Δα）。
+
 ---
 
 > 全流程纯 Python，**0 token**。
@@ -61,7 +76,8 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 > | `misc/engine/wyckoff_buypoint_v2.py` | 威科夫吸筹买点 v2 |
 > | `misc/engine/sector_buypoint_top20.py` | 板块买点 Top20 |
 > | `misc/engine/simple_chart.py` | 单图速览 |
-> | `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60，三指数；`--chart` 出图） |
+> | `charts/chan_fractal.py` | **缠论分型版**（含 `--stack` 五大宽基日线堆叠；副图右轴 = **MF-DFA Δα**，已替换原 R_cascade 位；`--alert-email` 发 Δα 高位预警邮件带图） |
+| `charts/rmt_rc.py` | **RMT + MF-DFA Δα 联合监控**（`--alert --email` 分位>90% 发预警邮件，带图；邮件走 163→QQ） |
 > | `charts/margin.py` | **A股两融全景图**（融资余额+MACD(10,20,5) / 融券 / 净买入 / 账户数 / 维持担保比例）｜数据只读 **DataHub EDB `cn_market`**（`CN.EQ.MARGIN.*` 11 条，库内保留 500 自然日 ≈340 交易日） |
 > | `chanlun/fractal/chan_smc_index.py` | 缠论·分型版（几何 + SMC 摘要） |
 > | `chanlun/fractal/chan_chart.py` | 缠论·分型版出图 |
@@ -95,9 +111,11 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 | `misc/engine/tech_intraday_buypoint.py` | **盘中行业买点 Top10 + 个股下钻**（东财实时板块，个股须站在 VWAP −1σ 以上） |
 | `misc/engine/buypoint_chart.py` | 买点图（日线 / 60m / 均线版三面板）+ `draw_stock_grid()` 多标的网格图 |
 | `misc/engine/wyckoff_buypoint_v2.py` | **盘中吸筹买点分析 v2**：威科夫吸筹 → 四层过滤 → Top10 行业 → Top20 个股 → 多子图 |
-| `misc/engine/rcascade.py` | **R_cascade 波动率级联比**（std20/std60）三指数 + 出图 + 报警判定（不属四层，独立指标） |
+| `charts/chan_fractal.py` | **MF-DFA Δα 日线堆叠**（`--stack`）五宽基一轮；副图右轴 Δα + P90 阈值线，`--alert-email` 出警报邮件（带图） |
+| `charts/rmt_rc.py` | **RMT + MF-DFA Δα 监控 + 分位告警**（独立指标，不属四层）；`--alert --email` 发信 |
+| `misc/engine/rcascade.py` | 仅作**取数库**（`load()` 供 Δα 复用日线）；R_cascade 本身已由 MF-DFA Δα 取代 |
 | `charts/margin.py` | **A股两融全景图**：融资余额+MA5/MA20+MACD(10,20,5) / 融券余额 / 融资买入·净买入 / 两融账户数 / 平均维持担保比例+担保物。**数据只读 EDB**（`CN.EQ.MARGIN.*`，见 3.0.2 节） |
-| `misc/core/mailer.py` | **全库唯一发信通道**：收件人/口令只从环境变量或 `~/.config/openclaw/mail.json` 读，日志里邮箱一律脱敏（`exa***456@qq.com` 这种） |
+| `misc/core/mailer.py` | **全库唯一发信通道**：收件人/口令只从环境变量或 `~/.config/openclaw/mail.json` 读；都没配时**自动回落**到工作区 `email_sender.py` 的 **163 → QQ** 账号（口令仅运行时读取、不落库不打印）。日志邮箱一律脱敏 |
 
 ---
 
