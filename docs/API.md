@@ -11,7 +11,7 @@
 |---|---|---|
 | 分析引擎 | 缠论（分型版/均线版）、SMC、VWAP 六轨、拓扑流形（SPD/TDA/里奇曲率）、小波 AC1-VMD | `misc/engine/*.py` 与各库模块 |
 | 画图 | K线 + 买点/卖点标注、多面板、网格图 | `charts/*`、`chanlun/*/chan_*_chart.py` |
-| 交付 | 文字报告、飞书卡片（图+文一条消息）、QQ、邮件 | `misc/core/feishu_card.py`、`misc/core/mailer.py` |
+| 交付 | 文字报告、飞书卡片（图+文一条消息）、QQ、告警触发 | `misc/core/feishu_card.py`、`misc/core/notify.py`（通道由调用方注册）、`misc/core/mailer.py`（通用 SMTP 工具） |
 
 **明确不做**：原始行情抓取（统一走 DataHub，本仓库只做适配层 `misc/core/dh_bridge.py`）、回测资金曲线以外的绩效归因、期权定价（归 options_utility）。
 
@@ -117,7 +117,8 @@ python3 chanlun/ma/chan_ma_chart.py --target 中证500 --n 300
 | `misc/core/dh_bridge.py` | 技术分析库 → DataHub 的**纯适配层**（无抓取逻辑） | 见附录 A |
 | `misc/core/datafeed.py` | 盘中买点数据获取（多源 + 限流保护） | 见附录 A |
 | `misc/core/feishu_card.py` | 飞书交互式卡片（图文一条消息） | `build_card` / 发送函数 |
-| `misc/core/mailer.py` | 统一邮件发送（收发件人脱敏输出） | 见附录 A |
+| `misc/core/notify.py` | **告警通知注册表**：库内只触发、通道由调用方注册（零内置通道，可公开） | `register` / `emit` / `emit_bool` / `autoload`，见附录 A |
+| `misc/core/mailer.py` | 通用 SMTP 工具（收发件人脱敏输出） | 见附录 A |
 | `charts/*` | 画图统一层：K线、买点、缠论、VWAP、拓扑、对比、网格 | `charts/registry.py` 注册表 |
 | `smc/*` | SMC 多资产模拟交易引擎（结构/回测/DB/通知/飞书） | `smc_core` `smc_engine` `smc_db` |
 | `topology/*` | SPD 流形 + TDA + 里奇曲率；`run.py` 为统一入口 | `spd.compute` `run.main` |
@@ -166,6 +167,7 @@ python3 chanlun/ma/chan_ma_chart.py --target 中证500 --n 300
 | `IBP_WEEK_TB_NEAR` | `"20"` | `misc/engine/tech_intraday_buypoint.py` |
 | `IBP_WEEK_YB_MAX_AGE` | `"26"` | `misc/engine/tech_intraday_buypoint.py` |
 | `IPV6_OK_HOSTS` | `""` | `misc/core/net_guard.py`, `misc/core/net_guard_hook.py` |
+| `TECHANLY_NOTIFIERS` | `—` | `misc/core/notify.py`、`charts/chan_fractal.py`、`charts/rmt_rc.py`、`misc/engine/rcascade.py`（`os.pathsep` 分隔的通知模块路径/模块名，`emit()` 时自动 import） |
 | `MAIL_CONFIG` | `—` | `misc/core/mailer.py` |
 | `MAIL_DRY_RUN` | `""` | `misc/core/mailer.py` |
 | `MAIL_RENDERER` | `—` | `misc/core/mailer.py` |
@@ -599,8 +601,25 @@ python3 chanlun/ma/chan_ma_chart.py --target 中证500 --n 300
 | `build_card(title, blocks, img_keys=None, template='blue', sign='📎 来自 OpenClaw.Deepseek')` | 把文字块 + 图片按顺序拼成一张卡片 |
 | `send_card(title, blocks, imgs=None, chat=None, template='blue', sign=None)` | 发送图文合成卡片。imgs: [本地路径]，会自动上传并插到 blocks 里（若 blocks 里没指定位置， |
 
+### `misc/core/notify.py`
+> notify · 告警通知注册表（库内只**触发**，通道由调用方注册，零内置通道）
+
+| 接口 | 签名 | 说明 |
+|---|---|---|
+| `AlertEvent` | dataclass | 一次告警的上下文：`subject` / `body` / `attachments`（本地文件元组）/ `source` / `meta`（通道自定义，如 `{"to": ...}`）/ `dry_run` |
+| `register(name, fn, *, replace=True)` | 注册通道。`fn(event) -> bool`，返回 False 视为失败、None 视为成功 |
+| `unregister(name)` / `clear()` / `channels()` | 注销 / 清空（测试用）/ 列出通道名 |
+| `autoload(spec=None) -> int` | 按 `TECHANLY_NOTIFIERS`（`os.pathsep` 分隔）加载注册文件；幂等，失败只告警 |
+| `emit(subject, body="", *, attachments=None, source="", meta=None, dry_run=False) -> dict` | 交给所有已注册通道，返回 `{通道名: 是否成功}`；无通道时返回 `{}` 并打印醒目提示 |
+| `emit_bool(...) -> bool` | 至少一个通道成功即 True |
+| CLI | `python3 misc/core/notify.py --list` ｜ `--test [--dry-run]` |
+
+> 跨进程调用：`export TECHANLY_NOTIFIERS=/path/to/notifier.py`，注册文件在 import 时调用
+> `notify.register("email", fn)` 即可把告警接到邮件 / 飞书 / webhook。**公开库内不出现任何
+> 真实账号、本机路径或口令。**
+
 ### `misc/core/mailer.py`
-> mailer · 统一的邮件发送（收件人/发件人**全部脱敏输出**）
+> mailer · 通用 SMTP 工具（收件人/发件人**全部脱敏输出**；告警请走 `notify.py`）
 
 | 接口 | 签名 | 说明 |
 |---|---|---|

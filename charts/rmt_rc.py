@@ -811,24 +811,23 @@ def build_alerts(meta, threshold=90.0):
 
 
 def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None, dry_run=False):
-    """发送 Δα 分位告警邮件（带监控图）。
+    """发送 Δα 分位告警（带监控图）：**只触发**，通道由调用方注册。
 
-    2026-11-24：原来 subprocess 调 `/root/.openclaw/workspace/scripts/send_email.py`，
-    本机根本没这个文件 → `--email` 从来没真正发出去过。现**直接复用**本机既有
-    「全系统唯一出口」`email_sender.send_email`（**163 → QQ**，环流日报同款）；
-    该模块不在时回落库内 `misc/core/mailer.py` 自带 SMTP。
-    附件为监控图。发不出去只返回 False，不抛异常（报警链路不能把主流程带死）。
+    2026-11-24：公开库不内置任何邮件账号/本机路径。调用方先
+    `notify.register("email", fn)`（或设 `TECHANLY_NOTIFIERS=/path/to/notifier.py`），
+    再由本函数 `notify.emit()` 统一触发。附件为监控图；`to` 作为 `meta["to"]`
+    透传给通道。没有通道时返回 False，不抛异常（报警链路不能把主流程带死）。
     """
     if not alerts:
-        print("[alert] 无告警项，不发邮件")
+        print("[alert] 无告警项，不发告警")
         return False
     try:
         _CORE = os.path.join(WS, "misc", "core")
         if _CORE not in sys.path:
             sys.path.insert(0, _CORE)
-        import mailer
+        import notify
     except Exception as e:                                       # noqa: BLE001
-        print("[alert] mailer 不可用，只打印告警：%s" % str(e)[:120])
+        print("[alert] notify 不可用，只打印告警：%s" % str(e)[:120])
         return False
 
     lines = ["## RMT + MFDFA Δα 分位告警（阈值 %.0f%%）" % threshold, "",
@@ -845,10 +844,10 @@ def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None, dry_run=
 
     subject = "🚨 RMT + MF-DFA Δα 分位告警 · %s · %d 项超 %.0f%%" % (
         datetime.now().strftime("%Y-%m-%d"), len(alerts), threshold)
-    ok = mailer.send_alert(subject, "\n".join(lines), to=to, source="RMT监控",
-                           attach=chart if (chart and os.path.exists(chart)) else None,
-                           dry_run=dry_run)
-    print("[alert] mail %s" % ("ok" if ok else "fail"))
+    ok = notify.emit_bool(subject, "\n".join(lines),
+                          attachments=[chart] if (chart and os.path.exists(chart)) else [],
+                          source="RMT监控", meta={"to": to}, dry_run=dry_run)
+    print("[alert] notify %s" % ("ok" if ok else "fail"))
     return ok
 
 
@@ -872,7 +871,8 @@ def main(argv=None):
                     help="历史分位基准的回看天数（默认 420，面板起点＝展示起点−该天数）")
     ap.add_argument("--alert", action="store_true", help="检查分位，超阈值打印告警")
     ap.add_argument("--alert-threshold", type=float, default=90.0)
-    ap.add_argument("--email", action="store_true", help="配合 --alert：超阈值时发邮件")
+    ap.add_argument("--email", action="store_true",
+                    help="配合 --alert：超阈值时触发通知（通道需调用方注册，或设 TECHANLY_NOTIFIERS）")
     ap.add_argument("--mail-to", default=None)
     ap.add_argument("--email-dry-run", action="store_true",
                     help="配合 --email：只打印（脱敏）不真发")

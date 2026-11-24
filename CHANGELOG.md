@@ -8,6 +8,47 @@
 
 ## 2026-11-24
 
+### （晚）refactor(notify): 告警改为「库只触发、通道由调用方注册」，公开库彻底去掉本机发信路径
+
+大佬 2026-11-24 20:01：「它这边应该有一个触发预警的逻辑……这个预警的注册函数，
+是你调任务调用的时候注册进去的，比如说发送邮件或者发送飞书。这样的话你这个库
+就能公开了。」
+
+### 改了什么
+
+| 文件 | 改动 |
+|---|---|
+| `misc/core/notify.py` | **新增**。告警通知注册表：`register(name, fn)` / `emit()` / `emit_bool()` / `autoload()`；`AlertEvent(subject, body, attachments, source, meta, dry_run)`；**零内置通道**。跨进程用 `TECHANLY_NOTIFIERS`（`os.pathsep` 分隔）声明注册文件，`emit()` 时自动 import；没有通道 → 打印「告警未送达」并返回 False。附 `--list` / `--test [--dry-run]` 自测 CLI |
+| `charts/chan_fractal.py` | `send_da_alert_email()` 不再 import 本机 `email_sender` / `mailer`，改为 `notify.emit_bool(..., attachments=[图], source="技术分析汇总", meta={"to": to})`。`to` 仅透传，由通道决定收件人 |
+| `charts/rmt_rc.py` | `send_alert_email()` 同上，`source="RMT监控"` |
+| `misc/engine/rcascade.py` | `send_email()` 改为 `notify.emit_bool(..., source="R_cascade")`；`notify_line()` 不再假设一定有 `MAIL_TO`，未配置时显示「由调用方注册的通知通道发送」 |
+| `misc/core/mailer.py` | 删除 `send_alert()` / `_unified_send()` / `_legacy_sender_config()` 及对 `email_sender.py` `DEFAULT_CONFIG` 的兜底；**降级为通用 SMTP 工具**（`send()` / `mask()` / `whoami()`），仓库内无账号口令 |
+| `skills/tech-summary/SKILL.md`、`docs/API.md` | 模块地图、环境变量表、附录 A 改为注册表口径；调用示例补 `export TECHANLY_NOTIFIERS=...` |
+
+### 本机接入（不进公开库）
+
+本机注册文件：`/Coze/Drive/蓁宝/所有对话/主对话/techanly_notifier.py`
+
+- `email` 通道 → `email_sender.send_email`（163 → QQ，环流日报同款）；吞掉对方 stdout 后只回显**脱敏**行；
+- `feishu` 通道（可选，`TECHANLY_NOTIFY_CHANNELS=email,feishu`）→ 工作区 `notifier.py`，有图走卡片；
+- 仓库里**没有任何真实邮箱、口令或本机路径**。
+
+```bash
+export TECHANLY_NOTIFIERS=/Coze/Drive/蓁宝/所有对话/主对话/techanly_notifier.py
+python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板指,科创50 --alert-email
+python3 charts/rmt_rc.py --targets 沪深300,科创50 --alert --email
+```
+
+### 验证（2026-11-24）
+
+- `py_compile`：`notify.py` / `mailer.py` / `chan_fractal.py` / `rmt_rc.py` / `rcascade.py` / 本机 `techanly_notifier.py` 全通过；
+- 无通道：三条告警入口 dry-run 均打印「没有注册任何通知通道，告警未送达」并返回 False；
+- 假通道：`notify.emit` 收到 `subject` / 附件数 / `meta["to"]` 均正确，返回 `{'dummy': True}`；
+- 本机 email 通道 `dry_run=True` 实调 `email_sender` 返回 True，输出 `[DRY-RUN] … -> ['410***229@qq.com']`（脱敏，未真发）；
+- `TECHANLY_NOTIFIERS=...notifier.py` 经告警入口自动加载成功（`[notify] 已加载通知模块`）；路径不存在时只告警不崩，退出码 1。
+
+---
+
 **feat(chart/alert): 技术分析汇总日线「R_cascade 位」替换为 MF-DFA Δα；Δα 高位邮件预警接回 163→QQ**
 
 大佬 2026-11-24：「技术分析汇总带那个 R_cascade 你就把那个位置替换了……一调用它，
