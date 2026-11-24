@@ -383,11 +383,15 @@ def send_alert(subject, body, to=None, attach=None, source=None, dry_run=False):
               % (mask_many(rcpts or []), scrub(subject), mask_attach(attach)))
         return True
     ok = _unified_send(subject, body, to=to, attach=attach, source=source)
-    if ok is not None:
-        print("[mailer] 已走统一出口（163→QQ）→ %s ｜ %s"
-              % (mask_many(to or [load_config().get("to", "")]),
-                 "成功" if ok else "失败"))
-        return ok
+    if ok is True:
+        print("[mailer] 已走统一出口（163→QQ）→ %s ｜ 成功"
+              % mask_many(to or [load_config().get("to", "")]))
+        return True
+    if ok is False:
+        # 2026-11-24 口径修正：统一出口「能导入但发送失败」以前直接 return False，
+        #   告警就被吞了（而部署机缺 email_sender.py 时两条路本来都不通）。现回落本库 SMTP 再试一次。
+        print("[mailer] 统一出口发送失败 → 回落本库 SMTP 重试")
+        return send(subject, body, to=to, attach=attach, dry_run=False)
     return send(subject, body, to=to, attach=attach, dry_run=False)
 
 

@@ -1083,11 +1083,19 @@ def _paint_vol_panel(ax, view, nv, da_series, vol_series, f_tick, f_y,
 
     # ── 右轴：MF-DFA 滚动 Δα（多分形谱宽，深红粗线）──
     # 2026-11-24 大佬：「R_cascade 那个位置替换成带 MFDFA 的」→ 右轴改画 Δα；
-    #   口径唯一实现 charts/phase_mfdfa.rolling_delta_alpha(N=250)，
-    #   阈值线与 charts/rmt_rc.py build_alerts 同口径（窗内 90 分位）。
+    #   口径唯一实现 charts/phase_mfdfa.rolling_delta_alpha(N=250)。
+    # 2026-11-24 口径修正：阈值线必须用**全样本**分位才与告警同源
+    #   （_da_alert_item 与 charts/rmt_rc.build_alerts 都是全样本 P90）。
+    #   此前按显示窗口（stack_n 默认 160，小于 N=250 的预热长度）算 P90，
+    #   线与实际发信阈值不是同一个数，会出现「破线不发信 / 发信没破线」。
     ax2 = ax.twinx()
     _da_axis = DA_YLIM
     _da_fin = da[np.isfinite(da)] if len(da) else np.array([])
+    # 全样本 Δα：da_series 是未截断的完整序列，窗口内的 da 只负责画线
+    _da_all = np.array([])
+    if da_series is not None and hasattr(da_series, "columns") and "da" in da_series.columns:
+        _da_all = (pd.to_numeric(pd.Series(da_series["da"]), errors="coerce")
+                   .dropna().values.astype(float))
     if _da_fin.size:
         _lo = float(np.min(_da_fin))
         _hi = float(np.max(_da_fin))
@@ -1097,15 +1105,17 @@ def _paint_vol_panel(ax, view, nv, da_series, vol_series, f_tick, f_y,
         ax2.plot(x, da, color=DA_LINE, lw=DA_LINE_W, alpha=0.92, zorder=9,
                  solid_capstyle="round",
                  label="MF-DFA Δα（右轴 %.2f~%.2f）" % _da_axis)
-        # 90 分位告警阈值（与 charts/rmt_rc.py 的 90% 分位告警同口径）
-        _da90 = float(np.percentile(_da_fin, DA_THR_PCT))
+        # 90 分位告警阈值：与 _da_alert_item / charts/rmt_rc.build_alerts 同源（**全样本**）
+        _thr_src, _thr_tag = ((_da_all, "全样本") if _da_all.size >= 30
+                              else (_da_fin, "窗内"))
+        _da90 = float(np.percentile(_thr_src, DA_THR_PCT))
         _y0, _y1 = _da_axis
         _span = max(_y1 - _y0, 1e-6)
         if _y0 < _da90 < _y1:
             ax2.axhline(_da90, color=DA_LINE, ls="--", lw=0.9, alpha=0.4, zorder=1)
             # 标签放**绘图区内左侧**，靠近边界时翻到另一侧，避免出画布
             _va = "bottom" if (_da90 - _y0) / _span < 0.06 else "top"
-            ax2.text(0.006, _da90, "Δα P%.0f %.2f" % (DA_THR_PCT, _da90),
+            ax2.text(0.006, _da90, "Δα %sP%.0f %.2f" % (_thr_tag, DA_THR_PCT, _da90),
                      fontsize=f_tick - 2, color=DA_LINE, alpha=0.8,
                      va=_va, ha="left", zorder=11,
                      transform=blended_transform_factory(ax2.transAxes, ax2.transData))
@@ -1441,6 +1451,12 @@ def main():
                     help="副图不带 MACD（默认，带期权+MF-DFA Δα）")
     ap.set_defaults(with_macd=False)
     a = ap.parse_args()
+
+    # 2026-11-24 口径修正：--alert-email 只在下面的 --stack 分支被消费。
+    #   其余模式（单图 / --compare / --all）以前是「静默忽略」——以为发了信其实没发，现显式报错。
+    if a.alert_email and not a.stack:
+        raise SystemExit("--alert-email 只在 --stack（多指数堆叠）模式下生效；"
+                         "单图/对比请改用 charts/rmt_rc.py --alert --email")
 
     if a.all:
         paths = []
