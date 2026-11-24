@@ -39,6 +39,25 @@ python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板�
 - `send_da_alert_email` / `rmt_rc.send_alert_email` dry-run 均 `[alert] mail ok`（带图附件）。
 - 注：本沙箱无 `data_hub`/tushare token，真机全链出图需在有数据的部署环境复跑。
 
+### 同日修正（口径对齐）
+
+**fix(chart/alert): Δα 阈值线改全样本、邮件回落补「发送失败」分支、`--alert-email` 不再静默忽略**
+
+复核当天 5 个直推提交时发现三处口径/边界问题，本提交一并修掉（不改方法本身，只对齐口径）：
+
+| 文件 | 改动 |
+|---|---|
+| `charts/chan_fractal.py` | `_paint_vol_panel` 右轴 P90 虚线改按**全样本** Δα 计算。此前只取 `stack_n` 显示窗口（默认 160 < N=250 预热长度），而 `_da_alert_item` 与 `rmt_rc.build_alerts` 都用全样本 → 线与发信阈值不是同一个数，会「破线不发信 / 发信没破线」。标签同步写「全样本 P90」，拿不到完整序列时才退回「窗内」并明确标注 |
+| `charts/chan_fractal.py` | `main()` 增加入口校验：`--alert-email` 只在 `--stack` 分支生效，其余模式（单图 / `--compare` / `--all`）以前静默忽略，现显式 `SystemExit` 并提示改用 `charts/rmt_rc.py --alert --email` |
+| `misc/core/mailer.py` | `send_alert()` 补分支：统一出口**能导入但发送返回 False** 时回落本库 SMTP 再试一次，不再直接吞掉告警；模块不可用（None）仍按原路回落 |
+| `skills/tech-summary/SKILL.md` | 口径描述由「虚线 = 窗内 P90」改为「全样本 P90（与告警同源）」，并注明 `--alert-email` 仅 `--stack` 生效 |
+
+### 验证（同日修正）
+
+- `py_compile` 三个改动文件通过；
+- `mailer.send_alert` 用假 `_unified_send` 三分支实测：`True` → 直接返回成功；`False` → 回落 `send()`；`None` → 回落 `send()`；
+- 端到端出图与真发信仍需在有 `data_hub`/tushare 与 `email_sender.py` 的部署环境复跑（本沙箱两者皆缺）。
+
 ## 2026-11-20 08:40
 
 **refactor(phase_signals): 本机 `bin/pws_compute.py` 全部算子并入 `charts/phase_signals.py`，口径逐列对齐**
