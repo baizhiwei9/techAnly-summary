@@ -149,19 +149,6 @@ CHARTS = [
         entry=None,
     ),
     dict(
-        name="mfdfa-rc",
-        keywords=["多分形谱", "MFDFA", "MF-DFA", "多分形监控", "Δα图", "谱宽图",
-                  "Δα监控", "多分形谱宽"],
-        desc="多分形谱三栏监控图：①收盘价 ②MF-DFA 滚动 Δα（N=250，90 分位告警）"
-             "③R_cascade = σ20/σ60（阈值直接读 rcascade 模块）。"
-             "Δα 直接调 charts/phase_mfdfa.rolling_delta_alpha（唯一实现）",
-        module="charts/mfdfa_rc.py",
-        default_out="reports/charts/mfdfa_rc",
-        out_kind="file",
-        kind="script",
-        entry=None,
-    ),
-    dict(
         name="topology-manifold",
         keywords=["流形拓扑图", "拓扑流形图", "流形结构图", "流形拓扑", "里奇曲率", "UMAP结构"],
         desc="流形拓扑图（左：UMAP 结构位置 / 右：里奇曲率网络）。"
