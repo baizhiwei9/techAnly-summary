@@ -31,6 +31,19 @@ CHARTS = [
         entry=None,
     ),
     dict(
+        name="phase-mfdfa",
+        keywords=["相变MFDFA", "相变多分形", "MF-DFA相变", "相变图加MFDFA", "相变图加多分形",
+                  "多分形谱宽相变", "6栏相变", "六栏相变", "相变监控MFDFA"],
+        desc="相变监控面板（六栏）：前 5 栏与 phase-transition 完全同口径，"
+             "第 6 栏追加 MF-DFA 滚动 Δα（多分形谱宽，N=250，scales=[20,30,50,80,125]，q=[-4..4]），"
+             "突破 90 分位处画红色竖虚线。Δα 只是结构状态描述，不是交易信号",
+        module="charts/phase_mfdfa.py",
+        default_out="reports/charts/phase_mfdfa",
+        out_kind="file",
+        kind="script",
+        entry=None,
+    ),
+    dict(
         name="chan-fractal",
         keywords=["缠论分型版", "分型版K线", "画缠论图", "缠论图"],
         desc="缠论·分型版单标的出图（包含→分型→笔→中枢→背驰，K线+MACD）",
@@ -131,6 +144,19 @@ CHARTS = [
              "页脚多行图例（大字号）+ 历史分位一行；--alert 分位>90% 可发邮件（Δα 亦入列）",
         module="charts/rmt_rc.py",
         default_out="reports/charts/rmt",
+        out_kind="file",
+        kind="script",
+        entry=None,
+    ),
+    dict(
+        name="mfdfa-rc",
+        keywords=["多分形谱", "MFDFA", "MF-DFA", "多分形监控", "Δα图", "谱宽图",
+                  "Δα监控", "多分形谱宽"],
+        desc="多分形谱三栏监控图：①收盘价 ②MF-DFA 滚动 Δα（N=250，90 分位告警）"
+             "③R_cascade = σ20/σ60（阈值直接读 rcascade 模块）。"
+             "Δα 直接调 charts/phase_mfdfa.rolling_delta_alpha（唯一实现）",
+        module="charts/mfdfa_rc.py",
+        default_out="reports/charts/mfdfa_rc",
         out_kind="file",
         kind="script",
         entry=None,

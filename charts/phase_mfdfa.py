@@ -90,6 +90,18 @@ def mfdfa_delta_alpha(r, scales=(20, 30, 50, 80, 125),
     return float(max(alphas) - min(alphas))
 
 
+def _as_dt_index(idx):
+    """把 YYYYMMDD 字符串 / 整数 / 日期字符串索引统一成 DatetimeIndex。"""
+    if isinstance(idx, pd.DatetimeIndex):
+        return idx
+    if pd.api.types.is_integer_dtype(idx):
+        return pd.to_datetime(pd.Index(idx).astype(str), format="%Y%m%d")
+    try:
+        return pd.to_datetime(idx, format="%Y%m%d")
+    except Exception:
+        return pd.to_datetime(idx)
+
+
 def rolling_delta_alpha(close, N=250):
     """对收盘价序列做滚动 MF-DFA Δα。
 
@@ -97,12 +109,7 @@ def rolling_delta_alpha(close, N=250):
     """
     px = close.astype(float)
     r = np.log(px).diff()
-    idx = r.index
-    if not isinstance(idx, pd.DatetimeIndex):
-        try:
-            idx = pd.to_datetime(idx, format="%Y%m%d")
-        except Exception:
-            idx = pd.to_datetime(idx)
+    idx = _as_dt_index(r.index)
     da, dates = [], []
     vals = r.values
     for i in range(N, len(r)):
@@ -158,7 +165,7 @@ def plot_panel(targets, start, end, out_path, da=None, da_window=250):
     ax1.grid(alpha=0.25)
 
     risk_note = ""
-    if not multi and targets[0].metrics is not None:
+    if not multi and targets[0].metrics is not None and not targets[0].metrics.empty:
         m = targets[0].metrics
         ar_hi = m["ar1"] > max(0.6, float(m["ar1"].quantile(0.5)))
         risk = ((m["M"].diff(5) < 0) & (m["xi"].diff(5) < 0) & ar_hi).fillna(False).values
@@ -230,7 +237,7 @@ def plot_panel(targets, start, end, out_path, da=None, da_window=250):
 
     # ---------- ④ 相变时序三指标（M1 AR(1) / M2 Δσ / M3 PSI）----------
     ax4 = axes[3]
-    have_sig = ("m1_ar" in m.columns) if not multi else True
+    have_sig = (m is not None and not m.empty and "m1_ar" in m.columns) if not multi else True
     if not multi and have_sig:
         mm = m
         ax4.plot(mm["date"], mm["m1_ar"], color="#2e7d32", lw=1.8, label="M1 AR(1) 恢复力")
@@ -262,7 +269,8 @@ def plot_panel(targets, start, end, out_path, da=None, da_window=250):
 
     # ---------- ⑤ 通道B 吸收比率 λ1/N ----------
     ax5 = axes[4]
-    if not multi and "m5_ar" in m.columns and m["m5_ar"].notna().any():
+    if (not multi and m is not None and not m.empty
+            and "m5_ar" in m.columns and m["m5_ar"].notna().any()):
         ax5.plot(m["date"], m["m5_ar"], color="#00695c", lw=1.8, label="M5 吸收比率 λ1/N（去共同因子）")
         ax5.plot(m["date"], m["m5_thr"], color="#b71c1c", ls="--", lw=1.2, label="120 日 P90 阈值")
         for s_, e_ in _pt.segments_by_pos((m["chB"] == 1).values, m["date"].dt.to_pydatetime()):
@@ -287,11 +295,14 @@ def plot_panel(targets, start, end, out_path, da=None, da_window=250):
     ax6.set_title("MF-DFA 滚动 Δα（窗口 N=%d，多分形谱宽 = 市场非单分形/多尺度涨落强度）" % da_window,
                   fontsize=18, pad=26)
     if not multi and targets[0].price is not None:
+        # Δα 必须用「完整」价格历史算（滚动窗口要先预热 da_window 个交易日），
+        # 算完再按绘图区间截取；先截价格再算会让第 6 栏永远为空。
         t = targets[0]
-        px = t.price[(t.price.index >= start) & (t.price.index <= end)]
-        if px is not None and not px.empty and da is None:
-            da = rolling_delta_alpha(px["close"], N=da_window)
+        if da is None and not t.price.empty:
+            da = rolling_delta_alpha(t.price["close"], N=da_window)
         if da is not None and len(da) > 0:
+            if not isinstance(da.index, pd.DatetimeIndex):
+                da = pd.Series(da.values, index=_as_dt_index(da.index), dtype=da.dtype)
             t0 = pd.to_datetime(start, format="%Y%m%d")
             t1 = pd.to_datetime(end, format="%Y%m%d")
             da_win = da[(da.index >= t0) & (da.index <= t1)]
@@ -311,9 +322,15 @@ def plot_panel(targets, start, end, out_path, da=None, da_window=250):
                          ha="center", va="bottom")
                 ax6.legend(loc="upper left", fontsize=12, framealpha=0.85)
             else:
-                ax6.text(0.5, 0.5, "Δα 数据不足", transform=ax6.transAxes, ha="center", fontsize=14)
+                ax6.text(0.5, 0.5, "Δα 数据不足（滚动窗口 N=%d，需更长价格历史）" % da_window,
+                         transform=ax6.transAxes, ha="center", fontsize=14)
         else:
-            ax6.text(0.5, 0.5, "无价格数据，无法计算 Δα", transform=ax6.transAxes, ha="center", fontsize=14)
+            if t.price is None or t.price.empty:
+                msg = "无价格数据，无法计算 Δα"
+            else:
+                msg = "Δα 数据不足（需 ≥%d 个交易日价格历史，当前 %d 日）" % (
+                    da_window, len(t.price))
+            ax6.text(0.5, 0.5, msg, transform=ax6.transAxes, ha="center", fontsize=14)
     else:
         ax6.text(0.5, 0.5, "多标的模式暂只画单标的 Δα", transform=ax6.transAxes, ha="center", fontsize=14)
     ax6.grid(alpha=0.25)
@@ -342,11 +359,20 @@ def plot_panel(targets, start, end, out_path, da=None, da_window=250):
 # 入口（与 phase_transition.build 同构，仅绘图换成 6 栏）
 # ============================================================================
 
+def _mfdfa_start(start8, da_window):
+    """价格取数起点：比绘图起点再往前约 da_window 个交易日（Δα 滚动窗口预热用）。"""
+    days = int(da_window * 1.45) + 40
+    return (pd.to_datetime(start8) - pd.Timedelta(days=days)).strftime("%Y%m%d")
+
+
 def build(args):
     start8 = pd.to_datetime(args.start).strftime("%Y%m%d")
     end8 = pd.to_datetime(args.end).strftime("%Y%m%d")
     hist8 = (pd.to_datetime(args.start)
              - pd.Timedelta(days=int(args.window * 2.2) + 20)).strftime("%Y%m%d")
+    # 相变指标只需 window+ar_window 预热；MF-DFA 的 Δα 还要额外 da_window 个交易日，
+    # 价格单独从更早的 px_hist8 取，避免把成分股日线也拉长（取数成本）。
+    px_hist8 = _mfdfa_start(start8, args.da_window)
 
     hub = _pt._ensure_datahub()
     font = _pt._ensure_cjk()
@@ -378,12 +404,13 @@ def build(args):
 
         px = None
         if args.price_code and len(targets) == 1:
-            px = _pt._to_series(get_stock_daily(args.price_code, start_date=hist8, end_date=end8))
+            px = _pt._to_series(get_stock_daily(
+                args.price_code, start_date=px_hist8, end_date=end8))
         if px is None or px.empty:
             try:
                 px = _pt._to_series(get_index_daily(
                     t.code if "." in t.code else t.code + ".SH",
-                    start_date=hist8, end_date=end8))
+                    start_date=px_hist8, end_date=end8))
             except Exception:
                 px = None
         if px is None or px.empty:

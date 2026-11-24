@@ -92,16 +92,20 @@ def plot_panel(code="000688", typ="index_sh", lookback=250, out=None):
     end = win.index[-1]
 
     # ② MF-DFA Δα：全历史算，再截近 lookback 窗口
-    da = rolling_delta_alpha(d["close"].astype(float), N=250)
-    t0 = win.index[0]
-    da_win = da[(da.index >= t0) & (da.index <= end)].dropna()
+    da = rolling_delta_alpha(d["close"].astype(float), N=250)   # 返回 DatetimeIndex
+    if len(da):
+        t0 = win.index[0]
+        da_win = da[(da.index >= t0) & (da.index <= end)].dropna()
+    else:
+        da_win = da
+    da_ok = len(da_win) > 0          # 历史不足 250 日时 da 为空，不能直接 iloc[-1]
 
     rc_win = win["RC"]
     v20_win = win["vol20"]
     v60_win = win["vol60"]
 
-    thr_da = float(da_win.quantile(0.9))
-    lv_da = float(da.iloc[-1])
+    thr_da = float(da_win.quantile(0.9)) if da_ok else float("nan")
+    lv_da = float(da_win.iloc[-1]) if da_ok else float("nan")
     lv_rc = float(rc_win.iloc[-1])
     rc_state = _rc_state(RC, lv_rc)
 
@@ -118,19 +122,25 @@ def plot_panel(code="000688", typ="index_sh", lookback=250, out=None):
     ax1.legend(loc="upper left", fontsize=11)
 
     # ② MF-DFA 多分形 Δα
-    ax2.plot(da_win.index, da_win.values, color="#c62828", lw=1.6,
-             label="MF-DFA 滚动 Δα（N=250）")
-    ax2.axhline(thr_da, color="#ef6c00", ls="--", lw=1.4, label="90分位阈值 %.3f" % thr_da)
-    for i in np.where(da_win.values > thr_da)[0]:
-        ax2.axvline(da_win.index[i], color="#c62828", ls=":", lw=1.0, alpha=0.8)
+    if da_ok:
+        ax2.plot(da_win.index, da_win.values, color="#c62828", lw=1.6,
+                 label="MF-DFA 滚动 Δα（N=250）")
+        ax2.axhline(thr_da, color="#ef6c00", ls="--", lw=1.4,
+                    label="90分位阈值 %.3f" % thr_da)
+        for i in np.where(da_win.values > thr_da)[0]:
+            ax2.axvline(da_win.index[i], color="#c62828", ls=":", lw=1.0, alpha=0.8)
+        ax2.annotate("最新 Δα=%.3f" % lv_da, xy=(da_win.index[-1], lv_da),
+                     xytext=(8, 8), textcoords="offset points",
+                     color="#c62828", fontsize=11, fontweight="bold")
+    else:
+        ax2.text(0.5, 0.5,
+                 "Δα 数据不足（历史 %d 个交易日 < MF-DFA 窗口 250）" % len(d),
+                 transform=ax2.transAxes, ha="center", va="center", fontsize=13)
     ax2.set_ylabel("Δα（多分形谱宽）", fontsize=13, color="#c62828")
     ax2.set_title("② MF-DFA 多分形谱宽 Δα · scales=[20,30,50,80,125] · q=[-4..4]",
                   fontsize=14, pad=10)
     ax2.grid(alpha=0.25)
     ax2.legend(loc="upper left", fontsize=11)
-    ax2.annotate("最新 Δα=%.3f" % lv_da, xy=(da_win.index[-1], lv_da),
-                 xytext=(8, 8), textcoords="offset points",
-                 color="#c62828", fontsize=11, fontweight="bold")
 
     # ③ R_cascade 波动率级联比
     ax3.plot(rc_win.index, rc_win.values, color="#4da3ff", lw=1.7,
@@ -173,8 +183,11 @@ def plot_panel(code="000688", typ="index_sh", lookback=250, out=None):
     plt.close(fig)
 
     print("窗口: %s ~ %s" % (win.index[0].strftime("%Y%m%d"), end.strftime("%Y%m%d")))
-    print("最新 Δα = %.4f | 90分位阈值 = %.4f | 全历史分位 = %.1f%%" %
-          (lv_da, thr_da, float((da <= lv_da).mean() * 100)))
+    if da_ok:
+        print("最新 Δα = %.4f | 90分位阈值 = %.4f | 全历史分位 = %.1f%%" %
+              (lv_da, thr_da, float((da <= lv_da).mean() * 100)))
+    else:
+        print("最新 Δα = 数据不足（历史 %d 个交易日，MF-DFA 窗口需 250）" % len(d))
     print("最新 R_cascade = %.3f | %s" % (lv_rc, rc_state))
     print("vol20 = %.1f%% | vol60 = %.1f%%" %
           (float(v20_win.iloc[-1]), float(v60_win.iloc[-1])))

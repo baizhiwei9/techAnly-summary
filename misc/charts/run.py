@@ -76,6 +76,8 @@ def _print_list():
     print("  「画流形图」                        → topology-spd（SPD 流形 + TDA + 相位图）")
     print("  「画地形图 / 黎曼地形图」          → topology-terrain")
     print("  「画RMT矩阵图 / RMT监控图 / 双Y轴RMT」 → rmt-rc（RMT+RC 监控图）")
+    print("  「画相变MFDFA图 / 六栏相变图」        → phase-mfdfa（相变 5 栏 + MF-DFA Δα 第 6 栏）")
+    print("  「画多分形谱 / Δα 监控图」            → mfdfa-rc（走势 + Δα + R_cascade 三栏）")
     print("  「两融图 / A股两融 / 融资融券余额 / 两融账户 / 维持担保比例」 → margin（两融全景图）")
     print("  「画五大宽基 / 五个指数一张图 / 宽基总览」 → five-index（缠论买卖点 + 拓扑结构，日报配图）")
 
@@ -93,7 +95,7 @@ def _target_tag(extra):
             val = extra[i + 1]
         elif a.startswith("--targets="):
             val = a.split("=", 1)[1]
-        elif a in ("--index", "--name") and i + 1 < len(extra) and not val:
+        elif a in ("--index", "--name", "--code") and i + 1 < len(extra) and not val:
             val = extra[i + 1]
         if val:
             break
