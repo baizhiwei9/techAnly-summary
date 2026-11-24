@@ -951,9 +951,10 @@ def _da_series_for(name, code=None, df=None):
 
 
 def _da_alert_item(name, da_df, threshold=DA_THR_PCT):
-    """单指数 Δα 告警项：当前值 / 窗内 P-threshold / 当前分位 / 是否触发。
+    """单指数 Δα 告警项：当前值 / **全样本** P-threshold / 当前分位 / 是否触发。
 
-    与 charts/rmt_rc.py::build_alerts 同口径：**当前值在自身历史里的百分位 > 阈值**即告警。
+    与 charts/rmt_rc.py::build_alerts 同口径：**当前值在自身全样本历史里的百分位 > 阈值**即告警。
+    阈值 = 同一份全样本的 P<threshold>，与副图虚线同源（2026-11-24 口径修正）。
     """
     if da_df is None or "da" not in getattr(da_df, "columns", []):
         return None
@@ -1026,7 +1027,8 @@ def _paint_vol_panel(ax, view, nv, da_series, vol_series, f_tick, f_y,
                         固定带宽 0.85S~1.15S、≥8 档 OTM，档位不够为 NA）
                         取**近一年滚动分位** + VIX（30D ATM IV 插值）——同量纲共轴
     · 右轴（自适应）    ：Δα 多分形谱宽 —— 深红粗线，单独一根轴；
-                        窗内 **90 分位** 画告警阈值线（与 rmt_rc 告警同口径）
+                        **全样本** P90 画告警阈值线（与 `_da_alert_item` /
+                        `rmt_rc.build_alerts` 同源；序列不足 30 个才退回窗内并标注）
 
     `with_macd`：副图带不带 MACD（默认 False）。
       False → 期权（VIX+偏度）+ MF-DFA Δα
@@ -1097,28 +1099,29 @@ def _paint_vol_panel(ax, view, nv, da_series, vol_series, f_tick, f_y,
         _da_all = (pd.to_numeric(pd.Series(da_series["da"]), errors="coerce")
                    .dropna().values.astype(float))
     if _da_fin.size:
-        _lo = float(np.min(_da_fin))
-        _hi = float(np.max(_da_fin))
+        # 90 分位告警阈值：与 _da_alert_item / charts/rmt_rc.build_alerts 同源（**全样本**）
+        _thr_src, _thr_tag = ((_da_all, "全样本") if _da_all.size >= 30
+                              else (_da_fin, "窗内"))
+        _da90 = float(np.percentile(_thr_src, DA_THR_PCT))
+        # 右轴范围把阈值线一起算进去：窗口内最近 160 天整体高于/低于全样本 P90 时，
+        # 原来自适应轴会把虚线挤到轴外 → 线上看不见阈值，仍会被误读成「没触发」。
+        _lo = min(float(np.min(_da_fin)), _da90)
+        _hi = max(float(np.max(_da_fin)), _da90)
         _pad = max((_hi - _lo) * 0.08, 0.05)
         _da_axis = (max(0.0, _lo - _pad), max(_hi + _pad, _lo + 0.10))
         ax2.set_ylim(*_da_axis)
         ax2.plot(x, da, color=DA_LINE, lw=DA_LINE_W, alpha=0.92, zorder=9,
                  solid_capstyle="round",
                  label="MF-DFA Δα（右轴 %.2f~%.2f）" % _da_axis)
-        # 90 分位告警阈值：与 _da_alert_item / charts/rmt_rc.build_alerts 同源（**全样本**）
-        _thr_src, _thr_tag = ((_da_all, "全样本") if _da_all.size >= 30
-                              else (_da_fin, "窗内"))
-        _da90 = float(np.percentile(_thr_src, DA_THR_PCT))
         _y0, _y1 = _da_axis
         _span = max(_y1 - _y0, 1e-6)
-        if _y0 < _da90 < _y1:
-            ax2.axhline(_da90, color=DA_LINE, ls="--", lw=0.9, alpha=0.4, zorder=1)
-            # 标签放**绘图区内左侧**，靠近边界时翻到另一侧，避免出画布
-            _va = "bottom" if (_da90 - _y0) / _span < 0.06 else "top"
-            ax2.text(0.006, _da90, "Δα %sP%.0f %.2f" % (_thr_tag, DA_THR_PCT, _da90),
-                     fontsize=f_tick - 2, color=DA_LINE, alpha=0.8,
-                     va=_va, ha="left", zorder=11,
-                     transform=blended_transform_factory(ax2.transAxes, ax2.transData))
+        ax2.axhline(_da90, color=DA_LINE, ls="--", lw=0.9, alpha=0.4, zorder=1)
+        # 标签放**绘图区内左侧**，靠近边界时翻到另一侧，避免出画布
+        _va = "bottom" if (_da90 - _y0) / _span < 0.06 else "top"
+        ax2.text(0.006, _da90, "Δα %sP%.0f %.2f" % (_thr_tag, DA_THR_PCT, _da90),
+                 fontsize=f_tick - 2, color=DA_LINE, alpha=0.8,
+                 va=_va, ha="left", zorder=11,
+                 transform=blended_transform_factory(ax2.transAxes, ax2.transData))
     ax2.set_ylabel("MF-DFA Δα（%.2f~%.2f）" % _da_axis if _da_fin.size
                    else "MF-DFA Δα", fontsize=f_y - 2, color=DA_LINE)
     ax2.tick_params(axis="y", colors=DA_LINE, labelsize=f_tick - 0.5)

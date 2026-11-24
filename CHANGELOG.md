@@ -17,7 +17,7 @@
 
 | 文件 | 改动 |
 |---|---|
-| `charts/chan_fractal.py` | `draw_stack`（五宽基日线堆叠）副图**右轴由 R_cascade 改为 MF-DFA Δα**：深红粗线 + 窗内 P90 虚线阈值；新增 `--alert-email / --alert-threshold / --mail-to / --email-dry-run`，出图后 Δα 分位超阈值即发**带图**邮件。`--no-rc` 保留为 `--no-da` 旧名 |
+| `charts/chan_fractal.py` | `draw_stack`（五宽基日线堆叠）副图**右轴由 R_cascade 改为 MF-DFA Δα**：深红粗线 + 窗内 P90 虚线阈值（**同日修正为全样本 P90，见下「同日修正」**）；新增 `--alert-email / --alert-threshold / --mail-to / --email-dry-run`，出图后 Δα 分位超阈值即发**带图**邮件。`--no-rc` 保留为 `--no-da` 旧名 |
 | `charts/chan_fractal.py` | 新增 `_da_series_for()`（Δα 唯一实现 `charts/phase_mfdfa.rolling_delta_alpha`，日线复用 `rcascade.load()` **只取数**）、`_da_alert_item()`（与 `rmt_rc.build_alerts` 同口径）、`send_da_alert_email()`（**直接复用工作区 `email_sender.send_email`**，即环流日报同款 163→QQ 统一出口） |
 | `charts/rmt_rc.py` | `send_alert_email()` 原来 shell 调不存在的 `/root/.openclaw/workspace/scripts/send_email.py`（`--email` 从未真正发出）→ 改调统一出口；新增 `--email-dry-run` |
 | `misc/core/mailer.py` | 新增 `send_alert()` / `_unified_send()`：**优先直接调用** `/Coze/Drive/.../email_sender.py` 的 `send_email()`（环流日报 `alert_book.py` 同款用法），模块不在才回落自带 SMTP；吞掉对方输出只回显脱敏行。另保留 ④ 兜底（读 `DEFAULT_CONFIG` 的 163→QQ 账号，口令不落库、不打印） |
@@ -57,6 +57,23 @@ python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板�
 - `py_compile` 三个改动文件通过；
 - `mailer.send_alert` 用假 `_unified_send` 三分支实测：`True` → 直接返回成功；`False` → 回落 `send()`；`None` → 回落 `send()`；
 - 端到端出图与真发信仍需在有 `data_hub`/tushare 与 `email_sender.py` 的部署环境复跑（本沙箱两者皆缺）。
+
+### Issue #3 收尾（PR #2 合并后）
+
+**fix(chart/alert): 阈值线在窗口外也可见；两链路都发不出去时显式报错；清掉遗留「窗内」文案**
+
+PR #2（`0c92c58`）已合并（merge commit `f41fccf`）。复核 Issue #3 后仍有 3 处残留，一并修掉：
+
+| 文件 | 改动 |
+|---|---|
+| `charts/chan_fractal.py` | 右轴范围改为 `[min(窗内Δα, 全样本P90), max(窗内Δα, 全样本P90)]`。此前只在 `_y0 < P90 < _y1` 时画虚线——当窗口整体高于/低于全样本 P90 时，虚线被自适应轴挤到轴外，图上仍看不到阈值，与告警口径再次「看图对不上」 |
+| `charts/chan_fractal.py` | `_paint_vol_panel` / `_da_alert_item` 的 docstring 由「窗内 90 分位 / 窗内 P-threshold」改为「全样本 P90 / 全样本 P-threshold（序列不足 30 个才退回窗内并标注）」 |
+| `misc/core/mailer.py` | `send_alert()` 回落本库 SMTP 后若仍失败，打印醒目 `❌ 告警未送达` 及检查项（`EMAIL_SENDER_DIR` / `MAIL_FROM_ADDR` / `MAIL_FROM_PASS` / `MAIL_TO`，不含任何地址或口令）。此前只有一行「未配置发件账号」，容易被日志淹没 |
+
+### 验证（Issue #3 收尾）
+
+- 合成 Δα：窗内 0.95~1.2、全样本 P90=0.80 → 右轴下限被拉到 0.80 附近，虚线 + 「Δα 全样本P90 0.80」可见；反向（窗内整体低于 P90）同样可见；
+- `py_compile` 通过；`mailer.send_alert` 失败路径实测打印 `❌ 告警未送达` 并返回 False。
 
 ## 2026-11-20 08:40
 

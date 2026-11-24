@@ -32,7 +32,7 @@ python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板�
         --alert-email                # 只出图不发信就去掉 --alert-email
 ```
 
-- 副图右轴 = **MF-DFA 滚动 Δα**（N=250，唯一实现 `charts/phase_mfdfa.py`），虚线 = **全样本** P90（与告警同源；序列不全时才退回窗内并标注）；
+- 副图右轴 = **MF-DFA 滚动 Δα**（N=250，唯一实现 `charts/phase_mfdfa.py`），虚线 = **全样本** P90（与告警同源；序列不全时才退回窗内并标注，右轴范围自动包含该线，窗口外也能看见）；
 - 某指数 `Δα` 当前分位 > `--alert-threshold`（默认 90）→ 发**带图邮件**到 QQ；
 - `--alert-email` 只在 `--stack` 模式生效，单图 / `--compare` / `--all` 带上它会直接报错提示；
 - 同口径独立监控：`python3 charts/rmt_rc.py --targets 沪深300,科创50 --alert --email`
