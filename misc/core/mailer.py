@@ -326,6 +326,71 @@ def send(subject, body, to=None, attach=None, html=True,
         return False
 
 
+def _unified_send(subject, body, to=None, attach=None, source=None, dry_run=False):
+    """直接调本机既有的「全系统唯一出口」`email_sender.send_email`（**163 → QQ**）。
+
+    环流日报等任务就是这么用的（`from email_sender import send_email as _send`）。
+    模块在 → 返回 True/False；不在 / 导入失败 → 返回 None，调用方回落本库自带 SMTP。
+
+    该模块自己的日志会打印**完整**收件地址，本库一律脱敏：吞掉它的 stdout，
+    只回显 `scrub()` 过的一行。口令只在模块内部使用，这里从不读取/打印。
+    """
+    d = os.environ.get("EMAIL_SENDER_DIR", "/Coze/Drive/蓁宝/所有对话/主对话")
+    fp = os.path.join(d, "email_sender.py")
+    if not os.path.isfile(fp):
+        return None
+    try:
+        import contextlib
+        import importlib.util
+        import io
+        spec = importlib.util.spec_from_file_location("_email_sender_unified", fp)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        fn = getattr(mod, "send_email", None)
+        if not callable(fn):
+            return None
+        rcpts = to
+        if isinstance(rcpts, str):
+            rcpts = [x.strip() for x in rcpts.replace(";", ",").split(",") if x.strip()]
+        files = attach if isinstance(attach, (list, tuple)) else ([attach] if attach else [])
+        files = [f for f in files if f and os.path.exists(f)]
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ok = bool(fn(subject=subject, text=body, source=source or "技术分析汇总",
+                         to_addr=rcpts or None,
+                         attachments=files or None,
+                         dry_run=bool(dry_run)))
+        lines = [ln for ln in buf.getvalue().splitlines() if ln.strip()]
+        if lines:
+            print(scrub(lines[-1]))
+        return ok
+    except Exception as e:                                       # noqa: BLE001
+        print("[mailer] ⚠️ 统一发信模块暂不可用，回落本库 SMTP：%s" % scrub(e)[:160])
+        return None
+
+
+def send_alert(subject, body, to=None, attach=None, source=None, dry_run=False):
+    """告警邮件专用：**先复用工作区既有 163→QQ 统一发信函数**，不可用再走本库 SMTP。
+
+    成功 True；失败 False（不抛异常）。`dry_run` 只打印脱敏摘要、不真发。
+    """
+    if dry_run or os.environ.get("MAIL_DRY_RUN", "").lower() in ("1", "true", "yes"):
+        cfg = load_config()
+        rcpts = to if to is not None else cfg.get("to")
+        if isinstance(rcpts, str):
+            rcpts = [x.strip() for x in rcpts.replace(";", ",").split(",") if x.strip()]
+        print("[mailer] DRY-RUN 收件人=%s ｜ 标题=%s ｜ 附件=%s"
+              % (mask_many(rcpts or []), scrub(subject), mask_attach(attach)))
+        return True
+    ok = _unified_send(subject, body, to=to, attach=attach, source=source)
+    if ok is not None:
+        print("[mailer] 已走统一出口（163→QQ）→ %s ｜ %s"
+              % (mask_many(to or [load_config().get("to", "")]),
+                 "成功" if ok else "失败"))
+        return ok
+    return send(subject, body, to=to, attach=attach, dry_run=False)
+
+
 def mask_attach(attach) -> str:
     """附件名脱敏（只留文件名，目录不进日志）"""
     if not attach:

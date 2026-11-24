@@ -811,12 +811,12 @@ def build_alerts(meta, threshold=90.0):
 
 
 def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None, dry_run=False):
-    """发送 Δα 分位告警邮件（走库内统一 `misc/core/mailer.py`）。
+    """发送 Δα 分位告警邮件（带监控图）。
 
     2026-11-24：原来 subprocess 调 `/root/.openclaw/workspace/scripts/send_email.py`，
-    本机根本没这个文件 → `--email` 从来没真正发出去过。现改用库内 mailer：
-      · 账号优先环境变量 / `~/.config/openclaw/mail.json`；
-      · 都没有时 mailer 会回落到工作区 `email_sender.py` 的 **163 → QQ** 账号（不落库）。
+    本机根本没这个文件 → `--email` 从来没真正发出去过。现**直接复用**本机既有
+    「全系统唯一出口」`email_sender.send_email`（**163 → QQ**，环流日报同款）；
+    该模块不在时回落库内 `misc/core/mailer.py` 自带 SMTP。
     附件为监控图。发不出去只返回 False，不抛异常（报警链路不能把主流程带死）。
     """
     if not alerts:
@@ -845,9 +845,9 @@ def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None, dry_run=
 
     subject = "🚨 RMT + MF-DFA Δα 分位告警 · %s · %d 项超 %.0f%%" % (
         datetime.now().strftime("%Y-%m-%d"), len(alerts), threshold)
-    ok = mailer.send(subject, "\n".join(lines), to=to,
-                     attach=chart if (chart and os.path.exists(chart)) else None,
-                     dry_run=dry_run)
+    ok = mailer.send_alert(subject, "\n".join(lines), to=to, source="RMT监控",
+                           attach=chart if (chart and os.path.exists(chart)) else None,
+                           dry_run=dry_run)
     print("[alert] mail %s" % ("ok" if ok else "fail"))
     return ok
 

@@ -115,7 +115,7 @@ python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板�
 | `charts/rmt_rc.py` | **RMT + MF-DFA Δα 监控 + 分位告警**（独立指标，不属四层）；`--alert --email` 发信 |
 | `misc/engine/rcascade.py` | 仅作**取数库**（`load()` 供 Δα 复用日线）；R_cascade 本身已由 MF-DFA Δα 取代 |
 | `charts/margin.py` | **A股两融全景图**：融资余额+MA5/MA20+MACD(10,20,5) / 融券余额 / 融资买入·净买入 / 两融账户数 / 平均维持担保比例+担保物。**数据只读 EDB**（`CN.EQ.MARGIN.*`，见 3.0.2 节） |
-| `misc/core/mailer.py` | **全库唯一发信通道**：收件人/口令只从环境变量或 `~/.config/openclaw/mail.json` 读；都没配时**自动回落**到工作区 `email_sender.py` 的 **163 → QQ** 账号（口令仅运行时读取、不落库不打印）。日志邮箱一律脱敏 |
+| `misc/core/mailer.py` | **全库唯一发信通道**：告警邮件 `send_alert()` **优先直接调**工作区既有 `email_sender.send_email()`（163 → QQ，环流日报同款「唯一出口」），模块不在才回落自带 SMTP；收件人/口令只从环境变量或 `~/.config/openclaw/mail.json` 读，另可兜底读 `email_sender.py` 的 `DEFAULT_CONFIG`（口令仅运行时读取、不落库不打印）。日志邮箱一律脱敏 |
 
 ---
 

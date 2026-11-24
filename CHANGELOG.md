@@ -18,9 +18,9 @@
 | 文件 | 改动 |
 |---|---|
 | `charts/chan_fractal.py` | `draw_stack`（五宽基日线堆叠）副图**右轴由 R_cascade 改为 MF-DFA Δα**：深红粗线 + 窗内 P90 虚线阈值；新增 `--alert-email / --alert-threshold / --mail-to / --email-dry-run`，出图后 Δα 分位超阈值即发**带图**邮件。`--no-rc` 保留为 `--no-da` 旧名 |
-| `charts/chan_fractal.py` | 新增 `_da_series_for()`（Δα 唯一实现 `charts/phase_mfdfa.rolling_delta_alpha`，日线复用 `rcascade.load()` **只取数**）、`_da_alert_item()`（与 `rmt_rc.build_alerts` 同口径）、`send_da_alert_email()`（走 `misc/core/mailer.py`） |
-| `charts/rmt_rc.py` | `send_alert_email()` 原来 shell 调不存在的 `/root/.openclaw/workspace/scripts/send_email.py`（`--email` 从未真正发出）→ 改用库内 `mailer.send`；新增 `--email-dry-run` |
-| `misc/core/mailer.py` | 新增 ④ 兜底：本机无显式发信配置时，运行时读工作区 `email_sender.py` 的 `DEFAULT_CONFIG`（**163 → QQ**），口令不落库、不打印 |
+| `charts/chan_fractal.py` | 新增 `_da_series_for()`（Δα 唯一实现 `charts/phase_mfdfa.rolling_delta_alpha`，日线复用 `rcascade.load()` **只取数**）、`_da_alert_item()`（与 `rmt_rc.build_alerts` 同口径）、`send_da_alert_email()`（**直接复用工作区 `email_sender.send_email`**，即环流日报同款 163→QQ 统一出口） |
+| `charts/rmt_rc.py` | `send_alert_email()` 原来 shell 调不存在的 `/root/.openclaw/workspace/scripts/send_email.py`（`--email` 从未真正发出）→ 改调统一出口；新增 `--email-dry-run` |
+| `misc/core/mailer.py` | 新增 `send_alert()` / `_unified_send()`：**优先直接调用** `/Coze/Drive/.../email_sender.py` 的 `send_email()`（环流日报 `alert_book.py` 同款用法），模块不在才回落自带 SMTP；吞掉对方输出只回显脱敏行。另保留 ④ 兜底（读 `DEFAULT_CONFIG` 的 163→QQ 账号，口令不落库、不打印） |
 | `misc/charts/registry.py` / `run.py` / `skills/tech-summary/SKILL.md` | 文档与路由同步：`rmt-rc` = RMT+Δα；`rcascade` 标注为「仅取数库，已并入 MF-DFA」 |
 
 ### 固定调用（替代原 R_cascade 日报）
@@ -33,6 +33,8 @@ python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板�
 
 - `py_compile` 全部通过；`_paint_vol_panel` 合成数据出图正常（右轴 `MF-DFA Δα` + `Δα P90` 标签）；
 - `_da_series_for` 合成 700 日序列 → 450 行有效 Δα；
+- 搜遍本机其他任务，既有发信函数都在：`email_sender.py`（163→QQ 统一出口，`环流日报/alert_book.py` 直接 `from email_sender import send_email as _send`）、`将军结构因子/daily_notifier.py`、`环流日报/swap_ma_cross.py`（各自 smtplib 163→QQ）、`qq_mail_tool.py`（QQ→QQ）；
+- 现**直接复用**统一出口：`mailer._unified_send(...dry_run=True)` 实调 `email_sender.send_email()` 返回 True，收件人 `410***229@qq.com`（脱敏）；
 - `mailer` 实测解析到 `son***951@163.com → 410***229@qq.com`（`pass_set=True`，全程未打印口令）；
 - `send_da_alert_email` / `rmt_rc.send_alert_email` dry-run 均 `[alert] mail ok`（带图附件）。
 - 注：本沙箱无 `data_hub`/tushare token，真机全链出图需在有数据的部署环境复跑。

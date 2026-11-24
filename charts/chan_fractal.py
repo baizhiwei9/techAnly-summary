@@ -969,10 +969,11 @@ def _da_alert_item(name, da_df, threshold=DA_THR_PCT):
 
 
 def send_da_alert_email(items, chart=None, threshold=DA_THR_PCT, to=None, dry_run=False):
-    """MF-DFA Δα 分位告警邮件（走库内统一 `misc/core/mailer.py`，可带图）。
+    """MF-DFA Δα 分位告警邮件（带图）。
 
-    复用本机既有 **163 → QQ** 发信账号（mailer 在未显式配置时会自动回落，
-    口令只从运行时读取，**不落库、不打印**）。发不出去只返回 False，不抛异常。
+    优先调本机既有「全系统唯一出口」`email_sender.send_email`（**163 → QQ**，
+    环流日报同款）；该模块不在时才回落库内 `misc/core/mailer.py` 自带 SMTP。
+    口令只在运行时由那个模块读取，**不落库、不打印**。发不出去只返回 False。
     """
     items = [x for x in (items or []) if x]
     hit = [x for x in items if x["hit"]]
@@ -1007,9 +1008,9 @@ def send_da_alert_email(items, chart=None, threshold=DA_THR_PCT, to=None, dry_ru
 
     subject = "🚨 MF-DFA Δα 分位告警 · %s · %d 项超 P%.0f" % (
         datetime.now().strftime("%Y-%m-%d"), len(hit), threshold)
-    ok = mailer.send(subject, "\n".join(lines), to=to,
-                     attach=chart if (chart and os.path.exists(chart)) else None,
-                     dry_run=dry_run)
+    ok = mailer.send_alert(subject, "\n".join(lines), to=to, source="技术分析汇总",
+                           attach=chart if (chart and os.path.exists(chart)) else None,
+                           dry_run=dry_run)
     print("[alert] mail %s" % ("ok" if ok else "fail"), flush=True)
     return ok
 
