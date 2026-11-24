@@ -391,8 +391,14 @@ def send_alert(subject, body, to=None, attach=None, source=None, dry_run=False):
         # 2026-11-24 口径修正：统一出口「能导入但发送失败」以前直接 return False，
         #   告警就被吞了（而部署机缺 email_sender.py 时两条路本来都不通）。现回落本库 SMTP 再试一次。
         print("[mailer] 统一出口发送失败 → 回落本库 SMTP 重试")
-        return send(subject, body, to=to, attach=attach, dry_run=False)
-    return send(subject, body, to=to, attach=attach, dry_run=False)
+    ok2 = send(subject, body, to=to, attach=attach, dry_run=False)
+    if not ok2:
+        # issue #3 收尾：两条链路都发不出去时必须有醒目日志，不能再静默（例如部署机
+        #   缺 email_sender.py 且 MAIL_* 未配置）。只打印变量名，不含任何地址/口令。
+        print("[mailer] ❌ 告警未送达：统一出口与本库 SMTP 均失败或未配置"
+              "（检查 EMAIL_SENDER_DIR 是否存在，或配置 MAIL_FROM_ADDR / "
+              "MAIL_FROM_PASS / MAIL_TO）")
+    return ok2
 
 
 def mask_attach(attach) -> str:
