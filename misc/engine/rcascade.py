@@ -524,17 +524,23 @@ def alarm_tag(x):
 
 
 def notify_line():
-    """报警邮件收件人（**脱敏**展示，报告里只允许出现这个）。"""
+    """报警通道说明（报告里只允许出现脱敏信息）。
+
+    2026-11-24：通道由调用方注册（`misc/core/notify.py`），本库不再内置邮箱。
+    若调用方同时设了 `MAIL_TO` / 邮件配置，就顺手把脱敏收件人显示出来。
+    """
     try:
         import mailer
-        cfg = mailer.load_config()
-        rc = cfg.get("to") or ""
-        if not rc:
-            return "📧 报警邮件：未配置收件人（设 MAIL_TO 或 ~/.config/openclaw/mail.json）"
+        rc = (mailer.load_config() or {}).get("to") or ""
+    except Exception:                                            # noqa: BLE001
+        rc = ""
+    if not rc:
+        return "📧 报警：由调用方注册的通知通道发送（见 TECHANLY_NOTIFIERS）"
+    try:
         return "📧 报警邮件 → %s" % mailer.mask_many(
             [x.strip() for x in str(rc).replace(";", ",").split(",") if x.strip()])
     except Exception:                                            # noqa: BLE001
-        return ""
+        return "📧 报警：由调用方注册的通知通道发送"
 
 
 def text_block(rows, d):
@@ -709,22 +715,21 @@ def draw(data, out=None):
 
 # ═══════════════════════════ 邮件 ═══════════════════════════
 def send_email(subject, body_md, img_path, to=None, dry_run=False):
-    """发邮件（统一走 `misc/core/mailer.py`，收件人/发件人在日志里**自动脱敏**）。
+    """触发报警：**只负责触发**，通道路由调用方注册（见 `misc/core/notify.py`）。
 
-    账号与收件人一律从外部配置读：
-      · 环境变量：MAIL_FROM / MAIL_PASS / MAIL_TO（+ MAIL_SMTP_HOST / MAIL_SMTP_PORT）
-      · 或配置文件：~/.config/openclaw/mail.json（MAIL_CONFIG 可指定别的路径）
-    **仓库里没有任何真实邮箱与口令。**
-    发不出去也不抛异常——报警链路不能因为邮箱挂掉把主流程带死。
+    2026-11-24：本库不再内置任何邮箱账号/本机路径。调用方在进程内
+    `notify.register("email", fn)`，或设 `TECHANLY_NOTIFIERS=/path/to/notifier.py`
+    让库自动加载；`to` 以 `meta["to"]` 透传给通道。
+    发不出去也不抛异常——报警链路不能因为通道挂掉把主流程带死。
     """
     try:
-        import mailer
+        import notify
     except Exception as e:                                       # noqa: BLE001
-        print("[email] mailer 不可用，跳过：%s" % str(e)[:120])
+        print("[email] notify 不可用，跳过：%s" % str(e)[:120])
         return False
-    return mailer.send(subject, body_md, to=to,
-                       attach=[img_path] if img_path else None,
-                       dry_run=dry_run)
+    return notify.emit_bool(subject, body_md,
+                            attachments=[img_path] if img_path else [],
+                            source="R_cascade", meta={"to": to}, dry_run=dry_run)
 
 
 def stale_email(rows, img=None, dry_run=False, to=None):

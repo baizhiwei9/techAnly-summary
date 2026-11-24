@@ -25,15 +25,18 @@ python3 misc/engine/tech_intraday_buypoint.py --top 10 --stock-per 2
 ## 📈 技术分析汇总·日线（五宽基）+ MF-DFA Δα 预警
 
 大佬 2026-11-24 定：日线汇总里**原 R_cascade 的位置换成 MF-DFA Δα**，
-调用一次 = 出图 + Δα 高位自动发预警邮件（复用既有 **163 → QQ** 发信通道）：
+调用一次 = 出图 + Δα 高位自动触发预警。**库内只触发，通道由调用方注册**
+（本机注册文件 `techanly_notifier.py`，走既有 **163 → QQ**；公开库里无账号/路径）：
 
 ```bash
+export TECHANLY_NOTIFIERS=/Coze/Drive/蓁宝/所有对话/主对话/techanly_notifier.py
 python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板指,科创50 \
         --alert-email                # 只出图不发信就去掉 --alert-email
 ```
 
 - 副图右轴 = **MF-DFA 滚动 Δα**（N=250，唯一实现 `charts/phase_mfdfa.py`），虚线 = **全样本** P90（与告警同源；序列不全时才退回窗内并标注，右轴范围自动包含该线，窗口外也能看见）；
-- 某指数 `Δα` 当前分位 > `--alert-threshold`（默认 90）→ 发**带图邮件**到 QQ；
+- 某指数 `Δα` 当前分位 > `--alert-threshold`（默认 90）→ `notify.emit()` 交给已注册通道（本机 email=带图邮件到 QQ）；
+- 没注册通道 / 没设 `TECHANLY_NOTIFIERS` → 只打印「没有注册任何通知通道，告警未送达」并返回 False；`--email-dry-run` 可只看告警要素；
 - `--alert-email` 只在 `--stack` 模式生效，单图 / `--compare` / `--all` 带上它会直接报错提示；
 - 同口径独立监控：`python3 charts/rmt_rc.py --targets 沪深300,科创50 --alert --email`
   （左内轴 outlier_energy，右轴 AR5 / λ1Σλ / Δα）。
@@ -78,7 +81,7 @@ python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板�
 > | `misc/engine/sector_buypoint_top20.py` | 板块买点 Top20 |
 > | `misc/engine/simple_chart.py` | 单图速览 |
 > | `charts/chan_fractal.py` | **缠论分型版**（含 `--stack` 五大宽基日线堆叠；副图右轴 = **MF-DFA Δα**，已替换原 R_cascade 位；`--alert-email` 发 Δα 高位预警邮件带图） |
-| `charts/rmt_rc.py` | **RMT + MF-DFA Δα 联合监控**（`--alert --email` 分位>90% 发预警邮件，带图；邮件走 163→QQ） |
+| `charts/rmt_rc.py` | **RMT + MF-DFA Δα 联合监控**（`--alert --email` 分位>90% 触发预警，带图；通道由调用方注册） |
 > | `charts/margin.py` | **A股两融全景图**（融资余额+MACD(10,20,5) / 融券 / 净买入 / 账户数 / 维持担保比例）｜数据只读 **DataHub EDB `cn_market`**（`CN.EQ.MARGIN.*` 11 条，库内保留 500 自然日 ≈340 交易日） |
 > | `chanlun/fractal/chan_smc_index.py` | 缠论·分型版（几何 + SMC 摘要） |
 > | `chanlun/fractal/chan_chart.py` | 缠论·分型版出图 |
@@ -116,7 +119,8 @@ python3 charts/chan_fractal.py --stack 沪深300,中证500,中证1000,创业板�
 | `charts/rmt_rc.py` | **RMT + MF-DFA Δα 监控 + 分位告警**（独立指标，不属四层）；`--alert --email` 发信 |
 | `misc/engine/rcascade.py` | 仅作**取数库**（`load()` 供 Δα 复用日线）；R_cascade 本身已由 MF-DFA Δα 取代 |
 | `charts/margin.py` | **A股两融全景图**：融资余额+MA5/MA20+MACD(10,20,5) / 融券余额 / 融资买入·净买入 / 两融账户数 / 平均维持担保比例+担保物。**数据只读 EDB**（`CN.EQ.MARGIN.*`，见 3.0.2 节） |
-| `misc/core/mailer.py` | **全库唯一发信通道**：告警邮件 `send_alert()` **优先直接调**工作区既有 `email_sender.send_email()`（163 → QQ，环流日报同款「唯一出口」），模块不在才回落自带 SMTP；收件人/口令只从环境变量或 `~/.config/openclaw/mail.json` 读，另可兜底读 `email_sender.py` 的 `DEFAULT_CONFIG`（口令仅运行时读取、不落库不打印）。日志邮箱一律脱敏 |
+| `misc/core/notify.py` | **告警只触发、通道由调用方注册**：`register(name, fn)` / `emit()` / `emit_bool()`。库内**零内置通道**，公开可发布；跨进程用环境变量 `TECHANLY_NOTIFIERS=/path/to/notifier.py` 声明注册文件（库启动时自动 import）。没有通道时打印醒目提示并返回 False |
+| `misc/core/mailer.py` | **通用 SMTP 工具**（发一封邮件用，收发件人脱敏）。告警不直接调它；需要邮件的任务在自己的通知模块里调 `mailer.send()`，或干脆换成 163→QQ 的 `email_sender` 等本机出口。配置只从环境变量 / `~/.config/openclaw/mail.json` 读，**仓库内无账号口令** |
 
 ---
 

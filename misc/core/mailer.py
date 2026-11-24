@@ -3,6 +3,9 @@
 """mailer · 统一的邮件发送（收件人/发件人**全部脱敏输出**）
 =====================================================================
 2026-11-16 建。大佬：「它发邮件，但是这邮件地址你得给我脱敏了啊」。
+2026-11-24 起本文件**只是通用 SMTP 工具**：告警不再直接调它，公开库只负责
+触发、通道由调用方注册（见 `misc/core/notify.py`）；通知模块可以复用这里的
+`send()`，也可以换成本机任何发信方式。
 
 为什么要单独一层
 --------------------------------
@@ -126,35 +129,6 @@ def _config_paths():
     return out
 
 
-def _legacy_sender_config() -> dict:
-    """复用工作区既有的 **163 → QQ** 统一发信账号（`email_sender.py` 的 DEFAULT_CONFIG）。
-
-    仓库里**不写任何真实地址/口令**：只在本地没配发件账号时，按路径去读那个
-    「全系统唯一出口」模块的 DEFAULT_CONFIG，运行时取值。路径可用 `EMAIL_SENDER_DIR`
-    覆盖；找不到 / 读失败就返回空 dict（照旧按「未配置」处理，不报错）。
-    """
-    d = os.environ.get("EMAIL_SENDER_DIR", "/Coze/Drive/蓁宝/所有对话/主对话")
-    fp = os.path.join(d, "email_sender.py")
-    if not os.path.exists(fp):
-        return {}
-    try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("_legacy_email_sender", fp)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        c = getattr(mod, "DEFAULT_CONFIG", {}) or {}
-        out = {}
-        for src, dst in (("from_addr", "from_addr"), ("from_pass", "from_pass"),
-                         ("smtp_host", "smtp_host"), ("to_addr", "to")):
-            if c.get(src):
-                out[dst] = c[src]
-        if c.get("smtp_port"):
-            out["smtp_port"] = int(c["smtp_port"])
-        return out
-    except Exception:                                            # noqa: BLE001
-        return {}
-
-
 def load_config(extra=None) -> dict:
     """读配置：环境变量 > 配置文件 > 调用方传入的默认值。返回 dict（可能缺项）。"""
     cfg = {}
@@ -172,11 +146,8 @@ def load_config(extra=None) -> dict:
             if v and str(v).strip():
                 cfg[k] = v.strip()
                 break
-    # ④ 本机既有 163→QQ 统一发信账号：只在本地没配发件账号时兜底（不覆盖显式配置）
-    if not (cfg.get("from_addr") and cfg.get("from_pass")):
-        for k, v in _legacy_sender_config().items():
-            if k not in cfg or not cfg.get(k):
-                cfg[k] = v
+    # 2026-11-24：不再去 import 本机 `email_sender.py` 的 DEFAULT_CONFIG 兜底。
+    #   公开库只认环境变量 / 配置文件；告警通道由调用方通过 misc/core/notify.py 注册。
     if extra:
         for k, v in extra.items():
             if v not in (None, ""):
@@ -324,81 +295,6 @@ def send(subject, body, to=None, attach=None, html=True,
     except Exception as e:                                       # noqa: BLE001
         print("[mailer] ❌ 发送失败 → %s ｜ %s" % (mask_many(rcpts), scrub(e)[:200]))
         return False
-
-
-def _unified_send(subject, body, to=None, attach=None, source=None, dry_run=False):
-    """直接调本机既有的「全系统唯一出口」`email_sender.send_email`（**163 → QQ**）。
-
-    环流日报等任务就是这么用的（`from email_sender import send_email as _send`）。
-    模块在 → 返回 True/False；不在 / 导入失败 → 返回 None，调用方回落本库自带 SMTP。
-
-    该模块自己的日志会打印**完整**收件地址，本库一律脱敏：吞掉它的 stdout，
-    只回显 `scrub()` 过的一行。口令只在模块内部使用，这里从不读取/打印。
-    """
-    d = os.environ.get("EMAIL_SENDER_DIR", "/Coze/Drive/蓁宝/所有对话/主对话")
-    fp = os.path.join(d, "email_sender.py")
-    if not os.path.isfile(fp):
-        return None
-    try:
-        import contextlib
-        import importlib.util
-        import io
-        spec = importlib.util.spec_from_file_location("_email_sender_unified", fp)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        fn = getattr(mod, "send_email", None)
-        if not callable(fn):
-            return None
-        rcpts = to
-        if isinstance(rcpts, str):
-            rcpts = [x.strip() for x in rcpts.replace(";", ",").split(",") if x.strip()]
-        files = attach if isinstance(attach, (list, tuple)) else ([attach] if attach else [])
-        files = [f for f in files if f and os.path.exists(f)]
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            ok = bool(fn(subject=subject, text=body, source=source or "技术分析汇总",
-                         to_addr=rcpts or None,
-                         attachments=files or None,
-                         dry_run=bool(dry_run)))
-        lines = [ln for ln in buf.getvalue().splitlines() if ln.strip()]
-        if lines:
-            print(scrub(lines[-1]))
-        return ok
-    except Exception as e:                                       # noqa: BLE001
-        print("[mailer] ⚠️ 统一发信模块暂不可用，回落本库 SMTP：%s" % scrub(e)[:160])
-        return None
-
-
-def send_alert(subject, body, to=None, attach=None, source=None, dry_run=False):
-    """告警邮件专用：**先复用工作区既有 163→QQ 统一发信函数**，不可用再走本库 SMTP。
-
-    成功 True；失败 False（不抛异常）。`dry_run` 只打印脱敏摘要、不真发。
-    """
-    if dry_run or os.environ.get("MAIL_DRY_RUN", "").lower() in ("1", "true", "yes"):
-        cfg = load_config()
-        rcpts = to if to is not None else cfg.get("to")
-        if isinstance(rcpts, str):
-            rcpts = [x.strip() for x in rcpts.replace(";", ",").split(",") if x.strip()]
-        print("[mailer] DRY-RUN 收件人=%s ｜ 标题=%s ｜ 附件=%s"
-              % (mask_many(rcpts or []), scrub(subject), mask_attach(attach)))
-        return True
-    ok = _unified_send(subject, body, to=to, attach=attach, source=source)
-    if ok is True:
-        print("[mailer] 已走统一出口（163→QQ）→ %s ｜ 成功"
-              % mask_many(to or [load_config().get("to", "")]))
-        return True
-    if ok is False:
-        # 2026-11-24 口径修正：统一出口「能导入但发送失败」以前直接 return False，
-        #   告警就被吞了（而部署机缺 email_sender.py 时两条路本来都不通）。现回落本库 SMTP 再试一次。
-        print("[mailer] 统一出口发送失败 → 回落本库 SMTP 重试")
-    ok2 = send(subject, body, to=to, attach=attach, dry_run=False)
-    if not ok2:
-        # issue #3 收尾：两条链路都发不出去时必须有醒目日志，不能再静默（例如部署机
-        #   缺 email_sender.py 且 MAIL_* 未配置）。只打印变量名，不含任何地址/口令。
-        print("[mailer] ❌ 告警未送达：统一出口与本库 SMTP 均失败或未配置"
-              "（检查 EMAIL_SENDER_DIR 是否存在，或配置 MAIL_FROM_ADDR / "
-              "MAIL_FROM_PASS / MAIL_TO）")
-    return ok2
 
 
 def mask_attach(attach) -> str:

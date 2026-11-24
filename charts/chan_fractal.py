@@ -970,27 +970,28 @@ def _da_alert_item(name, da_df, threshold=DA_THR_PCT):
 
 
 def send_da_alert_email(items, chart=None, threshold=DA_THR_PCT, to=None, dry_run=False):
-    """MF-DFA Δα 分位告警邮件（带图）。
+    """MF-DFA Δα 分位告警（带图）：**只触发**，通道由调用方注册。
 
-    优先调本机既有「全系统唯一出口」`email_sender.send_email`（**163 → QQ**，
-    环流日报同款）；该模块不在时才回落库内 `misc/core/mailer.py` 自带 SMTP。
-    口令只在运行时由那个模块读取，**不落库、不打印**。发不出去只返回 False。
+    公开库不内置任何邮件账号/本机路径。调用方先 `notify.register("email", fn)`
+    （或设置环境变量 `TECHANLY_NOTIFIERS=/path/to/notifier.py`，库会自动 import），
+    再由本函数 `notify.emit()` 统一触发；没有任何通道时不发信并返回 False。
+    `to` 仅作为 `meta["to"]` 透传给通道，由通道决定收件人。
     """
     items = [x for x in (items or []) if x]
     hit = [x for x in items if x["hit"]]
     if not items:
-        print("[alert] 无 Δα 数据，不发邮件", flush=True)
+        print("[alert] 无 Δα 数据，不发告警", flush=True)
         return False
     if not hit:
-        print("[alert] Δα 均未超 P%.0f，不发邮件" % threshold, flush=True)
+        print("[alert] Δα 均未超 P%.0f，不发告警" % threshold, flush=True)
         return False
     try:
         _CORE = os.path.join(WS, "misc", "core")
         if _CORE not in sys.path:
             sys.path.insert(0, _CORE)
-        import mailer  # noqa: PLC0415
+        import notify  # noqa: PLC0415
     except Exception as e:                                       # noqa: BLE001
-        print("[alert] mailer 不可用，只打印告警：%s" % str(e)[:120], flush=True)
+        print("[alert] notify 不可用，只打印告警：%s" % str(e)[:120], flush=True)
         return False
 
     lines = ["## 缠论分型版 · MF-DFA Δα 分位告警（阈值 P%.0f）" % threshold, "",
@@ -1009,10 +1010,10 @@ def send_da_alert_email(items, chart=None, threshold=DA_THR_PCT, to=None, dry_ru
 
     subject = "🚨 MF-DFA Δα 分位告警 · %s · %d 项超 P%.0f" % (
         datetime.now().strftime("%Y-%m-%d"), len(hit), threshold)
-    ok = mailer.send_alert(subject, "\n".join(lines), to=to, source="技术分析汇总",
-                           attach=chart if (chart and os.path.exists(chart)) else None,
-                           dry_run=dry_run)
-    print("[alert] mail %s" % ("ok" if ok else "fail"), flush=True)
+    ok = notify.emit_bool(subject, "\n".join(lines),
+                          attachments=[chart] if (chart and os.path.exists(chart)) else [],
+                          source="技术分析汇总", meta={"to": to}, dry_run=dry_run)
+    print("[alert] notify %s" % ("ok" if ok else "fail"), flush=True)
     return ok
 
 
@@ -1429,11 +1430,12 @@ def main():
                     help="堆叠图显示最近多少根K线")
     ap.add_argument("--row-h", type=float, default=7.6, help="堆叠图每行高度（英寸）")
     ap.add_argument("--alert-email", action="store_true",
-                    help="堆叠图出完后：Δα 分位超阈值的指数发预警邮件（带图；走 163→QQ）")
+                    help="堆叠图出完后：Δα 分位超阈值的指数触发预警（带图）；"
+                         "通道需调用方注册，或设 TECHANLY_NOTIFIERS=/path/to/notifier.py")
     ap.add_argument("--alert-threshold", type=float, default=90.0,
                     help="Δα 分位告警阈值（默认 90）")
     ap.add_argument("--mail-to", default=None,
-                    help="收件人（默认走 mailer 配置，本机=工作区 163→QQ 账号）")
+                    help="收件人，仅作为 meta['to'] 透传给通知通道（默认由通道决定）")
     ap.add_argument("--email-dry-run", action="store_true",
                     help="配合 --alert-email：只打印（脱敏）不真发")
     ap.add_argument("--no-da", "--no-rc", dest="with_da", action="store_false",
