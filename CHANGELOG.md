@@ -6,6 +6,40 @@
 > 历史条目**一条不丢**：techAnly 原有 30 条 + 从备份补回 3 条 = 共 **33 条**。
 > 仅当「时间 + 正文完全相同」且两边各存一份时才算重复（那是同一条记录）。
 
+## 2026-11-25
+
+### fix(smc): 新增 `pivot_levels()` —— 摆动点「索引→价位」统一入口，修静默出错坑
+
+**问题**：`pivots()` / `smc_layer()['hi'|'lo']` 返回的是 **K 线索引**，不是价格。
+调用方普遍直接拿索引当价位用（`support = r['lo'][-1]`），得到「支撑 187」
+这种连现价千分之一都不到的数字，**不报错、不告警**，只有人工看图才发现。
+
+**已踩实例**：2026-11-25 `options_utility` 新增 `calc/index_signal_board.py`
+（5 宽基买点看板）时，用 SMC 摆动点兜底支撑/压力，首次跑出「支撑 6318.65
+高于现价 6112.43」的荒谬结果，人工核对才发现是索引（187）被当成价位（6318）。
+
+**为什么改库而不是改调用方**：库里 6 处调用（`tech_summary.py`、
+`chan_smc_index.py`、`run_level.py`、`wyckoff_buypoint_v2.py`、
+`tech_intraday_buypoint.py`、`sector_buypoint_top20.py`）各自手写
+`df['high'].values[hi[-1]]`，口径还不完全一致（有的取最近 1 组、有的取 2 组、
+`chan_smc_index` 用 min/max 混合区间）。补一个官方 helper 让新调用方不再重复这行
+容易写错的代码，同时不强行改老调用方（避免动到已验证的回测结果）。
+
+### 改了什么
+
+| 文件 | 改动 |
+|---|---|
+| `smc/smc_core.py` | **新增** `pivot_levels(df, hi, lo, n=2)`：返回 `{hi_px, lo_px, high, low, pos_pct, above_range, below_range}`；越界索引自动过滤；数据不足返回 `None`（不编造）。`smc_layer()` docstring 加 ⚠️ 提示 hi/lo 是索引 |
+| `smc/smc_pivot_levels_selftest.py` | **新增**。6 条契约自测（口径/含现价/空输入/越界/n=1 嵌套/破位标记），纯合成数据不联网 |
+
+### 自测
+
+```bash
+python3 smc/smc_pivot_levels_selftest.py    # ✅ 6 条契约全过
+```
+
+**不影响**：`pivots()` 语义一字未改；所有老调用方零改动；回测结果不受影响。
+
 ## 2026-11-24
 
 ### （晚）refactor(notify): 告警改为「库只触发、通道由调用方注册」，公开库彻底去掉本机发信路径

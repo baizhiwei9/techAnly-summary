@@ -497,6 +497,47 @@ def pick_signals(fvgs, obs, df, end=None, max_n=4, win=None, need=None,
 _pick_signals_win = pick_signals   # 内部别名（Frame.signals 用）
 
 
+def pivot_levels(df, hi, lo, n=2):
+    """摆动点**索引 → 价位**（2026-11-25 新增，修「把索引当价位」的通用坑）。
+
+    `pivots()` / `smc_layer()['hi'|'lo']` 返回的是 **K 线索引**，不是价格。
+    直接把索引当价位用（例如 `support = s['lo'][-1]`）会得到「支撑 187」
+    这种连现价千分之一都不到的数字，而且不会报错——静默出错，极难发现。
+
+    参数：
+      df   含 high/low 列的 DataFrame（须与生成 hi/lo 的 df 同一份）
+      hi   摆动高索引列表（pivots 返回的第 1 项）
+      lo   摆动低索引列表（pivots 返回的第 2 项）
+      n    取最近 n 组，返回该组区间（默认 2，与 tech_summary/chan_smc_index 的
+           「最近两组摆动」口径一致）
+
+    返回：
+      {"hi_px": [...], "lo_px": [...], "high": 最近区间上沿, "low": 最近区间下沿,
+       "pos_pct": 现价在该区间的位置（0~100，超界不外推）} 或 None（数据不足）
+
+    注意：`high` = 最近 n 个摆动高的**最高值**，`low` = 最近 n 个摆动低的**最低值**，
+    二者组成的区间保证包含最近两组摆动，因此 pos_pct 不会出现 >100 / <0。
+    """
+    h = df["high"].values
+    l = df["low"].values
+    nh = int(len(df))
+    hs = [int(x) for x in (hi or []) if 0 <= int(x) < nh]
+    ls = [int(x) for x in (lo or []) if 0 <= int(x) < nh]
+    if not hs or not ls:
+        return None
+    hi_px = [float(h[x]) for x in hs[-int(n):]]
+    lo_px = [float(l[x]) for x in ls[-int(n):]]
+    top, bot = max(hi_px), min(lo_px)
+    if not (np.isfinite(top) and np.isfinite(bot)) or top <= bot:
+        return None
+    px = float(df["close"].values[-1])
+    pos = (px - bot) / (top - bot) * 100.0
+    return {"hi_px": hi_px, "lo_px": lo_px,
+            "high": round(top, 4), "low": round(bot, 4),
+            "pos_pct": round(pos, 1),
+            "above_range": bool(px > top), "below_range": bool(px < bot)}
+
+
 def smc_layer(df, k, atr_n=14, max_n=4):
     """单级别 SMC 层：摆动点 + FVG + OB + 方向确认信号（统一入口）。
 
@@ -504,6 +545,9 @@ def smc_layer(df, k, atr_n=14, max_n=4):
     避免各自复制一遍组装逻辑。返回 dict 字段：
       hi/lo  摆动点索引；fvgs/obs  候选区（含 fresh/age/strength）；
       sigs   confirm_zone 后的确认信号（最多 max_n 条）；atr  ATR 序列；k 摆动点参数。
+
+    ⚠️ hi/lo 是**索引**不是价位！要价位请调 `pivot_levels(df, r['hi'], r['lo'])`，
+    见该函数文档里「把索引当价位」的坑（2026-11-25）。
     """
     at = atr(df, n=atr_n)
     hi, lo = pivots(df, k)
