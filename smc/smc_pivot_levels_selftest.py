@@ -7,13 +7,15 @@
 得到「支撑 187」这种连现价千分之一都不到的数字，而且不报错、不告警，
 只有人工看图才发现（2026-11-25 options_utility `index_signal_board` 踩过）。
 
-本自测验证 pivot_levels 的六条契约：
+本自测验证 pivot_levels 的八条契约：
   1) 上沿 = 最近 n 个摆动高的最高值，下沿 = 最近 n 个摆动低的最低值
   2) 区间必须包含现价（正常行情下），且与「索引当价位」的结果差一个量级
   3) 空 hi/lo → None（不编造）
   4) 索引越界 / all-invalid → 过滤后为空 → None
   5) n=1 的区间比 n=2 更窄（被 n=2 区间包含）
-  6) 现价突破上/下沿时 above_range / below_range 正确置位
+  6) 现价突破上/下沿时 above_range / below_range 正确置位，pos_pct 截到 100/0
+  7) n<=0 等非法参数返回 None（不拿全量摆动点凑数）
+  8) 现价 NaN 返回 None（不出 nan 指标）
 
 用法：
   python3 smc/smc_pivot_levels_selftest.py        # 退出码 0=通过
@@ -56,6 +58,8 @@ def run():
 
     lv = C.pivot_levels(df, hi, lo)
     chk(lv is not None, '正常输入返回 None')
+    if lv is None:
+        return fails
 
     # 1) 上沿/下沿口径
     exp_high = max(float(df['high'].values[x]) for x in hi[-2:])
@@ -82,13 +86,26 @@ def run():
     chk(l1 is not None and l1['high'] <= lv['high'] and l1['low'] >= lv['low'],
         'n=1 区间未被 n=2 区间包含')
 
-    # 6) 破位标记
+    # 6) 破位标记 + pos 截断
     up = df.copy()
     up.loc[up.index[-1], 'close'] = lv['high'] + 100
-    chk(C.pivot_levels(up, hi, lo)['above_range'] is True, 'above_range 未置位')
+    up_lv = C.pivot_levels(up, hi, lo)
+    chk(up_lv['above_range'] is True, 'above_range 未置位')
+    chk(up_lv['pos_pct'] == 100.0, '突破上沿时 pos_pct 未截到 100')
     dn = df.copy()
     dn.loc[dn.index[-1], 'close'] = max(lv['low'] - 100, 0.01)
-    chk(C.pivot_levels(dn, hi, lo)['below_range'] is True, 'below_range 未置位')
+    dn_lv = C.pivot_levels(dn, hi, lo)
+    chk(dn_lv['below_range'] is True, 'below_range 未置位')
+    chk(dn_lv['pos_pct'] == 0.0, '跌破下沿时 pos_pct 未截到 0')
+
+    # 7) 非法 n
+    chk(C.pivot_levels(df, hi, lo, n=0) is None, 'n=0 未返回 None')
+    chk(C.pivot_levels(df, hi, lo, n=-1) is None, 'n=-1 未返回 None')
+
+    # 8) 现价 NaN
+    bad = df.copy()
+    bad.loc[bad.index[-1], 'close'] = np.nan
+    chk(C.pivot_levels(bad, hi, lo) is None, 'NaN 现价未返回 None')
 
     return fails
 
@@ -101,7 +118,7 @@ def main():
         for f in fails:
             print('   -', f)
         return 1
-    print('✅ pivot_levels 自测全部通过（6 条契约）')
+    print('✅ pivot_levels 自测全部通过（8 条契约）')
     return 0
 
 

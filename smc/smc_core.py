@@ -509,29 +509,39 @@ def pivot_levels(df, hi, lo, n=2):
       hi   摆动高索引列表（pivots 返回的第 1 项）
       lo   摆动低索引列表（pivots 返回的第 2 项）
       n    取最近 n 组，返回该组区间（默认 2，与 tech_summary/chan_smc_index 的
-           「最近两组摆动」口径一致）
+           「最近两组摆动」口径一致）；必须是 >=1 的整数，非法值返回 None
 
     返回：
       {"hi_px": [...], "lo_px": [...], "high": 最近区间上沿, "low": 最近区间下沿,
        "pos_pct": 现价在该区间的位置（0~100，超界不外推）} 或 None（数据不足）
 
     注意：`high` = 最近 n 个摆动高的**最高值**，`low` = 最近 n 个摆动低的**最低值**，
-    二者组成的区间保证包含最近两组摆动，因此 pos_pct 不会出现 >100 / <0。
+    二者组成的区间保证包含最近两组摆动；现价突破区间时 pos_pct 分别截到 100 / 0，
+    只通过 above_range / below_range 标记破位。
     """
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return None
+    if n < 1:
+        return None
     h = df["high"].values
     l = df["low"].values
     nh = int(len(df))
-    hs = [int(x) for x in (hi or []) if 0 <= int(x) < nh]
-    ls = [int(x) for x in (lo or []) if 0 <= int(x) < nh]
+    hs = [int(x) for x in (hi if hi is not None else []) if 0 <= int(x) < nh]
+    ls = [int(x) for x in (lo if lo is not None else []) if 0 <= int(x) < nh]
     if not hs or not ls:
         return None
-    hi_px = [float(h[x]) for x in hs[-int(n):]]
-    lo_px = [float(l[x]) for x in ls[-int(n):]]
+    hi_px = [float(h[x]) for x in hs[-n:]]
+    lo_px = [float(l[x]) for x in ls[-n:]]
     top, bot = max(hi_px), min(lo_px)
     if not (np.isfinite(top) and np.isfinite(bot)) or top <= bot:
         return None
     px = float(df["close"].values[-1])
-    pos = (px - bot) / (top - bot) * 100.0
+    if not np.isfinite(px):
+        return None
+    # 与 docstring 的「0~100，超界不外推」保持一致：突破上/下沿时只置 flag，不把 pos 外推。
+    pos = max(0.0, min(100.0, (px - bot) / (top - bot) * 100.0))
     return {"hi_px": hi_px, "lo_px": lo_px,
             "high": round(top, 4), "low": round(bot, 4),
             "pos_pct": round(pos, 1),

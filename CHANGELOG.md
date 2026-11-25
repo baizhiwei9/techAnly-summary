@@ -40,6 +40,22 @@ python3 smc/smc_pivot_levels_selftest.py    # ✅ 6 条契约全过
 
 **不影响**：`pivots()` 语义一字未改；所有老调用方零改动；回测结果不受影响。
 
+### fix(smc): 收紧 `pivot_levels()` 契约 —— pos_pct 截断 / n 校验 / NaN 保护
+
+**问题**：PR #6 的 helper 文档写「pos_pct 0~100，超界不外推」，但实现直接算
+`(px-bot)/(top-bot)*100`，现价突破上/下沿时会返回 >100 / <0；`n=0` 会因
+`hs[-0:]` 退化成「取全部摆动点」，`n<0` 会从错误的一端切片；现价是 NaN 时
+会返回 `pos_pct=nan` 的指标。都是静默错误。
+
+**改了什么**：
+
+| 文件 | 改动 |
+|---|---|
+| `smc/smc_core.py` | `pivot_levels()`：`n` 强制转 int 且必须 >=1，否则返回 None；`hi/lo` 为 None/空安全；现价非有限值返回 None；`pos_pct` 截到 0~100，破位只由 `above_range`/`below_range` 表达 |
+| `smc/smc_pivot_levels_selftest.py` | 契约从 6 条扩到 8 条：新增「突破时 pos_pct=100/0」「n<=0 → None」「NaN 现价 → None」；`lv is None` 时不再让自测自己崩掉 |
+
+**兼容性**：只改变非法参数/破位/NaN 这些边界的行为；正常区间内的返回值与 #6 一致。
+
 ## 2026-11-24
 
 ### （晚）refactor(notify): 告警改为「库只触发、通道由调用方注册」，公开库彻底去掉本机发信路径
