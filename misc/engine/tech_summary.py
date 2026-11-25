@@ -599,8 +599,22 @@ def chan_fx(df, level):
 
 
 def smc_layer(df, k, atr_n=14):
-    """四层汇总 SMC：统一走 smc_core.smc_layer（单一口径）。"""
+    """四层汇总 SMC：统一走 smc_core.smc_layer（单一口径）。
+
+    ⚠️ 返回的 hi/lo 是**K 线索引**不是价位；要价位请用 pivot_levels()。
+    """
     return S.smc_layer(df, k, atr_n=atr_n)
+
+
+def pivot_levels(df, hi, lo, n=2):
+    """SMC 摆动点索引 → 价位（统一走 smc_core.pivot_levels）。
+
+    用法：
+        r = smc_layer(df, 3)
+        lv = pivot_levels(df, r['hi'], r['lo'])   # → {'high':..., 'low':..., 'pos_pct':...}
+        # 不要写 df['low'].values[r['lo'][-1]] —— 每个调用方各写一遍容易把索引当价位
+    """
+    return S.pivot_levels(df, hi, lo, n=n)
 
 
 def vwap_layer(df):
