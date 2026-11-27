@@ -89,14 +89,38 @@ def render(out, close, da=None, lam=None, name=None, label=None,
 
     # ── 各栏数据裁剪到 close 的日期范围内（宽度 × 长度对齐）
     da_w = di_w = None
-    if da is not None and len(da):
-        da = pd.Series(da).dropna()
-        di_full = _as_dt(da.index)
-        m = (di_full >= t0) & (di_full <= t1)
-        if m.any():
-            da_w, di_w = da.values[m], di_full[m]
-    if da_p90 is None and da_w is not None and len(da_w):
-        da_p90 = float(np.quantile(da_w, 0.9))
+    _da_full = None
+    if da is not None:
+        try:
+            _da_raw = pd.Series(da)
+        except Exception:                                    # noqa: BLE001
+            _da_raw = None
+        if _da_raw is not None and len(_da_raw):
+            _n_raw = len(_da_raw)
+            _da_full = _da_raw.dropna()
+            if len(_da_full):
+                di_full = _as_dt(_da_full.index)
+                m = (di_full >= t0) & (di_full <= t1)
+                if m.any():
+                    da_w, di_w = _da_full.values[m], di_full[m]
+            if da_w is None and not da_missing:
+                # 给了 da 却画不出来 —— 同样不许静默省略（全 NaN / 与走势窗口不重叠）
+                da_missing = ("Δα 有 %d 个原始点，但去空后%s → 无法成图"
+                              % (_n_raw,
+                                 "全为空值" if not len(_da_full)
+                                 else "与走势窗口 %s~%s 无重叠"
+                                 % (pd.Timestamp(t0).strftime("%Y-%m-%d"),
+                                    pd.Timestamp(t1).strftime("%Y-%m-%d"))))
+    # P90 口径：优先用调用方给的全历史分位；给的是 nan/None 就退回
+    # **全历史**分位（不是窗口内分位，保持与日报表格同口径）。
+    if not (da_p90 is not None and np.isfinite(float(da_p90))):
+        _ref = _da_full if (_da_full is not None and len(_da_full)) else None
+        if _ref is not None:
+            da_p90 = float(np.quantile(_ref.values, 0.9))
+        elif da_w is not None and len(da_w):
+            da_p90 = float(np.quantile(da_w, 0.9))
+        else:
+            da_p90 = None
 
     lam_w = li_w = None
     if lam is not None and len(lam):
@@ -136,6 +160,8 @@ def render(out, close, da=None, lam=None, name=None, label=None,
     ax.set_ylabel("收盘价", fontsize=12)
     ax.set_title("① 走势 · 近 %d 交易日" % len(close), fontsize=13, pad=8)
     ax.grid(alpha=0.25)
+    if ax.get_legend_handles_labels()[1][0].strip() != "收盘价":
+        ax.legend(loc="upper left", fontsize=10)   # ① 栏也要图例，否则标的名白拼
 
     # ② MF-DFA Δα
     if da_w is not None:
@@ -159,7 +185,7 @@ def render(out, close, da=None, lam=None, name=None, label=None,
         ax.text(0.5, 0.5, da_missing, transform=ax.transAxes, ha="center",
                 va="center", fontsize=12, color="#c62828", wrap=True)
         ax.set_ylabel("Δα", fontsize=12, color="#c62828")
-        ax.set_title("② MF-DFA 多分形谱宽 Δα · **数据不可用**", fontsize=12, pad=8)
+        ax.set_title("② MF-DFA 多分形谱宽 Δα · 数据不可用", fontsize=12, pad=8)
         ax.grid(alpha=0.25)
 
     # ③ λ1 / λ2 + MA5
@@ -325,9 +351,12 @@ def plot_panel(code="000688", typ="index_sh", lookback=250, out=None,
                              win.index[-1].strftime("%Y%m%d")))
     if da is not None and len(da):
         s = da.dropna()
-        v = float(s.iloc[-1])
-        print("最新 Δα = %.4f | 90分位 = %.4f | 全历史分位 = %.1f%%"
-              % (v, da_p90, float((s <= v).mean() * 100)))
+        if len(s) and da_p90 is not None:
+            v = float(s.iloc[-1])
+            print("最新 Δα = %.4f | 90分位 = %.4f | 全历史分位 = %.1f%%"
+                  % (v, da_p90, float((s <= v).mean() * 100)))
+        else:
+            print(da_missing or "Δα 序列去空后为空，无可报数值")
     elif da_missing:
         print(da_missing)
     if lam is not None and len(lam):
@@ -359,10 +388,13 @@ def _rc_state(rc_mod, v):
     if hi is not None and v > hi:
         return "🔴 危险区（>%.2f）" % hi
     if deep is not None and v < deep:
-        return "🟣 低波动陷阱（<%.2f）" % deep
+        # deep 是**连续 5 日才确认**的独立告警类别（rcascade.CONFIRM_DEEP），
+        # 单日低于它仍属 rcascade.state_of 的「安全区」，文案必须写清，
+        # 否则控制台和日报表格 state 列会互相打架。
+        return "🟢 安全区（<%.2f）｜🟣 再低于 %.2f 且连续 5 日＝低波动陷阱" % (lo, deep)
     if lo is not None and v < lo:
         return "🟢 安全区（<%.2f）" % lo
-    return "正常区"
+    return "🟡 中性带（%.2f~%.2f）" % (lo, hi) if (lo is not None and hi is not None) else "中性带"
 
 
 # ══════════════════════════════════════ 取数辅助 ══════════════════════════════════
