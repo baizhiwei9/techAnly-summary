@@ -45,6 +45,24 @@ import socket
 import argparse
 import datetime
 
+def _cfg(key, default=""):
+    """DataHub 统一配置（loader 内部处理 env 覆盖）→ default。"""
+    try:
+        from data_hub import cfg as _c
+        return str(_c(key, default) or default or "").strip()
+    except Exception:
+        return (default or "").strip()
+
+
+def _secret(name, default=""):
+    """DataHub 统一配置里的凭据（secrets 段）。"""
+    try:
+        from data_hub import get_secret as _g
+        return (_g(name, default) or default or "").strip()
+    except Exception:
+        return (default or "").strip()
+
+
 def _repo_root(start):
     """向上探测仓库根（同时含 chanlun/ 与 misc/ 的那层）"""
     d = os.path.dirname(os.path.abspath(start))
@@ -58,7 +76,7 @@ def _repo_root(start):
     return os.path.dirname(os.path.dirname(os.path.abspath(start)))
 
 
-WS = os.environ.get("TECH_WS") or _repo_root(__file__)
+WS = _cfg("TECH_WS") or _repo_root(__file__)
 # 应用层：引用库（misc/ chanlun/ smc/ wavelet/），库不反向依赖本目录
 for _sd in ("misc/core", "misc/engine", "misc/strategies", "misc/tools",
             "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
@@ -112,7 +130,7 @@ L3_MIN_W = float(os.environ.get("XQ_INDL3_MIN_W", "8"))
 LEVELS = (("day", "日线"), ("week", "周线"))
 MAX_AGE = {"day": 25, "week": 12}     # 与 chan_smc_index 一致：多少根K线内算"新鲜"
 
-MAIL_TO = os.environ.get("XQ_IND_MAIL_TO") or None   # 默认走 scripts/email_config.json
+MAIL_TO = _secret("XQ_IND_MAIL_TO") or None   # 留空则由 scripts/send_email.py 的 email_config.json 解析
 
 
 def log(*a):
