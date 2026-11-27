@@ -24,13 +24,13 @@
               → 单只四层分析
 
 用法：
-  python3 bin/tech_buypoint.py --target 传媒              # 行业：指数 + 成分股买点
-  python3 bin/tech_buypoint.py --target 文化传媒概念       # 概念：指数 + 成分股买点
-  python3 bin/tech_buypoint.py --target 中证500           # 指数：成分股扫买点
-  python3 bin/tech_buypoint.py --target 600519            # 个股：单只分析
-  python3 bin/tech_buypoint.py --target 传媒 --push       # 推飞书卡片
-  python3 bin/tech_buypoint.py --target 传媒 --no-scan    # 只看板块指数，不扫成分股
-  python3 bin/tech_buypoint.py --list-concepts 游戏        # 列出匹配的概念名
+  python3 strategies/tech_buypoint.py --target 传媒              # 行业：指数 + 成分股买点
+  python3 strategies/tech_buypoint.py --target 文化传媒概念       # 概念：指数 + 成分股买点
+  python3 strategies/tech_buypoint.py --target 中证500           # 指数：成分股扫买点
+  python3 strategies/tech_buypoint.py --target 600519            # 个股：单只分析
+  python3 strategies/tech_buypoint.py --target 传媒 --push       # 推飞书卡片
+  python3 strategies/tech_buypoint.py --target 传媒 --no-scan    # 只看板块指数，不扫成分股
+  python3 strategies/tech_buypoint.py --list-concepts 游戏        # 列出匹配的概念名
 
 取数（2026-11-13 统一）：日线 / 60m 分钟线优先走 DataHub
   （`tech_summary.load_day` / `tech_summary.dh_minute`，即 optstack/data_hub 的
@@ -72,22 +72,24 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
-    from misc.core.net_guard import install as _net_install
+    from net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
     socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
-import chanlun.fractal.chan_smc_index as C
-import chanlun.ma.chan_ma_trend_v2 as M
-import misc.core.datahub as DH
-import misc.engine.tech_summary as TS
-import misc.core.dh_bridge as DHB
-from misc.engine.tech_summary import (                    # noqa: E402
+import chan_smc_index as C                    # noqa: E402
+import chan_ma_trend_v2 as M                  # noqa: E402
+import datahub as DH                          # noqa: E402
+import tech_summary as TS                     # noqa: E402
+import dh_bridge as DHB                       # noqa: E402  data_hub 取数桥（纯适配，失败自动降级）
+from tech_summary import (                    # noqa: E402
     ma20_state, rank_buys, best_buy, PRI_MARK, BUY_PRIORITY, MA20_UP_BARS,
 )  # noqa: F401
 
@@ -237,7 +239,7 @@ def concept_members(ts_code):
         log("[概念] %s data_hub 失败 %s → 降级 tushare" % (ts_code, str(e)[:60]))
     # ② 老链路兜底
     try:
-        from misc.core.tushare_init import ts_call
+        from tushare_init import ts_call
         m = ts_call("ths_member", ts_code=ts_code)
         if m is None or not len(m):
             return []
@@ -346,7 +348,7 @@ def _index_members_local(ts_code):
     #      超过 ts_call 的 TS_TIMEOUT=8s → 被判 timeout 返回 None（看着像"接口不支持"）。
     #      传 start_date/end_date(近 40 天) → 1~3s 返回月末快照，500/1000 只全对。
     try:
-        from misc.core.tushare_init import ts_call
+        from tushare_init import ts_call
         import datetime as _dtm
         _end = _dtm.date.today()
         _st = (_end - _dtm.timedelta(days=40))
@@ -436,7 +438,7 @@ def _sector_index_daily_local(kind, code, name=""):
     """老链路兜底：行业=申万 sw_daily / 概念=同花顺 tushare ths_daily（原样保留）"""
     try:
         if kind == "concept":
-            from misc.core.tushare_init import ts_call
+            from tushare_init import ts_call
             d = ts_call("ths_daily", ts_code=code, start_date="20240101")
             if d is None or not len(d):
                 return None
@@ -449,7 +451,7 @@ def _sector_index_daily_local(kind, code, name=""):
                 d["volume"] = 0.0
             return d[["dt", "open", "high", "low", "close", "volume"]].dropna(subset=["close"]).reset_index(drop=True)
         if kind == "industry":
-            from misc.core.sw_daily import fetch_sw_daily
+            from sw_daily import fetch_sw_daily
             d = fetch_sw_daily(code)
             if d is None or not len(d):
                 return None
@@ -632,7 +634,7 @@ def _fetch_full_daily(code, start="20200101"):
 def _fetch_full_daily_local(code, start="20200101"):
     """老链路兜底：tushare `daily`（不复权，原样保留）"""
     try:
-        from misc.core.tushare_init import ts_call
+        from tushare_init import ts_call
         d = ts_call("daily", ts_code=code, start_date=start)
         if d is None or not len(d):
             return None
@@ -777,7 +779,7 @@ def load_h1(ts_code, kind="stock"):
             if d is not None and len(d) >= H1_MIN_BARS:
                 return d
         # ② 本机 minute_hub 兜底（老链路）
-        import misc.core.minute_hub as mh
+        import minute_hub as mh
         d = mh.get_kline(code, "60", n=H1_N, kind=kind, cache=True, cache_ttl_min=20)
         if d is None or len(d) < H1_MIN_BARS:
             d = mh.get_kline(code, "60", n=H1_N, kind=kind, cache=False)
@@ -1537,7 +1539,7 @@ def render(txt_head, rows, meta_lines):
 
 # ══════════════════════════ 飞书推送 ══════════════════════════
 def push_feishu(title, txt, imgs=None, chat=None, template="blue"):
-    import misc.core.feishu_card as FC
+    import feishu_card as FC
     try:
         _c = json.load(open(os.path.join(os.path.dirname(WS), "openclaw.json"),
                             encoding="utf-8"))["channels"]["feishu"]
@@ -1858,7 +1860,7 @@ def chart_one(code, nm, d, h1=None, n_day=120, n_h1=110, n_ma=260, dpi=None):
     ⚠️ h1 必须是 **DataFrame**（分钟线原始数据），不能传 h1_buys() 的判定 dict
     """
     try:
-        import misc.engine.buypoint_chart as BC
+        import buypoint_chart as BC
         if h1 is None or not hasattr(h1, "columns") or len(h1) < 60:
             h1 = load_h1(code, "index" if is_index_code(code) else "stock")
         disp = ("%s %s" % (nm or "", code)).strip()
@@ -1871,7 +1873,7 @@ def chart_one(code, nm, d, h1=None, n_day=120, n_h1=110, n_ma=260, dpi=None):
 def chart_sector(kind, name, code, n_day=120, n_ma=300):
     """给板块指数出图 → 路径 或 None"""
     try:
-        import misc.engine.buypoint_chart as BC
+        import buypoint_chart as BC
         d = sector_index_daily(kind, code, name)
         if d is None or len(d) < 80:
             return None
@@ -1935,7 +1937,7 @@ def resolve_one(t):
 
 def board_metrics(df):
     """个股附加信息（仅用于展示/排序加分）：VWAP 偏离 σ、MA20/MA160、多头排列"""
-    import smc.smc_core as S
+    import smc_core as S
     # ⚠️ 键名不能碰 analyse_one 的字段：align 是 dict（含 state），这里另起 align_state
     out = {"vw_z": None, "ma_buy": None, "ma_sell": None}
     try:
@@ -2223,7 +2225,7 @@ def run_multi(a):
                 imgs.append(p)
                 log("[图] 板块 %s → %s" % (sec["name"], p))
         if picks:
-            import misc.engine.buypoint_chart as BC
+            import buypoint_chart as BC
             # ⚠️ 大佬 2026-11-11：「一个图最多 20 个子图就可以了，不要分页」
             #   → 一次出**一张**图，最多 20 个子图；每个子图下方标买卖点
             items = []
@@ -2445,7 +2447,7 @@ def main():
     # ── ④ 个股：单只四层分析 ──
     if kind == "stock":
         # ⚠️ 个股一律把**解析后的 ts_code** 传给 tech_summary（中文名/6位代码都归一）
-        import misc.engine.tech_summary as TS2
+        import tech_summary as TS2
         _tgt = code or a.target
         _argv = ["tech_summary.py", "--target", _tgt]
         if a.push:
@@ -2462,7 +2464,7 @@ def main():
             sys.argv = _old
     if kind == "index" and not extra.get("codes"):
         # 指数：先给指数自身四层，再（默认）扫成分股
-        import misc.engine.tech_summary as TS2
+        import tech_summary as TS2
         if not a.no_scan:
             im = index_members(code)
             if im:

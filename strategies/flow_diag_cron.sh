@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# 行业资金 × 产业链传导 合并报告（纯脚本 0 token）
+# 用法: flow_diag_cron.sh [feishu|qq|both]
+set -uo pipefail
+
+# 脚本所在目录（2026-11-27 迁入 techAnly-summary，替代原 bin/ 路径）
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}" || exit 1
+PUSH="${1:-both}"
+D8=$(python3 -c "import sys;sys.path.insert(0,'bin');import trade_day;print(trade_day.resolve().replace('-',''))" 2>/dev/null)
+[ -z "$D8" ] && D8=$(date +%Y%m%d)
+LOG=.cache/flow_diag_cron.log
+mkdir -p .cache
+echo "=== $(date '+%F %T') start $D8 push=$PUSH ===" >> "$LOG"
+timeout 2400 python3 "$SELF_DIR"/flow_diag_report.py --push "$PUSH" --out ".cache/flow_diag_${D8}.txt" >> "$LOG" 2>&1
+RC=$?
+echo "=== $(date '+%F %T') done rc=$RC ===" >> "$LOG"
+if [ $RC -ne 0 ]; then
+  timeout 120 python3 - <<'PY' >> "$LOG" 2>&1
+import json,urllib.request,datetime
+hook=__import__("ocsecrets").feishu_hook()
+t='⚠️ 行业资金×产业链传导 报告执行失败（rc!=0），请看 .cache/flow_diag_cron.log\n\n📎 来自 OpenClaw.Deepseek'
+b={'msg_type':'text','content':{'text':t}}
+try:
+    urllib.request.urlopen(urllib.request.Request(hook,data=json.dumps(b).encode(),headers={'Content-Type':'application/json'}),timeout=20)
+except Exception as e:
+    print('alert fail',e)
+PY
+fi
+exit $RC

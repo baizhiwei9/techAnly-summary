@@ -16,12 +16,12 @@
 全流程纯 Python，0 token。
 
 用法：
-  python3 bin/tech_intraday_buypoint.py                # 只看行业，文本
-  python3 bin/tech_intraday_buypoint.py --top 10
-  python3 bin/tech_intraday_buypoint.py --push         # 推飞书卡片
-  python3 bin/tech_intraday_buypoint.py --qq           # 同时推 QQ 文字
-  python3 bin/tech_intraday_buypoint.py --with-concept # 行业 + 概念一起排
-  python3 bin/tech_intraday_buypoint.py --limit 20     # 调试：只跑前 20 个板块
+  python3 strategies/tech_intraday_buypoint.py                # 只看行业，文本
+  python3 strategies/tech_intraday_buypoint.py --top 10
+  python3 strategies/tech_intraday_buypoint.py --push         # 推飞书卡片
+  python3 strategies/tech_intraday_buypoint.py --qq           # 同时推 QQ 文字
+  python3 strategies/tech_intraday_buypoint.py --with-concept # 行业 + 概念一起排
+  python3 strategies/tech_intraday_buypoint.py --limit 20     # 调试：只跑前 20 个板块
 """
 from __future__ import annotations
 
@@ -58,24 +58,26 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
-    from misc.core.net_guard import install as _net_install
+    from net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
     socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
-import chanlun.fractal.chan_smc_index as C
-import chanlun.ma.chan_ma_trend_v2 as M
-import misc.engine.tech_summary as TS
-import misc.engine.tech_buypoint as TB
-import misc.engine.wyckoff_today_fetch as F
-import misc.core.datafeed as DF
-import smc.smc_core as S
-import misc.core.dh_bridge as DHB
+import chan_smc_index as C        # noqa: E402
+import chan_ma_trend_v2 as M      # noqa: E402
+import tech_summary as TS         # noqa: E402
+import tech_buypoint as TB        # noqa: E402
+import wyckoff_today_fetch as F   # noqa: E402
+import datafeed as DF             # noqa: E402  多源取数（K线走同花顺，东财只取成分股）
+import smc_core as S              # noqa: E402
+import dh_bridge as DHB           # noqa: E402  data_hub 取数桥（失败静默降级 datafeed）
 
 SIGN = "📎 来自 OpenClaw.Deepseek"
 def _qq_target():

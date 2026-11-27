@@ -110,7 +110,7 @@ python3 charts/rmt_rc.py --targets 沪深300,科创50 --alert --email
 |---|---|
 | `charts/chan_fractal.py` | `draw_stack`（五宽基日线堆叠）副图**右轴由 R_cascade 改为 MF-DFA Δα**：深红粗线 + 窗内 P90 虚线阈值（**同日修正为全样本 P90，见下「同日修正」**）；新增 `--alert-email / --alert-threshold / --mail-to / --email-dry-run`，出图后 Δα 分位超阈值即发**带图**邮件。`--no-rc` 保留为 `--no-da` 旧名 |
 | `charts/chan_fractal.py` | 新增 `_da_series_for()`（Δα 唯一实现 `charts/phase_mfdfa.rolling_delta_alpha`，日线复用 `rcascade.load()` **只取数**）、`_da_alert_item()`（与 `rmt_rc.build_alerts` 同口径）、`send_da_alert_email()`（**直接复用工作区 `email_sender.send_email`**，即环流日报同款 163→QQ 统一出口） |
-| `charts/rmt_rc.py` | `send_alert_email()` 原来 shell 调不存在的 `/root/.openclaw/workspace/scripts/send_email.py`（`--email` 从未真正发出）→ 改调统一出口；新增 `--email-dry-run` |
+| `charts/rmt_rc.py` | `send_alert_email()` 原来 shell 调不存在的 `scripts/send_email.py`（`--email` 从未真正发出）→ 改调统一出口；新增 `--email-dry-run` |
 | `misc/core/mailer.py` | 新增 `send_alert()` / `_unified_send()`：**优先直接调用** `/Coze/Drive/.../email_sender.py` 的 `send_email()`（环流日报 `alert_book.py` 同款用法），模块不在才回落自带 SMTP；吞掉对方输出只回显脱敏行。另保留 ④ 兜底（读 `DEFAULT_CONFIG` 的 163→QQ 账号，口令不落库、不打印） |
 | `misc/charts/registry.py` / `run.py` / `skills/tech-summary/SKILL.md` | 文档与路由同步：`rmt-rc` = RMT+Δα；`rcascade` 标注为「仅取数库，已并入 MF-DFA」 |
 
@@ -280,7 +280,7 @@ techAnly 这个库，然后它发邮件，但是这邮件地址你得给我脱�
     → 历史计数（危险信号 N 次 / 累计<0.75 N 次）不缩水，同时能吃到最新一根
   - 每条结果带 `df.attrs["source"]`（datahub / akshare / akshare+datahub）与 `last_date`
   - `_ensure_datahub_path()`：部署机 DataHub 在工作区 `optstack/` 时自动补 `DATA_HUB_PATH`
-    （`dh_bridge` 只向上探 5 层，本库在 `/root/techAnly-summary` 探不到工作区）
+    （`dh_bridge` 只向上探 5 层，本库在 `~/techAnly-summary` 探不到工作区）
 - **数据新鲜度提示**（`freshness_note()`）：最晚日期距今 >3 天就站出来喊
   —— 之前出现过「源只到 11-13，报告看着像今天的新信号」。表格新增「数据截止」列。
 - 出图支持任意标的数（`--chart`），默认 `reports/charts/rcascade/`；CLI 兼容旧参数 `--no-chart`。
@@ -411,7 +411,7 @@ techAnly 这个库，然后它发邮件，但是这邮件地址你得给我脱�
 
 ```
 python3 charts/chan_fractal.py --stack "沪深300,中证500,中证1000,创业板指,科创50" --stack-n 160
-python3 charts/five_topo.py --panel /root/.cache/topo5 --days 60 --out /tmp/five_topo.png
+python3 charts/five_topo.py --panel ~/.cache/topo5 --days 60 --out /tmp/five_topo.png
 ```
 输出 1800x6000 / 1701x4760；`CHAN_AUDIT=1` 自检 0 处重叠。
 
