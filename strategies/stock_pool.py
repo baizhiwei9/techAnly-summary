@@ -98,7 +98,10 @@ BASE = _resolve_base()
 sys.path.insert(0, os.path.join(BASE, 'optstack', 'jobs'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-FETCH = _dh_cfg('SP_FETCH') or os.path.join(_dh_cfg('OPENCLAW_WORKSPACE') or '', 'optstack/jobs/fetch-feishu-group-msgs.py')
+# 2026-11-28：SP_FETCH 未配时，工作区未配也要退回迁移前默认，
+# 否则 FETCH 会变成相对路径 optstack/jobs/...，取群消息会静默失败。
+_OPENCLAW_WS = _dh_cfg('OPENCLAW_WORKSPACE') or os.path.expanduser('~/.openclaw/workspace')
+FETCH = _dh_cfg('SP_FETCH') or os.path.join(_OPENCLAW_WS, 'optstack/jobs/fetch-feishu-group-msgs.py')
 CHAT = _dh_secret('SP_CHAT_ID', '') or _dh_secret('FEISHU_CHAT_STOCK', '') or _dh_secret('FEISHU_CHAT_ID', '')
 QQ_TARGET = _dh_secret('SP_QQ_TARGET', '') or _dh_secret('QQ_DEFAULT_TARGET', '')
 
