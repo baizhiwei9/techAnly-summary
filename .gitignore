@@ -11,3 +11,8 @@ chanlun/multiscale/reports/
 *.rej
 reports/
 charts/*.bak.*
+
+# 打包构建产物（pip install -e 生成，不入库）
+*.egg-info/
+build/
+dist/
