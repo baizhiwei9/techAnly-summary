@@ -46,6 +46,47 @@ from __future__ import annotations
 
 
 # --- 路径引导（2026-11-27 迁入 techAnly-summary）---
+
+# ---- 统一配置（DataHub config）：路径/凭据一律从 DataHub 配置取，env 仅供 loader 内部覆盖 ----
+def _bootstrap_hub_root():
+    """引导定位 data_hub：env DATAHUB_ROOT → ~/.config/precious-task/libroots.json → 向上探测。"""
+    import json as _j, os as _o
+    p = (_o.environ.get("DATAHUB_ROOT") or "").strip()
+    if p and _o.path.isdir(_o.path.join(p, "data_hub")):
+        return p
+    try:
+        with open(_o.path.expanduser("~/.config/precious-task/libroots.json"), encoding="utf-8") as _f:
+            _d = _j.load(_f) or {}
+        for _k in ("datahub", "datahub_root", "DATAHUB_ROOT"):
+            _v = _d.get(_k)
+            if _v and _o.path.isdir(_o.path.join(str(_v), "data_hub")):
+                return str(_v)
+    except Exception:
+        pass
+    _d0 = _o.path.dirname(_o.path.abspath(__file__))
+    for _ in range(6):
+        if _o.path.isdir(_o.path.join(_d0, "data_hub")):
+            return _d0
+        _d0 = _o.path.dirname(_d0)
+    return ""
+
+
+def _dh_cfg(_k, _d=""):
+    try:
+        from data_hub import cfg as _c
+        return _c(_k, _d) or _d
+    except Exception:
+        return _d
+
+
+def _dh_secret(_n, _d=""):
+    try:
+        from data_hub import get_secret as _g
+        return _g(_n, _d) or _d
+    except Exception:
+        return _d
+# -----------------------------------------------------------------------------------
+
 try:
     from _paths import ensure as _ensure_paths
     _ensure_paths()
@@ -74,7 +115,7 @@ LOG_FILE = os.path.join(WS, ".cache/chan_h1_wide_ind.log")
 THS_MAP_FILE = os.path.join(WS, ".cache/ths_ind_map.json")
 CACHE_DIR = os.path.join(WS, ".cache/chan_h1")
 
-FEISHU_CHAT = os.environ.get("CHAN_H1_CHAT") or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
+FEISHU_CHAT = _dh_secret("CHAN_H1_CHAT", "") or _dh_secret("FEISHU_CHAT_DM", "") or _dh_secret("FEISHU_CHAT_ID", "")
 
 UA_THS = {"User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"),
@@ -472,7 +513,7 @@ def refresh_snapshots(force=False):
         key = "moergen" if "yali" not in fp else "yali"
         try:
             r = subprocess.run(
-                ["bash", os.environ.get("OPENCLAW_WORKSPACE","/root/.openclaw/workspace")+"/optstack/jobs/xq_daily.sh", "check", "--no-push"],
+                ["bash", _dh_cfg("OPENCLAW_WORKSPACE")+"/optstack/jobs/xq_daily.sh", "check", "--no-push"],
                 capture_output=True, text=True, timeout=900, cwd=WS,
                 env={**env, "XQ_PORTFOLIOS": key, "XQ_PUSH": ""})
             out = (r.stdout or "") + (r.stderr or "")

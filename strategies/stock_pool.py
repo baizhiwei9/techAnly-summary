@@ -23,6 +23,47 @@
 """
 
 # --- 路径引导（2026-11-27 迁入 techAnly-summary）---
+
+# ---- 统一配置（DataHub config）：路径/凭据一律从 DataHub 配置取，env 仅供 loader 内部覆盖 ----
+def _bootstrap_hub_root():
+    """引导定位 data_hub：env DATAHUB_ROOT → ~/.config/precious-task/libroots.json → 向上探测。"""
+    import json as _j, os as _o
+    p = (_o.environ.get("DATAHUB_ROOT") or "").strip()
+    if p and _o.path.isdir(_o.path.join(p, "data_hub")):
+        return p
+    try:
+        with open(_o.path.expanduser("~/.config/precious-task/libroots.json"), encoding="utf-8") as _f:
+            _d = _j.load(_f) or {}
+        for _k in ("datahub", "datahub_root", "DATAHUB_ROOT"):
+            _v = _d.get(_k)
+            if _v and _o.path.isdir(_o.path.join(str(_v), "data_hub")):
+                return str(_v)
+    except Exception:
+        pass
+    _d0 = _o.path.dirname(_o.path.abspath(__file__))
+    for _ in range(6):
+        if _o.path.isdir(_o.path.join(_d0, "data_hub")):
+            return _d0
+        _d0 = _o.path.dirname(_d0)
+    return ""
+
+
+def _dh_cfg(_k, _d=""):
+    try:
+        from data_hub import cfg as _c
+        return _c(_k, _d) or _d
+    except Exception:
+        return _d
+
+
+def _dh_secret(_n, _d=""):
+    try:
+        from data_hub import get_secret as _g
+        return _g(_n, _d) or _d
+    except Exception:
+        return _d
+# -----------------------------------------------------------------------------------
+
 try:
     from _paths import ensure as _ensure_paths
     _ensure_paths()
@@ -38,7 +79,7 @@ def _resolve_base():
     顺序：环境变量 STOCK_POOL_WS > 含 bin/ 与 .cache/market/ 的最近祖先 > 本机默认。
     这样脚本放 case 目录、放宿主机 bin/、换机器部署都能跑，不会静默读错路径。
     """
-    env = os.environ.get('STOCK_POOL_WS', '').strip()
+    env = str(_dh_cfg('STOCK_POOL_WS') or '').strip()
     if env and os.path.isdir(env):
         return env
     d = os.path.dirname(os.path.abspath(__file__))
@@ -49,7 +90,7 @@ def _resolve_base():
         if nd == d:
             break
         d = nd
-    return os.path.expanduser("~/.openclaw/workspace")
+    return _dh_cfg('OPENCLAW_WORKSPACE') or os.path.expanduser("~/.openclaw/workspace")
 
 
 BASE = _resolve_base()
@@ -57,9 +98,9 @@ BASE = _resolve_base()
 sys.path.insert(0, os.path.join(BASE, 'optstack', 'jobs'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-FETCH = os.environ.get('SP_FETCH') or os.path.join(os.environ.get('OPENCLAW_WORKSPACE','/root/.openclaw/workspace'), 'optstack/jobs/fetch-feishu-group-msgs.py')
-CHAT = os.environ.get('SP_CHAT_ID') or os.environ.get("FEISHU_CHAT_STOCK") or os.environ.get("FEISHU_CHAT_ID", "")
-QQ_TARGET = os.environ.get('SP_QQ_TARGET') or os.environ.get("QQ_DEFAULT_TARGET", "")
+FETCH = _dh_cfg('SP_FETCH') or os.path.join(_dh_cfg('OPENCLAW_WORKSPACE') or '', 'optstack/jobs/fetch-feishu-group-msgs.py')
+CHAT = _dh_secret('SP_CHAT_ID', '') or _dh_secret('FEISHU_CHAT_STOCK', '') or _dh_secret('FEISHU_CHAT_ID', '')
+QQ_TARGET = _dh_secret('SP_QQ_TARGET', '') or _dh_secret('QQ_DEFAULT_TARGET', '')
 
 # ---------------- 多空关键词 ----------------
 BULL_KW = ['看多', '看好', '推荐', '买入', '增持', '机会', '领涨', '净流入', '流入',
@@ -855,7 +896,7 @@ def main():
         if not args.no_feishu:
             _feishu_card(msg1, f'📌 个股备选池 / 弃选池 · {args.date}')
     if png:
-        cmd = [sys.executable, os.path.join(os.environ.get('OPENCLAW_WORKSPACE','/root/.openclaw/workspace'), 'optstack/jobs/push_image.py'), png]
+        cmd = [sys.executable, os.path.join(_dh_cfg('OPENCLAW_WORKSPACE') or BASE, 'optstack/jobs/push_image.py'), png]
         caption = ''
         if empty_tip:
             # 图配文说清楚原因（QQ 和飞书都会带上这句）
