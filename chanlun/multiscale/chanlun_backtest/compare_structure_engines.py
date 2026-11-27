@@ -19,7 +19,6 @@ import numpy as np
 import pandas as pd
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(_HERE))
 
 # ── 定位远程引擎 bin/chan_smc_index.py ──
 _REMOTE_CANDIDATES = [
@@ -31,12 +30,11 @@ REMOTE_BIN = None
 for _p in _REMOTE_CANDIDATES:
     if os.path.exists(os.path.join(_p, "chan_smc_index.py")):
         REMOTE_BIN = _p
-        sys.path.insert(0, _p)
         break
 if REMOTE_BIN is None:
     raise SystemExit("找不到远程引擎 chan_smc_index.py")
 
-import chan_smc_index as remote
+import chanlun.fractal.chan_smc_index as remote
 
 import matplotlib
 matplotlib.use("Agg")
@@ -44,8 +42,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib import font_manager
 
-from chanlun_backtest import structure_indicators as si
-from chanlun_backtest.structure_signals_v2 import detect_structure_signals_v2
+from chanlun.multiscale.chanlun_backtest import structure_indicators as si
+from chanlun.multiscale.chanlun_backtest.structure_signals_v2 import detect_structure_signals_v2
 
 # ── 中文字体 ──
 _FONTS = [
@@ -398,8 +396,7 @@ def _marker(ax, wdf, xi, kind, tag):
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    sys.path.insert(0, os.path.dirname(_HERE))
-    from data_fetcher import get_index_daily
+    from chanlun.multiscale.data_fetcher import get_index_daily
 
     symbols = [
         ("sh510300", "沪深300ETF", "daily", 320),

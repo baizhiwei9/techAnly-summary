@@ -72,8 +72,6 @@ def _dh_metrics():
     try:
         _op = os.environ.get("OPTSTACK_DIR") or os.path.join(
             os.path.expanduser("~"), ".openclaw", "workspace", "optstack")
-        if _op not in sys.path:
-            sys.path.insert(0, _op)
         from data_hub.collectors.misc.option_metrics_history import get_option_metrics
         return get_option_metrics
     except Exception as e:                                       # noqa: BLE001

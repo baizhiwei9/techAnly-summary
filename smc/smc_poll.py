@@ -20,9 +20,9 @@ import os
 import sys
 from datetime import datetime, time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from smc_config import INSTRUMENTS, sessions_of, level_of
-import smc_engine, smc_db
+from smc.smc_config import INSTRUMENTS, sessions_of, level_of
+import smc.smc_engine as smc_engine
+import smc.smc_db as smc_db
 
 
 def _hm(s):

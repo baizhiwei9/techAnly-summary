@@ -40,15 +40,9 @@ def _repo_root(start):
 
 
 WS = os.environ.get("TECH_WS") or _repo_root(__file__)
-for _p in (os.path.join(WS, "bin"), os.path.join(WS, "smc"),
-           os.path.join(WS, "misc/core"), os.path.join(WS, "misc/engine"),
-           os.path.join(WS, "chanlun/fractal"), os.path.join(WS, "chanlun/ma"),
-           os.path.join(WS, "chanlun/multiscale"), WS):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-import tech_summary as TS          # noqa: E402  取数 + 四层口径
-import minute_hub as MH            # noqa: E402  15m/60m 分钟数据
+import misc.engine.tech_summary as TS
+import misc.core.minute_hub as MH
 
 # 统一级别名（顺序=报告展示顺序）
 LEVELS = ("m15", "h1", "day", "week")

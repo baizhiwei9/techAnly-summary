@@ -4,14 +4,13 @@
 """
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from chanlun_backtest.data import fetch_astock_data
-from chanlun_backtest.indicators import calculate_all_indicators
-from chanlun_backtest.index_factors import calc_index_capital_factor as calc_capital_factor, format_capital_factor, evaluate_capital_quality
+from chanlun.multiscale.chanlun_backtest.data import fetch_astock_data
+from chanlun.multiscale.chanlun_backtest.indicators import calculate_all_indicators
+from chanlun.multiscale.chanlun_backtest.index_factors import calc_index_capital_factor as calc_capital_factor, format_capital_factor, evaluate_capital_quality
 
 
 # 常用大盘指数代码

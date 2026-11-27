@@ -15,11 +15,10 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 
-from chanlun_backtest import ma_trend
+from chanlun.multiscale.chanlun_backtest import ma_trend
 
 
 WATCHLIST = [
@@ -32,7 +31,7 @@ WATCHLIST = [
 
 
 def _load(symbol):
-    from data_fetcher import get_index_daily
+    from chanlun.multiscale.data_fetcher import get_index_daily
     bars = get_index_daily(symbol)
     if not bars:
         return None

@@ -31,19 +31,10 @@ def _repo_root(start):
 # 仓库根：优先 TECH_WS 环境变量（与原各画图文件一致）
 WS = os.environ.get("TECH_WS") or _repo_root(__file__)
 
-# 顺序有讲究：最后插入的优先级最高 → bin/ 放最前 = 最低优先级，
-# 保证 import 命中真实目录，而不是 bin/ 里的兼容 shim。
-for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
-            "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
-            "misc/strategies", "misc/tools"):
-    _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
-
 # 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）。
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6。
 try:
-    from net_guard import install as _net_install  # noqa: E402
+    from misc.core.net_guard import install as _net_install  # noqa: E402
     _net_install()
 except Exception:
     import socket

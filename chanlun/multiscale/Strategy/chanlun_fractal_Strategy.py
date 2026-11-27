@@ -22,15 +22,15 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
-from data_fetcher import FUTURES_LIST, INDEX_FUTURES_LIST, ETF_LIST
+from chanlun.multiscale.data_fetcher import FUTURES_LIST, INDEX_FUTURES_LIST, ETF_LIST
 
 # 导入 codex 的分型版核心模块
-from chanlun_backtest.structure_indicators import (
+from chanlun.multiscale.chanlun_backtest.structure_indicators import (
     merge_klines, find_fractals, build_bi, detect_zhongshu,
     calc_macd as calc_macd_10205, calculate_structure_indicators,
 )
-from chanlun_backtest.structure_signals import detect_structure_signals
-from chanlun_backtest.signal_gates import apply_level_gates, LEVEL_RULES
+from chanlun.multiscale.chanlun_backtest.structure_signals import detect_structure_signals
+from chanlun.multiscale.chanlun_backtest.signal_gates import apply_level_gates, LEVEL_RULES
 
 
 # 合并监控列表：期货 + 股指期货 + ETF（去重）

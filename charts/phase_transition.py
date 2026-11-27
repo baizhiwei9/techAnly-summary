@@ -45,8 +45,6 @@ import pickle
 import sys
 from datetime import datetime
 
-if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (仓库根/sys.path/net_guard/Agg/中文字体)
 
 import numpy as np
@@ -85,13 +83,9 @@ def _ensure_datahub():
         os.path.join(WS, "..", "py_deps"),
         "/workspace/py_deps",
     ]
-    for d in dep_cands:
-        if d and os.path.isdir(d) and d not in sys.path:
-            sys.path.append(d)
     hub = ""
     for c in cands:
         if c and os.path.isdir(c) and c not in sys.path:
-            sys.path.insert(0, c)
             hub = c
             break
     try:

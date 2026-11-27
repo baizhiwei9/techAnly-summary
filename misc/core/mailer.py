@@ -55,7 +55,7 @@ from email.utils import formataddr
 
 # ── 网络：容器 IPv6 不通，统一强制 IPv4（库内硬规矩）──────────────────────
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:                                                # noqa: BLE001
     import socket as _socket

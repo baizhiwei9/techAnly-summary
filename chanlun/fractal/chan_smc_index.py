@@ -26,13 +26,11 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
@@ -46,7 +44,7 @@ from smc import smc_core as SMC   # 本地 SMC 唯一口径（FVG/OB/confirm_zon
 
 # data_hub 取数桥（纯适配层，失败一律返回 None → 自动降级 tushare 老链路）
 try:
-    import dh_bridge as DHB
+    import misc.core.dh_bridge as DHB
 except Exception:                                             # noqa: BLE001
     DHB = None
 
@@ -54,9 +52,7 @@ except Exception:                                             # noqa: BLE001
 _CMS = os.path.join(WS, "chanlun", "multiscale")
 if not os.path.isdir(_CMS):                      # 兼容旧目录名
     _CMS = os.path.join(WS, "chanlun_multiscale")
-if _CMS not in sys.path:
-    sys.path.insert(0, _CMS)
-from chanlun_backtest import structure_indicators as LI  # noqa: E402
+from chanlun.multiscale.chanlun_backtest import structure_indicators as LI  # noqa: E402
 
 # ─────────── 机会/风险 判定参数（2026-10-22 用户要求：只给真买卖点打图标）───────────
 NEAR = float(os.environ.get("CHAN_NEAR_PCT", "3"))     # 现价与买卖点 ±NEAR% 内 = 「就在点位上」
@@ -454,7 +450,7 @@ def fetch_daily(ts_code):
 
 def _fetch_daily_local(ts_code, cache):
     """老链路兜底：tushare `index_daily` → 本地缓存（原样保留）"""
-    import tushare_init as ti
+    import misc.core.tushare_init as ti
     pro = ti.get_pro()
     for k in range(4):
         try:
@@ -510,8 +506,7 @@ def fetch_60(sh_code):
                   % (sh_code, str(e)[:60]), flush=True)
     # ② 老链路兜底（原样保留）
     try:
-        sys.path.insert(0, os.path.join(WS, "bin"))
-        import minute_hub as mh
+        import misc.core.minute_hub as mh
         df = mh.get_kline(sh_code, "60", n=400, kind="index", cache=True)
         if df is not None and len(df) > 40:
             return df.rename(columns={"day": "dt"})[["dt", "open", "high", "low", "close"]]
@@ -624,7 +619,7 @@ def collect(include_h1=True):
         sd = smc_local(dd, 3, "day"); sw = smc_local(ww, 2, "week")
         # 一买预备（可能有一买机会，且 MA40 向上）—— 2026-10-26 大佬要求
         try:
-            import y1_watch as _Y1
+            import chanlun.fractal.y1_watch as _Y1
             prep_day = _Y1.y1_prepare(cd, dd["close"].values, P)
             prep_week = _Y1.y1_prepare(chan_read(bars_of(ww), "week"),
                                        ww["close"].values, P) if cd.get("ok") else None
@@ -1006,7 +1001,7 @@ def build_text(include_h1=True):
         out.append(chan_line("日线", cd))
         # 一买预备（可能有一买机会 · MA40 向上）—— 2026-10-26 大佬要求
         try:
-            import y1_watch as _Y1
+            import chanlun.fractal.y1_watch as _Y1
             for lv_name, pre in (("日线", r.get("prep_day")),):
                 if pre and pre.get("ok"):
                     out.append("  🌙 一买预备（%s）：%s" % (lv_name, _Y1.tag(pre)))

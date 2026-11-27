@@ -21,8 +21,6 @@ import os
 import sys
 from datetime import datetime
 
-if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403
 from charts import phase_transition as _pt  # 复用原相变取数/指标/绘图口径
 

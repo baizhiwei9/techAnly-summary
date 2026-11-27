@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import os as _os, sys as _sys
-if __package__ in (None, ""):
-    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (仓库根/sys.path/网络出口/中文字体/Agg)
 
 

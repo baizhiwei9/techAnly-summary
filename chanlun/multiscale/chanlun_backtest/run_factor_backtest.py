@@ -12,11 +12,10 @@ import pandas as pd
 from datetime import datetime
 from scipy import stats
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from chanlun_backtest.data import fetch_silicon_data
-from chanlun_backtest.indicators import calculate_all_indicators
-from chanlun_backtest.factors import calc_capital_factor
+from chanlun.multiscale.chanlun_backtest.data import fetch_silicon_data
+from chanlun.multiscale.chanlun_backtest.indicators import calculate_all_indicators
+from chanlun.multiscale.chanlun_backtest.factors import calc_capital_factor
 
 
 def build_factor_index(df: pd.DataFrame, lookback: int = 60) -> pd.DataFrame:

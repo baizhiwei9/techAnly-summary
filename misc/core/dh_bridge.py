@@ -87,8 +87,6 @@ def module():
         if not os.path.isdir(os.path.join(base, "data_hub")):
             continue
         try:
-            if base not in sys.path:
-                sys.path.insert(0, base)
             import importlib
             mod = importlib.import_module("data_hub")
             if not hasattr(mod, "get_data"):
@@ -106,7 +104,7 @@ def module():
             # data_hub 导入时会把 getaddrinfo 改成「一刀切 IPv4」，
             # 技术库有 IPv6 白名单出口（东财行情族）→ 再幂等装一次 net_guard
             try:
-                from net_guard import install as _ni
+                from misc.core.net_guard import install as _ni
                 _ni()
             except Exception:
                 pass

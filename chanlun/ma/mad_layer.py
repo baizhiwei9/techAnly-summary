@@ -55,26 +55,24 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # 网络出口策略：默认 IPv4；东财族默认直接拦截（TECH_ALLOW_EM=1 才走 IPv6）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
     socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
-import datahub as DH  # noqa: E402
+import misc.core.datahub as DH
 
 # ── 东财开关（2026-11-14 大佬定：默认一个东财请求都不发，它那边一直限流）──
 _ALLOW_EM = os.environ.get("TECH_ALLOW_EM", "0").strip().lower() in ("1", "true", "yes", "on")
 
 # data_hub 取数桥（纯适配层，失败一律返回 None → 自动降级新浪/东财老链路）
 try:
-    import dh_bridge as _DHB
+    import misc.core.dh_bridge as _DHB
 except Exception:                                             # noqa: BLE001
     _DHB = None
 

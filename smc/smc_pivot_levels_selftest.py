@@ -24,11 +24,10 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np                        # noqa: E402
 import pandas as pd                       # noqa: E402
-import smc_core as C                      # noqa: E402
+import smc.smc_core as C
 
 
 def _frame(seed=0, n=200):

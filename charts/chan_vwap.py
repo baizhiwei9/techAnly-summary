@@ -7,16 +7,14 @@
   K线 + 缠论笔(分型版) + 中枢 ZG/ZD + VWAP 中线(±1σ/±2σ)
 """
 import os as _os, sys as _sys
-if __package__ in (None, ""):
-    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (仓库根/sys.path/网络出口/中文字体/Agg)
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
-import chan_smc_index as C  # noqa: E402
-import smc_core as S        # noqa: E402
+import chanlun.fractal.chan_smc_index as C
+import smc.smc_core as S
 from charts.chan_fractal import chan_geometry  # noqa: E402
 
 RED, GRN, BLUE = "#d62728", "#2ca02c", "#1f77b4"
@@ -112,7 +110,7 @@ def draw_stock(code, name, d, n_show=120, out=None):
 
 
 if __name__ == "__main__":
-    import tech_buypoint as TB
+    import misc.engine.tech_buypoint as TB
     d = TB.load_daily("688696.SH", TB._today_hist())
     p = draw_stock("688696.SH", "极米科技", d)
     print("出图:", p)

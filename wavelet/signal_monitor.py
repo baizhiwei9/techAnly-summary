@@ -18,9 +18,8 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'strategies'))
-from wavelet_portfolio_v4 import build_sig_single, causal_wt, chan_bottom_strength
-from wavelet_futures_v5 import build_sig_futures_v5, backtest_futures_v5
+from wavelet.strategies.wavelet_portfolio_v4 import build_sig_single, causal_wt, chan_bottom_strength
+from wavelet.strategies.wavelet_futures_v5 import build_sig_futures_v5, backtest_futures_v5
 # 1h级别已停用: from wavelet_futures_1h import build_sig_futures_1h
 
 # ===== 配置 =====
@@ -36,8 +35,7 @@ os.makedirs(STATE_DIR, exist_ok=True)
 # 本模块 ETF 日线走 data_hub `etf_daily`；期货（日线/1h）data_hub 没有 → 保留原 akshare。
 # 硬约束：data_hub 只读；失败一律降级老链路，算法一行不改。
 try:
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "misc", "core"))
-    import dh_bridge as _DHB
+    import misc.core.dh_bridge as _DHB
 except Exception:                                              # noqa: BLE001
     _DHB = None
 

@@ -54,25 +54,23 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
     socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
-import chan_smc_index as C            # noqa: E402
-import chan_ma_trend_v2 as M          # noqa: E402
-import tech_summary as TS             # noqa: E402
-import tech_buypoint as TB            # noqa: E402
-import smc_core as S                  # noqa: E402
-import dh_bridge as DHB               # noqa: E402  data_hub 取数桥（失败静默降级老链路）
-from tech_intraday_buypoint import (   # noqa: E402
+import chanlun.fractal.chan_smc_index as C
+import chanlun.ma.chan_ma_trend_v2 as M
+import misc.engine.tech_summary as TS
+import misc.engine.tech_buypoint as TB
+import smc.smc_core as S
+import misc.core.dh_bridge as DHB
+from misc.engine.tech_intraday_buypoint import (   # noqa: E402
     to_df, board_members, stock_kline, analyse_stock, stock_rank_key,
     weekly_buys, WEEK_BARS, STOCK_VWAP_SIGMA, QQ_ACCOUNT, _qq_target,
 )
@@ -175,7 +173,7 @@ def ths_index_map():
 
 def _ths_index_map_local():
     """老链路兜底：tushare `ths_index`（原样保留）"""
-    from tushare_init import ts_call
+    from misc.core.tushare_init import ts_call
     idx = ts_call("ths_index")
     m = {}
     def _a_share(c):
@@ -222,7 +220,7 @@ def ths_daily(code, start="20230101"):
 
 def _ths_daily_local(code, start="20230101"):
     """老链路兜底：tushare `ths_daily`（原样保留）"""
-    from tushare_init import ts_call
+    from misc.core.tushare_init import ts_call
     d = ts_call("ths_daily", ts_code=code, start_date=start)
     if d is None or not len(d):
         return None
@@ -324,7 +322,7 @@ def ths_members(code, tries=4):
 
 def _ths_members_local(code, tries=4):
     """老链路兜底：tushare `ths_member`（原样保留）"""
-    from tushare_init import ts_call
+    from misc.core.tushare_init import ts_call
     m = None
     for i in range(tries):
         m = ts_call("ths_member", ts_code=code)
@@ -402,8 +400,8 @@ def draw_stock_grid(picks, out_path, n_show=120):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
-    from chan_chart import chan_geometry
-    from tech_summary import MOON, STAR, RED, GRN, BLUE, ORANGE, rank_buys, ma20_state
+    from chanlun.fractal.chan_chart import chan_geometry
+    from misc.engine.tech_summary import MOON, STAR, RED, GRN, BLUE, ORANGE, rank_buys, ma20_state
 
     n = len(picks)
     ncol = 2 if n > 1 else 1
@@ -740,8 +738,7 @@ def main():
         # ⚠️ QQ 文字消息带不了图 → 图单独发一条（必须先复制到 ~/.openclaw/media/ 受信目录）
         if img and os.path.exists(img):
             try:
-                sys.path.insert(0, os.path.join(WS, "bin"))
-                import push_image
+                import misc.core.push_image as push_image
                 _t = _qq_target()
                 if _t:
                     push_image.QQ_TARGET = _t

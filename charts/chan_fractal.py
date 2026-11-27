@@ -22,8 +22,6 @@
   python3 charts/chan_fractal.py --compare 000016.SH,000300.SH
 """
 import os as _os, sys as _sys
-if __package__ in (None, ""):
-    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (仓库根/sys.path/网络出口/中文字体/Agg)
 
 import argparse  # noqa: E402
@@ -32,8 +30,8 @@ from datetime import datetime  # noqa: E402
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
-import chan_smc_index as C  # noqa: E402
-from chan_smc_index import MACD_FAST, MACD_SLOW, MACD_SIGNAL  # noqa: E402
+import chanlun.fractal.chan_smc_index as C
+from chanlun.fractal.chan_smc_index import MACD_FAST, MACD_SLOW, MACD_SIGNAL  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 from matplotlib.transforms import blended_transform_factory  # noqa: E402
 
@@ -41,7 +39,7 @@ from matplotlib.transforms import blended_transform_factory  # noqa: E402
 # 我好像知道它到了几倍的标准差了」→ 图上直接标 σ 倍数）
 # 计算源唯一：smc/smc_core.py:vwap_tracks()（滚动 win 根、成交量加权、返回 vwap+sigma）
 try:
-    from smc_core import vwap_tracks as _vwap_tracks  # noqa: E402
+    from smc.smc_core import vwap_tracks as _vwap_tracks  # noqa: E402
 except Exception:                                     # 画图不应因 VWAP 缺失而整体失败
     _vwap_tracks = None
 
@@ -93,7 +91,7 @@ def draw(name, level="h1", n=120, out=None, show_macd=True):
         # ① data_hub `minute_bar`（要 volume；C.fetch_60 只返回 OHLC 四列）
         df = None
         try:
-            import dh_bridge as _DHB
+            import misc.core.dh_bridge as _DHB
             d = _DHB.minute_bar(C.IDX_SH[name], freq="60", n=400, kind="index")
             if d is not None and len(d) > 40:
                 df = d.rename(columns={"dt": "Date"})
@@ -101,7 +99,7 @@ def draw(name, level="h1", n=120, out=None, show_macd=True):
             df = None
         # ② 老链路兜底：minute_hub（原样保留）
         if df is None:
-            import minute_hub as mh
+            import misc.core.minute_hub as mh
             df = mh.get_kline(C.IDX_SH[name], "60", n=400, kind="index",
                               cache=True, cache_ttl_min=10)
             if df is not None:
@@ -322,8 +320,6 @@ def _local_datahub():
     for base in cands:
         if not os.path.isdir(base):
             continue
-        if base not in sys.path:
-            sys.path.insert(0, base)
         try:
             return importlib.import_module("data_hub")
         except Exception:
@@ -877,9 +873,7 @@ def _vol_series_for(name):
     """取该指数的 VIX / 偏度序列（唯一实现：misc/engine/opt_vol.py）。失败返回 None。"""
     try:
         _ENG = os.path.join(WS, "misc", "engine")
-        if _ENG not in sys.path:
-            sys.path.insert(0, _ENG)
-        import opt_vol as OV
+        import misc.engine.opt_vol as OV
     except Exception as e:                                       # noqa: BLE001
         print("[WARN] opt_vol 不可用：%s" % str(e)[:100], flush=True)
         return None
@@ -922,9 +916,7 @@ def _da_series_for(name, code=None, df=None):
     if close is None:
         try:
             _ENG = os.path.join(WS, "misc", "engine")
-            if _ENG not in sys.path:
-                sys.path.insert(0, _ENG)
-            import rcascade as RC
+            import misc.engine.rcascade as RC
         except Exception as e:                                   # noqa: BLE001
             print("[WARN] rcascade 不可用：%s" % str(e)[:100], flush=True)
             return None
@@ -987,9 +979,7 @@ def send_da_alert_email(items, chart=None, threshold=DA_THR_PCT, to=None, dry_ru
         return False
     try:
         _CORE = os.path.join(WS, "misc", "core")
-        if _CORE not in sys.path:
-            sys.path.insert(0, _CORE)
-        import notify  # noqa: PLC0415
+        import misc.core.notify as notify
     except Exception as e:                                       # noqa: BLE001
         print("[alert] notify 不可用，只打印告警：%s" % str(e)[:120], flush=True)
         return False
@@ -1280,8 +1270,6 @@ def _pcr_oi_series_for(name):
     _ws = os.environ.get("PCR_OI_WS", "/root/.openclaw/workspace")
     _b = os.path.join(_ws, "bin")
     try:
-        if _b not in sys.path:
-            sys.path.insert(0, _b)
         import opt_pcr_oi as PO  # noqa: PLC0415
     except Exception as e:                                       # noqa: BLE001
         print("[WARN] opt_pcr_oi 不可用：%s" % str(e)[:100], flush=True)

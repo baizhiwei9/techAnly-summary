@@ -7,8 +7,7 @@ import pandas as pd
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from wavelet_structure import causal_wt
+from wavelet.strategies.wavelet_structure import causal_wt
 
 
 def build_sig_futures(df, wt_w=150, wavelet="db4", level=4, keep=1,

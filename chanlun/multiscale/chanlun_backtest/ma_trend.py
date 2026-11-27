@@ -49,10 +49,8 @@ def _find_bin():
 
 
 _BIN_CANDIDATES = [_find_bin()]
-if _BIN_CANDIDATES[0] not in sys.path:
-    sys.path.insert(0, _BIN_CANDIDATES[0])
 
-import chan_ma_trend_v2 as M  # noqa: E402
+import chanlun.ma.chan_ma_trend_v2 as M
 
 __all__ = ["M", "normalize", "prepare", "analyze", "recent_signals",
            "format_report", "MIN_BARS"]

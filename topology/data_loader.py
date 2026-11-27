@@ -20,8 +20,6 @@ _WS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 仓库根
 
 # dh_bridge 在 misc/core/ 下，把它加入 sys.path 以便 `import dh_bridge`
 _CORE = os.path.join(_WS, "misc", "core")
-if os.path.isdir(_CORE) and _CORE not in sys.path:
-    sys.path.insert(0, _CORE)
 
 _lock = threading.RLock()
 _bridge_cache = [None]           # (module, mode) 惰性缓存；mode: bridge / datahub / None
@@ -46,7 +44,7 @@ def bridge():
             return _bridge_cache[0]
         # 1) dh_bridge（techAnly 环境）
         try:
-            import dh_bridge as b
+            import misc.core.dh_bridge as b
             if b.enabled():
                 _bridge_cache[0] = (b, "bridge")
                 return _bridge_cache[0]
@@ -57,8 +55,6 @@ def bridge():
         # 2) 直接 data_hub（本地 DATA_HUB_PATH 或 optstack）
         for base in _candidates():
             try:
-                if base not in sys.path:
-                    sys.path.insert(0, base)
                 import importlib
                 mod = importlib.import_module("data_hub")
                 if hasattr(mod, "get_data"):

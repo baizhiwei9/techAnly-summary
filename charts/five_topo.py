@@ -42,8 +42,6 @@ import os
 import sys
 from datetime import datetime
 
-if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403
 
 if not os.environ.get("DATA_HUB_PATH"):

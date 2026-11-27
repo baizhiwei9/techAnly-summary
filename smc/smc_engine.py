@@ -19,11 +19,10 @@ import os
 import sys
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from smc_config import INSTRUMENTS, TRADE_TF, REPORT_DIR, INIT_CAPITAL, level_of, base_freq
-import smc_data
-import smc_core
-import smc_db
+from smc.smc_config import INSTRUMENTS, TRADE_TF, REPORT_DIR, INIT_CAPITAL, level_of, base_freq
+import smc.smc_data as smc_data
+import smc.smc_core as smc_core
+import smc.smc_db as smc_db
 
 
 def run_one(c, it, tf=None, variant="A", refresh=False, baseline_before=None, silent_all=False):
@@ -110,7 +109,7 @@ def main():
     c.close()
 
     if a.notify:
-        import smc_notify
+        import smc.smc_notify as smc_notify
         smc_notify.flush()
 
 

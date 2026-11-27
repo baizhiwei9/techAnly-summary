@@ -25,8 +25,6 @@ WS = os.environ.get("TECH_WS") or _repo_root(__file__)
 for _sd in ("bin", "", "core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
             "chanlun/multiscale/vendor", "report", "misc", "wavelet", "smc"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 FEISHU_CHAT = os.environ.get("TECH_FEISHU_CHAT") or os.environ.get("CHAN_FEISHU_CHAT") or ""  # 留空=不发
 _o = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _o(*a, **k) if r[0] == socket.AF_INET]
@@ -364,7 +362,7 @@ IDX = [("沪深300", "000300.SH"), ("中证500", "000905.SH"),
 def fetch_daily(ts_code):
     cache = os.path.join(WS, ".cache/chan_daily", ts_code + ".csv")
     os.makedirs(os.path.dirname(cache), exist_ok=True)
-    import tushare_init as ti
+    import misc.core.tushare_init as ti
     pro = ti.get_pro()
     for k in range(4):
         try:
@@ -403,8 +401,7 @@ IDX_SH = {"沪深300": "sh000300", "中证500": "sh000905", "中证1000": "sh000
 def fetch_60(sh_code):
     """60分钟（小时线）——腾讯/新浪分钟K线，多级回退"""
     try:
-        sys.path.insert(0, os.path.join(WS, "bin"))
-        import minute_hub as mh
+        import misc.core.minute_hub as mh
         df = mh.get_kline(sh_code, "60", n=400, kind="index", cache=True)
         if df is not None and len(df) > 40:
             return df.rename(columns={"day": "dt"})[["dt", "open", "high", "low", "close"]]
@@ -517,7 +514,7 @@ def collect(include_h1=True):
         sd = smc_read(dd, 3, "day"); sw = smc_read(ww, 2, "week")
         # 一买预备（可能有一买机会，且 MA40 向上）—— 2026-10-26 大佬要求
         try:
-            import y1_watch as _Y1
+            import chanlun.fractal.y1_watch as _Y1
             prep_day = _Y1.y1_prepare(cd, dd["close"].values, P)
             prep_week = _Y1.y1_prepare(chan_read(bars_of(ww), "week"),
                                        ww["close"].values, P) if cd.get("ok") else None
@@ -818,7 +815,7 @@ def build_text(include_h1=True):
         out.append(chan_line("日线", cd))
         # 一买预备（可能有一买机会 · MA40 向上）—— 2026-10-26 大佬要求
         try:
-            import y1_watch as _Y1
+            import chanlun.fractal.y1_watch as _Y1
             for lv_name, pre in (("日线", r.get("prep_day")),):
                 if pre and pre.get("ok"):
                     out.append("  🌙 一买预备（%s）：%s" % (lv_name, _Y1.tag(pre)))

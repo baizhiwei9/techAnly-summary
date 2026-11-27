@@ -18,17 +18,16 @@ import csv
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from chanlun_backtest import structure_indicators as si
-from chanlun_backtest.structure_signals import detect_structure_signals
-from chanlun_backtest.structure_signals_v2 import detect_structure_signals_v2
-from chanlun_backtest.compare_v2_batch2 import (
+from chanlun.multiscale.chanlun_backtest import structure_indicators as si
+from chanlun.multiscale.chanlun_backtest.structure_signals import detect_structure_signals
+from chanlun.multiscale.chanlun_backtest.structure_signals_v2 import detect_structure_signals_v2
+from chanlun.multiscale.chanlun_backtest.compare_v2_batch2 import (
     resample_weekly, candles, draw_zhongshu, COLOR, BUY_KINDS,
 )
 
@@ -66,7 +65,7 @@ CARDS = [
 
 
 def _load_bars(symbols):
-    from data_fetcher import get_index_daily
+    from chanlun.multiscale.data_fetcher import get_index_daily
     out = {}
     for sym in symbols:
         bars = get_index_daily(sym)

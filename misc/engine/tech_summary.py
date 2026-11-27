@@ -63,13 +63,11 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # 网络出口策略：默认 IPv4；东财族默认直接拦截（TECH_ALLOW_EM=1 才放开）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
@@ -96,15 +94,15 @@ for _f in _FONT_FILES:
 matplotlib.rcParams["font.sans-serif"] = _FAM_OK + ["WenQuanYi Micro Hei", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
-import chan_smc_index as C          # 分型版核心 + 数据  # noqa: E402
-import chan_ma_trend_v2 as M        # 均线版  # noqa: E402
-import smc_core as S                # SMC FVG/OB/VWAP  # noqa: E402
-import datahub as DH                # 股票/指数三级日线兜底  # noqa: E402
-from chan_chart import chan_geometry  # 笔/分型几何（与画图口径一致）  # noqa: E402
+import chanlun.fractal.chan_smc_index as C
+import chanlun.ma.chan_ma_trend_v2 as M
+import smc.smc_core as S
+import misc.core.datahub as DH
+from chanlun.fractal.chan_chart import chan_geometry  # 笔/分型几何（与画图口径一致）  # noqa: E402
 
 # data_hub 取数桥（纯适配层：只取名称/日线，失败一律返回空 → 静默降级老链路）
 try:
-    import dh_bridge as _dhb
+    import misc.core.dh_bridge as _dhb
 except Exception:                                             # noqa: BLE001
     _dhb = None
 
@@ -205,7 +203,7 @@ def stock_name(ts_code):
         pass
     # ② 老链路兜底：tushare stock_basic
     try:
-        import tushare_init as ti
+        import misc.core.tushare_init as ti
         df = ti.get_pro().stock_basic(ts_code=ts_code, fields="ts_code,name")
         if df is not None and len(df):
             m[ts_code] = str(df["name"].iloc[0])
@@ -295,8 +293,6 @@ def dh_module():
         if not os.path.isdir(os.path.join(base, "data_hub")):
             continue
         try:
-            if base not in sys.path:
-                sys.path.insert(0, base)
             import importlib
             mod = importlib.import_module("data_hub")
             if not hasattr(mod, "get_data"):
@@ -305,7 +301,7 @@ def dh_module():
             # 本机有 misc/core/net_guard_hook.pth 兜底（会拦掉这种赋值），这里再
             # 幂等装一次 net_guard，保证没有 .pth 钩子的环境也保住 IPv6 白名单出口。
             try:
-                from net_guard import install as _ni
+                from misc.core.net_guard import install as _ni
                 _ni()
             except Exception:
                 pass
@@ -558,7 +554,7 @@ def _load_h1_local(tg, n=400):
        n=400 时会直接返回那份 60 根的旧缓存 → 误判「数据不足」。
        所以长度不够时必须强制刷新（cache=False）再取一次。
     """
-    import minute_hub as mh
+    import misc.core.minute_hub as mh
     kd = "index" if tg["kind"] == "index" else "stock"
     df = mh.get_kline(tg["sina"], "60", n=n, kind=kd, cache=True, cache_ttl_min=10)
     if df is None or len(df) < 120:
@@ -842,7 +838,7 @@ def render_text(disp, day, h1, fx_d, fx_h, smc_d, smc_h, vw_d, vw_h, ma_d, today
         #    但 chan_read 的一买仍保留（一买是底背驰口径，scan 里没有替代实现）
         b = list(fx_d.get("buy_list") or [])   # 2026-11-10：二买恢复，不再过滤（三买下面会被扫描结果替换）
         try:
-            import tech_buypoint as _TB
+            import misc.engine.tech_buypoint as _TB
             _cl = day["close"].astype(float).values
             # ⚠️ find_third_buys 已经做了「年龄/距离/结构/现价>ZG」全套闸门，accept 就是结论
             #    不要再额外用 MAX_AGE 过滤（它没有 fresh 字段，会被误杀）
@@ -878,7 +874,7 @@ def render_text(disp, day, h1, fx_d, fx_h, smc_d, smc_h, vw_d, vw_h, ma_d, today
                                 for x in s[:4]) if s else "无"))
         # ⛔ 卖点正式判定（2026-11-10 新增：三卖 / 一卖 / 二卖 过闸门）
         try:
-            import tech_buypoint as _TBS
+            import misc.engine.tech_buypoint as _TBS
             _sr = _TBS.find_sells(day, fx_d, float(day["close"].iloc[-1]), ma20_d)
             if _sr:
                 # 展示顺序：先能用的（accept），再每个 tag 补一条被否样本（保证「一卖 MA20 未向下」这类关键
@@ -1747,7 +1743,7 @@ def draw_chart(disp, level, df, fx, smc, vw, out, n_show=120, ma=None):
 # ══════════════════════════ 飞书推送 ══════════════════════════
 def push_feishu(disp, txt, score, imgs, chat=None):
     """程序直推飞书卡片（图文同一条，0 token）"""
-    import feishu_card as FC
+    import misc.core.feishu_card as FC
     try:
         _c = json.load(open(os.path.join(os.path.dirname(WS), "openclaw.json"),
                             encoding="utf-8"))["channels"]["feishu"]

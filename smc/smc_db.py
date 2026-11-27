@@ -16,7 +16,7 @@ import os
 import sqlite3
 from datetime import datetime
 
-from smc_config import DB_PATH
+from smc.smc_config import DB_PATH
 
 DDL = """
 CREATE TABLE IF NOT EXISTS instruments(

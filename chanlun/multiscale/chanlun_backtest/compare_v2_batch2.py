@@ -16,7 +16,6 @@ import sys
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import matplotlib
 matplotlib.use("Agg")
@@ -24,9 +23,9 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib import font_manager
 
-from chanlun_backtest import structure_indicators as si
-from chanlun_backtest.structure_signals import detect_structure_signals
-from chanlun_backtest.structure_signals_v2 import detect_structure_signals_v2
+from chanlun.multiscale.chanlun_backtest import structure_indicators as si
+from chanlun.multiscale.chanlun_backtest.structure_signals import detect_structure_signals
+from chanlun.multiscale.chanlun_backtest.structure_signals_v2 import detect_structure_signals_v2
 
 # ── 中文字体 ──
 _FONTS = [
@@ -217,7 +216,7 @@ def macd_effect(df, tf):
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    from data_fetcher import get_index_daily
+    from chanlun.multiscale.data_fetcher import get_index_daily
 
     symbols = [
         ("sh510300", "沪深300ETF"),

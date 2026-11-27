@@ -14,8 +14,6 @@
   python3 charts/chan_ma.py --target 600519 --n 300
 """
 import os as _os, sys as _sys
-if __package__ in (None, ""):
-    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (仓库根/sys.path/网络出口/中文字体/Agg)
 
 import argparse  # noqa: E402
@@ -24,8 +22,8 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
-import tech_summary as T          # noqa: E402  复用 ma_structure / 数据装载 / 口径
-import chan_ma_trend_v2 as M      # noqa: E402
+import misc.engine.tech_summary as T
+import chanlun.ma.chan_ma_trend_v2 as M
 
 OUT_DIR = os.path.join(WS, ".cache/charts")
 RED, GRN = "#d62728", "#2ca02c"
@@ -287,8 +285,7 @@ def main():
              len(st["mode"]), len(st.get("zs") or [])))
 
     if a.push:
-        sys.path.insert(0, os.path.join(WS, "bin"))
-        import push_image
+        import misc.core.push_image as push_image
         txt = "📐 缠论·均线版｜%s｜%s\n现价 %.2f（%+.2f%%）\n笔 %d ｜ 线段 %d ｜ 中枢 %d" % (
             name, d8, float(df["close"].iloc[-1]), pct, len(st["bi"]),
             len(st["seg"]), len(st.get("zs") or []))

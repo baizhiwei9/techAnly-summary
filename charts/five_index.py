@@ -32,8 +32,6 @@ import os
 import sys
 from datetime import datetime
 
-if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (仓库根/sys.path/net_guard/中文字体/Agg)
 
 # 数据层定位：本机 data_hub 在 workspace/optstack（不在本仓库内）。
@@ -78,8 +76,6 @@ def _datahub():
     for base in cands:
         if not os.path.isdir(base):
             continue
-        if base not in sys.path:
-            sys.path.insert(0, base)
         try:
             import importlib
             mod = importlib.import_module("data_hub")
@@ -105,7 +101,7 @@ def index_daily(code, days=400):
                 return d.sort_values("dt").reset_index(drop=True)
         except Exception as e:
             print("[five] index_daily(data_hub) %s 失败 %s" % (code, str(e)[:60]), flush=True)
-    import chan_smc_index as C
+    import chanlun.fractal.chan_smc_index as C
     return C.fetch_daily(code)
 
 

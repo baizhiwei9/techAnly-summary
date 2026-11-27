@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: anchorstructor-techanly-summary
+Version: 0.1.0
+Summary: 技术分析汇总：缠论 / 拓扑 / 小波 / SMC（AnchorStructor 子项目）
+Project-URL: AnchorStructor, https://github.com/baizhiwei9/AnchorStructor
+Requires-Python: >=3.10
+License-File: LICENSE
+License-File: LICENSE-COMMERCIAL.md
+Dynamic: license-file

@@ -58,8 +58,6 @@ _orig_gai = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k)
                                       if r[0] == socket.AF_INET]
 
-if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403,E402  (仓库根/sys.path/net_guard/Agg/中文字体)
 from charts.common import WS  # noqa: E402
 
@@ -92,8 +90,6 @@ def _edb():
              os.path.join(WS, "optstack"), WS]
     for c in cands:
         if c and os.path.isdir(os.path.join(c, "data_hub")):
-            if c not in sys.path:
-                sys.path.insert(0, c)
             break
     try:
         from data_hub import edb  # noqa: WPS433
