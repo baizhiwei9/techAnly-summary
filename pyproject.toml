@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anchorstructor-techanly-summary"
+version = "0.1.0"
+description = "技术分析汇总：缠论 / 拓扑 / 小波 / SMC（AnchorStructor 子项目）"
+requires-python = ">=3.10"
+
+[project.urls]
+"AnchorStructor" = "https://github.com/baizhiwei9/AnchorStructor"
+
+# chanlun/ 顶层没有 __init__.py，属于隐式命名空间，必须 namespaces = true，
+# 否则 chanlun.multiscale.chanlun_backtest 打不进包里。
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chanlun*", "charts*", "topology*", "smc*", "wavelet*", "misc*"]
+namespaces = true
