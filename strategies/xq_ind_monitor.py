@@ -17,7 +17,9 @@ except Exception:
 import os, sys, runpy, importlib.util
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_REAL = os.path.join(os.path.dirname(_HERE), "apps/xq_ind_monitor.py")
+# 2026-11-28：实体在 OpenClaw 工作区 apps/（本仓库无 apps/）
+_WS = os.environ.get("OPENCLAW_WORKSPACE") or "/root/.openclaw/workspace"
+_REAL = os.path.join(_WS, "apps/xq_ind_monitor.py")
 if not os.path.exists(_REAL):
     sys.exit("[compat] 找不到真实文件：%s（目录结构可能已变化）" % _REAL)
 
