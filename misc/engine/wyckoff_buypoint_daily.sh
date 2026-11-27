@@ -6,17 +6,22 @@
 #   ④ 个股：每行业 ≤2 只、全市场 Top20，硬门槛 = 站上 VWAP −1σ
 #   ⑤ 出图：每只股票一个子图（缠论分型版 + VWAP 六轨）
 #   ⑥ 推送：飞书卡片（含图）+ QQ 文字
-# 用法：bash bin/wyckoff_buypoint_daily.sh [--no-push]
+# 用法：bash misc/engine/wyckoff_buypoint_daily.sh [--no-push]
 set -u
-WS="${TECH_WS:-$(cd "$(dirname "$0")/.." && pwd)}"
+# 2026-11-28：workspace 的 bin/ 已拆除。
+#   · 分析/出图脚本 → 本仓库 strategies/
+#   · 数据抓取（wyckoff_today_data/analyze）→ optstack/jobs/（仍在用）
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+WS="${TECH_WS:-${OPENCLAW_WORKSPACE:-/root/.openclaw/workspace}}"
 cd "$WS" || exit 1
+export PYTHONPATH="$REPO/strategies:$REPO:${PYTHONPATH:-}"
 LOG="$WS/.cache/wyckoff_buypoint.log"
 ts(){ date '+%F %T'; }
 echo "[$(ts)] ===== 盘中吸筹买点分析 v2 start =====" >> "$LOG"
 
 # ⓿ 实时数据硬校验（不是今天的实时行情 → 中止，不推送）
 echo "[$(ts)] ⓿ 实时数据校验" >> "$LOG"
-LIVE=$(timeout 120 python3 bin/live_check.py 2>>"$LOG")
+LIVE=$(timeout 120 python3 "$REPO"/strategies/live_check.py 2>>"$LOG")
 lrc=$?
 echo "[$(ts)] live: $LIVE" >> "$LOG"
 if [ $lrc -ne 0 ]; then
@@ -25,22 +30,22 @@ if [ $lrc -ne 0 ]; then
 fi
 
 echo "[$(ts)] ① 抓数据（今日快照 + 历史日K）" >> "$LOG"
-timeout 1800 python3 bin/wyckoff_today_data.py --kinds 行业,概念 --workers 8 >> "$LOG" 2>&1
+timeout 1800 python3 "$WS"/optstack/jobs/wyckoff_today_data.py --kinds 行业,概念 --workers 8 >> "$LOG" 2>&1
 rc1=$?
 
 echo "[$(ts)] ② 威科夫 + 缠论分析（rc=$rc1）" >> "$LOG"
-timeout 1800 python3 bin/wyckoff_today_analyze.py >> "$LOG" 2>&1
+timeout 1800 python3 "$WS"/optstack/jobs/wyckoff_today_analyze.py >> "$LOG" 2>&1
 rc2=$?
 
 if [ "${1:-}" = "--no-push" ]; then
   echo "[$(ts)] ③ 四层过滤 + 个股 + 出图（不推送）" >> "$LOG"
-  timeout 1800 python3 bin/wyckoff_buypoint_v2.py --chart --dry >> "$LOG" 2>&1
+  timeout 1800 python3 "$REPO"/strategies/wyckoff_buypoint_v2.py --chart --dry >> "$LOG" 2>&1
   echo "[$(ts)] 完成 rc=$? data=$rc1 analyze=$rc2" >> "$LOG"
   exit 0
 fi
 
 echo "[$(ts)] ③ 四层过滤 + 个股 + 出图 + 推送（飞书含图 / QQ 文字）" >> "$LOG"
-timeout 2400 python3 bin/wyckoff_buypoint_v2.py \
+timeout 2400 python3 "$REPO"/strategies/wyckoff_buypoint_v2.py \
   --chart --push --qq --json "$WS/.cache/wyckoff_buypoint/latest.json" >> "$LOG" 2>&1
 rc3=$?
 echo "[$(ts)] 完成 rc: data=$rc1 analyze=$rc2 report=$rc3" >> "$LOG"
