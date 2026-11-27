@@ -317,12 +317,22 @@ def _etf_hfq(sym, days):
     return [[r.dt.strftime("%Y%m%d"), r.open, r.high, r.low, r.close, r.volume]
             for r in d.itertuples()]
 
-def load(target, days=600, adjust="hfq"):
+def load(target, days=600, adjust="hfq", df=None):
     """取日线；默认后复权。指数无复权概念，直接走 datahub。
 
     返回 (df, name)；df.attrs["adjust"] 记录实际口径（hfq / raw）。
+
+    2026-11-28：新增 ``df`` 入参（数据注入）。给了就直接用——列名随意
+    （dt/date/trade_date、vol/volume 都认，见 chanlun/data_input.py），
+    不取数、不依赖 DataHub；不给则走原 hfq → data_hub → web 链路。
     """
     sym, is_idx, name = to_symbol(target)
+    if df is not None:
+        try:
+            from chanlun.data_input import attach_adjust, normalize_daily
+        except ImportError:                  # 以脚本方式运行（chanlun/ 在 sys.path）
+            from data_input import attach_adjust, normalize_daily
+        return attach_adjust(normalize_daily(df), adjust), name
     rows, used = None, "raw"
     if adjust == "hfq" and not is_idx:
         code = sym[2:]

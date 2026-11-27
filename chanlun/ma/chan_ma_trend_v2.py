@@ -635,11 +635,21 @@ def macd_state(d: pd.DataFrame) -> str:
 
 
 # ───────────── 数据 ─────────────
-def load_index(ts_code: str) -> pd.DataFrame | None:
+def load_index(ts_code: str, df: pd.DataFrame | None = None) -> pd.DataFrame | None:
     """指数日线：**data_hub `index_daily`** 优先 → tushare `index_daily` → 本地缓存
 
     取数（2026-11-13 统一）。返回 DataFrame[dt, open, high, low, close]（升序）。
+
+    2026-11-28：``df`` 给定时直接用它（数据注入，不取数、不依赖 DataHub），
+    列名随意，见 chanlun/data_input.py。
     """
+    if df is not None:
+        try:
+            from chanlun.data_input import normalize_daily
+        except ImportError:                  # 以脚本方式运行（chanlun/ 在 sys.path）
+            from data_input import normalize_daily
+        d = normalize_daily(df, keep_volume=False)
+        return d[["dt", "open", "high", "low", "close"]]
     cache = os.path.join(WS, ".cache", "ma_trend_%s_d.csv" % ts_code.replace(".", "_"))
     # ① data_hub
     if _DHB is not None:
