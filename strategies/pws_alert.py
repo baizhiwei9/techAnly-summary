@@ -241,7 +241,7 @@ def render(summary, mode='full'):
 def push_feishu(text):
     try:                              # 统一通知（data_hub.notify）优先
         import _notify
-        _r = _notify.send_feishu(((text or "").strip().splitlines() or [""])[0][:60], text)
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text)
         if _r.get("ok"):
             return True
         print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
@@ -269,7 +269,7 @@ def push_feishu(text):
 def push_qq(text, target=QQ_TARGET):
     try:                              # 统一通知（data_hub.notify）优先
         import _notify
-        _r = _notify.send(((text or "").strip().splitlines() or [""])[0][:60], text)
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text)
         if _r.get("ok"):
             return True
         print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))

@@ -688,7 +688,7 @@ def push_feishu(text, title):
     """飞书私聊（interactive card）"""
     try:                              # 统一通知（data_hub.notify）优先
         import _notify
-        _r = _notify.send_feishu(title, text)
+        _r = _notify.send_card(title, text)
         if _r.get("ok"):
             return True
         print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))

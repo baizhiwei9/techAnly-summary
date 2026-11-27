@@ -648,7 +648,7 @@ def push_feishu(title, txt, imgs=None):
 def push_qq(txt):
     try:                              # 统一通知（data_hub.notify）优先
         import _notify
-        _r = _notify.send(((txt or "").strip().splitlines() or [""])[0][:60], txt)
+        _r = _notify.send_card(((txt or "").strip().splitlines() or [""])[0][:60], txt)
         if _r.get("ok"):
             return True
         print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))

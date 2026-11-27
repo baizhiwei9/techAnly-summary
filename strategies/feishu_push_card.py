@@ -81,7 +81,7 @@ def send(card, chat=DEFAULT_CHAT):
     uni = _unified()
     if uni is not None:
         title, text = _card_text(card)
-        res = uni.send(title or "技术分析", text or "")
+        res = uni.send_card(title or "技术分析", text or "", card=card)
         if res.get("ok"):
             return {"code": 0, "msg": "success（data_hub.notify）"}
         print("[feishu_push_card] 统一库未就绪，回落应用直发：%s" % res.get("reason"))

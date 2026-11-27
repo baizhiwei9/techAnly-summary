@@ -481,7 +481,7 @@ def make_chart(pick, avoid, cmap, out_png, date, topo_pick=None, topo_avoid=None
 def _qq_send(text):
     try:                              # 统一通知（data_hub.notify）优先
         import _notify
-        _r = _notify.send(((text or "").strip().splitlines() or [""])[0][:60], text)
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text)
         if _r.get("ok"):
             return True
         print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))

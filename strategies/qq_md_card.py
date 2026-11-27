@@ -197,7 +197,7 @@ def send_md(title, text, imgs=None, target=None, account="default", extra_note="
     if os.environ.get("QQ_FALLBACK", "").strip().lower() not in ("1", "true", "yes"):
         try:
             import _notify
-            res = _notify.send(title or "技术分析", text or "", images=paths or None)
+            res = _notify.send_card(title or "技术分析", text or "", images=paths or None)
             if res.get("ok"):
                 print("[qq_md_card] 已走统一通知（data_hub.notify）：飞书文本 + 邮件内联图 %d 张" % len(paths))
                 return True

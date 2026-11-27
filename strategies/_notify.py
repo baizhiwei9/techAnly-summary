@@ -32,8 +32,8 @@ import sys
 
 APP = "technaly-summary"
 
-__all__ = ["APP", "init", "available", "send", "send_feishu", "send_email",
-           "state", "selfcheck"]
+__all__ = ["APP", "init", "available", "send", "send_card", "send_feishu",
+           "send_email", "build_card", "state", "selfcheck"]
 
 _STATE = None
 
@@ -170,7 +170,8 @@ def available() -> bool:
 
 
 # ── 发送 ────────────────────────────────────────────────────────────
-def send(title: str, body: str, *, images=None, channels=None, dry_run: bool = False) -> dict:
+def send(title: str, body: str, *, images=None, channels=None,
+         card=None, dry_run: bool = False) -> dict:
     """发一条通知。返回 ``{"ok", "reason"?, "via"?, "channels"?…}``。"""
     st = init()
     if not st.get("activated"):
@@ -178,7 +179,7 @@ def send(title: str, body: str, *, images=None, channels=None, dry_run: bool = F
     try:
         from data_hub import notify
         res = notify.send(title, body, channels=channels, images=images,
-                          dry_run=dry_run, app=APP) or {}
+                          card=card, dry_run=dry_run, app=APP) or {}
         res["via"] = "data_hub.notify"
         res.setdefault("app", APP)
         return res
@@ -186,8 +187,33 @@ def send(title: str, body: str, *, images=None, channels=None, dry_run: bool = F
         return {"ok": False, "app": APP, "reason": "send 失败：%s" % exc}
 
 
+def build_card(title: str, body: str, template: str = "blue",
+               signature: str = "") -> dict:
+    """按飞书交互式卡片格式拼一张卡片（header 标题 + markdown 正文）。"""
+    elements = []
+    if signature:
+        elements.append({"tag": "markdown", "content": signature})
+    elements.append({"tag": "markdown", "content": body or ""})
+    return {"config": {"wide_screen_mode": True},
+            "header": {"title": {"tag": "plain_text", "content": title or "技术分析"},
+                       "template": template},
+            "elements": elements}
+
+
+def send_card(title: str, body: str, *, images=None, card=None,
+              dry_run: bool = False) -> dict:
+    """发**飞书交互式卡片** + 邮件文本（图随邮件内联）。
+
+    ``card`` 不传时按 ``title + body`` 现拼一张；传了就原样发（保留调用方排版）。
+    """
+    if card is None:
+        card = build_card(title, body)
+    return send(title, body, images=images, card=card, dry_run=dry_run)
+
+
 def send_feishu(title: str, body: str, dry_run: bool = False) -> dict:
-    return send(title, body, channels=("feishu",), dry_run=dry_run)
+    """只发飞书；默认也走卡片（飞书侧就是卡片形态）。"""
+    return send_card(title, body, dry_run=dry_run)
 
 
 def send_email(subject: str, body: str, images=None, dry_run: bool = False) -> dict:

@@ -341,7 +341,7 @@ def fmt_text(rows, date):
 def push_qq(img, text):
     try:                              # 统一通知（data_hub.notify）优先
         import _notify
-        _r = _notify.send(((text or "").strip().splitlines() or [""])[0][:60], text, images=[c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else "") for c in (img or []) if (c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else ""))])
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text, images=[c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else "") for c in (img or []) if (c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else ""))])
         if _r.get("ok"):
             return True
         print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))

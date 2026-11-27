@@ -106,7 +106,7 @@ def send_card(chat_id, card):
     uni = _unified()
     if uni is not None:
         title, text = _card_text(card)
-        res = uni.send(title or "技术分析", text or "")
+        res = uni.send_card(title or "技术分析", text or "", card=card)
         if res.get("ok"):
             return {"code": 0, "msg": "success（data_hub.notify）"}
         print("[smc_feishu] 统一库未就绪，回落应用直发：%s" % res.get("reason"))
@@ -133,7 +133,7 @@ def send_card_message(chat_id, title, body_md, template="blue", sign="📎 来�
     """一行调用：优先走统一通知库（文本），未就绪才发交互卡片。"""
     uni = _unified()
     if uni is not None:
-        res = uni.send(title or "技术分析", "%s\n\n%s" % (body_md or "", sign or ""))
+        res = uni.send_card(title or "技术分析", "%s\n\n%s" % (body_md or "", sign or ""))
         if res.get("ok"):
             return {"code": 0, "msg": "success（data_hub.notify）"}
         print("[smc_feishu] 统一库未就绪，回落交互卡片：%s" % res.get("reason"))

@@ -1005,7 +1005,7 @@ def push_qq_md(d, txt=None, charts=None):
             import _notify
             _imgs = [c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else "")
                      for c in (charts or [])]
-            _r = _notify.send((txt.strip().splitlines() or [""])[0][:60], txt,
+            _r = _notify.send_card((txt.strip().splitlines() or [""])[0][:60], txt,
                               images=[p for p in _imgs if p])
             if _r.get("ok"):
                 return True

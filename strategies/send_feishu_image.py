@@ -67,7 +67,7 @@ def main() -> int:
     if "--raw" in sys.argv:
         return _raw(img, os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", ""))
     import _notify
-    res = _notify.send(title, "配图：%s" % os.path.basename(img), images=[img])
+    res = _notify.send_card(title, "配图：%s" % os.path.basename(img), images=[img])
     print(json.dumps(res, ensure_ascii=False, indent=2))
     return 0 if res.get("ok") else 1
 

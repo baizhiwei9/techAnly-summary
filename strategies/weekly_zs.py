@@ -750,7 +750,7 @@ def report_section(max_ind=8, wide_only=False):
 def push_feishu(text, title):
     try:                              # 统一通知（data_hub.notify）优先
         import _notify
-        _r = _notify.send_feishu(title, text)
+        _r = _notify.send_card(title, text)
         if _r.get("ok"):
             return True
         print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
@@ -773,7 +773,7 @@ def push_feishu(text, title):
 def push_qq(text):
     try:                              # 统一通知（data_hub.notify）优先
         import _notify
-        _r = _notify.send(((text or "").strip().splitlines() or [""])[0][:60], text)
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text)
         if _r.get("ok"):
             return True
         print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
