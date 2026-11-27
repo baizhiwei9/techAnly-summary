@@ -53,10 +53,11 @@ def _resolve_base():
 
 
 BASE = _resolve_base()
-sys.path.insert(0, os.path.join(BASE, 'bin'))
+# 2026-11-28：bin/ 已拆除；依赖的模块在 optstack/jobs
+sys.path.insert(0, os.path.join(BASE, 'optstack', 'jobs'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-FETCH = os.environ.get('SP_FETCH', os.path.join(BASE, 'bin/fetch-feishu-group-msgs.py'))
+FETCH = os.environ.get('SP_FETCH') or os.path.join(os.environ.get('OPENCLAW_WORKSPACE','/root/.openclaw/workspace'), 'optstack/jobs/fetch-feishu-group-msgs.py')
 CHAT = os.environ.get('SP_CHAT_ID') or os.environ.get("FEISHU_CHAT_STOCK") or os.environ.get("FEISHU_CHAT_ID", "")
 QQ_TARGET = os.environ.get('SP_QQ_TARGET') or os.environ.get("QQ_DEFAULT_TARGET", "")
 
@@ -813,7 +814,6 @@ def main():
     # ── 统一契约：两池写成 picks，供显示层「自选股」按算法分块渲染 ──
     # 大佬 2026-11-26：各算法自选股要在一个 tab 里结构整齐，不再各写各的。
     try:
-        sys.path.insert(0, os.path.join(BASE, 'bin'))
         import pick_pool as PP
         rows = []
         for r in pick[:args.top]:
@@ -855,7 +855,7 @@ def main():
         if not args.no_feishu:
             _feishu_card(msg1, f'📌 个股备选池 / 弃选池 · {args.date}')
     if png:
-        cmd = [sys.executable, os.path.join(BASE, 'bin/push_image.py'), png]
+        cmd = [sys.executable, os.path.join(os.environ.get('OPENCLAW_WORKSPACE','/root/.openclaw/workspace'), 'optstack/jobs/push_image.py'), png]
         caption = ''
         if empty_tip:
             # 图配文说清楚原因（QQ 和飞书都会带上这句）

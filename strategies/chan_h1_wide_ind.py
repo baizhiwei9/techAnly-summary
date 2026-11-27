@@ -472,7 +472,7 @@ def refresh_snapshots(force=False):
         key = "moergen" if "yali" not in fp else "yali"
         try:
             r = subprocess.run(
-                ["bash", os.path.join(WS, "bin/xq_daily.sh"), "check", "--no-push"],
+                ["bash", os.environ.get("OPENCLAW_WORKSPACE","/root/.openclaw/workspace")+"/optstack/jobs/xq_daily.sh", "check", "--no-push"],
                 capture_output=True, text=True, timeout=900, cwd=WS,
                 env={**env, "XQ_PORTFOLIOS": key, "XQ_PUSH": ""})
             out = (r.stdout or "") + (r.stderr or "")
