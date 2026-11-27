@@ -10,7 +10,7 @@
   · **重点统计两池的行业 + 概念分布**，程序画图发 QQ 私聊
 
 实现：
-  1. 拉飞书群当日 15:00 后消息（复用 bin/fetch-feishu-group-msgs.py）
+  1. 拉飞书群当日 15:00 后消息（复用 strategies/jobs/fetch-feishu-group-msgs.py）
   2. 按消息块切分 → 每块=一份报告=若干票；股票代码必须在 stock_basic 里（自动过滤 ETF/指数）
   3. 每行独立判多空（关键词），无行级信号则继承最近的章节标题极性
   4. 同一报告内同一股票多行 → 净票（+1/-1/0），一份报告只投一票
@@ -74,34 +74,46 @@ import os, re, sys, json, subprocess, argparse, datetime
 from collections import defaultdict, Counter
 
 def _resolve_base():
-    """工作区根（2026-11-26 迁 case 时去硬编码）。
+    """数据根（2026-11-28 去 OpenClaw 硬编码路径）。
 
-    顺序：环境变量 STOCK_POOL_WS > 含 bin/ 与 .cache/market/ 的最近祖先 > 本机默认。
-    这样脚本放 case 目录、放宿主机 bin/、换机器部署都能跑，不会静默读错路径。
+    顺序：环境变量 STOCK_POOL_WS / DataHub paths.stock_pool_ws
+    > 含 .cache/market/ 的最近祖先 > 统一数据根（_paths.workspace：env/DataHub/ocsecrets）。
+    都没有就报错，避免拼出相对路径静默读错目录。
     """
+    env = (os.environ.get('STOCK_POOL_WS') or '').strip()
+    if env and os.path.isdir(env):
+        return env
     env = str(_dh_cfg('STOCK_POOL_WS') or '').strip()
     if env and os.path.isdir(env):
         return env
     d = os.path.dirname(os.path.abspath(__file__))
     for _ in range(8):
-        if os.path.isdir(os.path.join(d, 'bin')) and os.path.isdir(os.path.join(d, '.cache', 'market')):
+        if os.path.isdir(os.path.join(d, '.cache', 'market')):
             return d
         nd = os.path.dirname(d)
         if nd == d:
             break
         d = nd
-    return _dh_cfg('OPENCLAW_WORKSPACE') or os.path.expanduser("~/.openclaw/workspace")
+    try:
+        from _paths import workspace as _ws_fn
+        w = _ws_fn()
+        if w and os.path.isdir(w):
+            return w
+    except Exception:
+        pass
+    raise RuntimeError('未配置数据根：请设环境变量 STOCK_POOL_WS，'
+                       '或在 config.local.json 配置 paths.stock_pool_ws')
 
 
 BASE = _resolve_base()
-# 2026-11-28：bin/ 已拆除；依赖的模块在 optstack/jobs
-sys.path.insert(0, os.path.join(BASE, 'optstack', 'jobs'))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
 
-# 2026-11-28：SP_FETCH 未配时，工作区未配也要退回迁移前默认，
-# 否则 FETCH 会变成相对路径 optstack/jobs/...，取群消息会静默失败。
-_OPENCLAW_WS = _dh_cfg('OPENCLAW_WORKSPACE') or os.path.expanduser('~/.openclaw/workspace')
-FETCH = _dh_cfg('SP_FETCH') or os.path.join(_OPENCLAW_WS, 'optstack/jobs/fetch-feishu-group-msgs.py')
+# 2026-11-28：fetch 脚本已随仓库提供，不再从 OpenClaw 工作区 optstack/jobs 取。
+FETCH = _dh_cfg('SP_FETCH') or os.path.join(_HERE, 'jobs', 'fetch-feishu-group-msgs.py')
+# 图片推送脚本随仓库提供（misc/core/push_image.py），不再指向 OpenClaw 工作区。
+PUSH_IMAGE_PY = _dh_cfg('PUSH_IMAGE_PY') or os.path.join(
+    os.path.dirname(_HERE), 'misc', 'core', 'push_image.py')
 CHAT = _dh_secret('SP_CHAT_ID', '') or _dh_secret('FEISHU_CHAT_STOCK', '') or _dh_secret('FEISHU_CHAT_ID', '')
 QQ_TARGET = _dh_secret('SP_QQ_TARGET', '') or _dh_secret('QQ_DEFAULT_TARGET', '')
 
@@ -536,7 +548,8 @@ def _qq_send(text):
         print('[QQ text] 跳过：未配置 SP_QQ_TARGET')
         return False
     try:
-        r = subprocess.run(['openclaw', 'message', 'send', '--channel', 'qqbot',
+        r = subprocess.run([_dh_cfg('OPENCLAW_BIN', 'openclaw'),
+                            'message', 'send', '--channel', 'qqbot',
                             '--target', QQ_TARGET, '--message', text, '--json'],
                            capture_output=True, text=True, timeout=180)
         ok = r.returncode == 0
@@ -899,7 +912,7 @@ def main():
         if not args.no_feishu:
             _feishu_card(msg1, f'📌 个股备选池 / 弃选池 · {args.date}')
     if png:
-        cmd = [sys.executable, os.path.join(_dh_cfg('OPENCLAW_WORKSPACE') or BASE, 'optstack/jobs/push_image.py'), png]
+        cmd = [sys.executable, PUSH_IMAGE_PY, png]
         caption = ''
         if empty_tip:
             # 图配文说清楚原因（QQ 和飞书都会带上这句）

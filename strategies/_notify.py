@@ -16,8 +16,8 @@
 
 边界
 ----
-- **不写死 chat_id / 邮箱 / 密钥**：绑定来自 ocsecrets（生产机）、环境变量，
-  或运行期配置 ``~/.openclaw/openclaw.json``（文件本身不入库）。
+- **不写死 chat_id / 邮箱 / 密钥**：绑定来自环境变量、DataHub 统一配置
+  （config.local.json / secrets.env 的 secrets 段）或 ocsecrets（生产机）。
 - ``data_hub`` 不可导入或本应用没配齐时，``send`` 返回 ``{"ok": False, "reason": …}``，
   调用方据此回落脚本自带通道（各脚本保留原实现），不会因统一改造打断日更。
 - 飞书通道是**纯文本**（统一库不发卡片/图）；要图走邮件内联图，或把图路径写进正文。
@@ -40,6 +40,11 @@ _STATE = None
 
 # ── 运行环境 ────────────────────────────────────────────────────────
 def _workspace() -> str:
+    """DataHub 私有库所在数据根。
+
+    2026-11-28：不再兜底硬编码 ``~/.openclaw/workspace``；没配置就返回空串，
+    由调用方跳过（data_hub 若已 pip/venv 安装则无需数据根）。
+    """
     for key in ("OPENCLAW_WORKSPACE", "WS", "WORKSPACE"):
         v = (os.environ.get(key) or "").strip()
         if v and os.path.isdir(v):
@@ -51,7 +56,7 @@ def _workspace() -> str:
             return ws
     except Exception:
         pass
-    return os.path.expanduser("~/.openclaw/workspace")
+    return ""
 
 
 def _ensure_datahub() -> bool:
@@ -59,11 +64,12 @@ def _ensure_datahub() -> bool:
     if "data_hub" in sys.modules:
         return True
     ws = _workspace()
-    for p in (os.path.join(ws, "optstack"), os.path.join(ws, "datahub"),
-              os.path.join(ws, "projects", "datahub-multi-tier"),
-              os.path.join(ws, "datahub-multi-tier")):
-        if os.path.isdir(p) and p not in sys.path:
-            sys.path.append(p)          # append：不抢调用方已有优先序
+    if ws:
+        for p in (os.path.join(ws, "optstack"), os.path.join(ws, "datahub"),
+                  os.path.join(ws, "projects", "datahub-multi-tier"),
+                  os.path.join(ws, "datahub-multi-tier")):
+            if os.path.isdir(p) and p not in sys.path:
+                sys.path.append(p)      # append：不抢调用方已有优先序
     try:
         import data_hub.notify  # noqa: F401
         return True
@@ -71,24 +77,21 @@ def _ensure_datahub() -> bool:
         return False
 
 
-def _openclaw_cfg() -> dict:
-    for p in ((os.environ.get("OPENCLAW_CONFIG") or "").strip(),
-              os.path.expanduser("~/.openclaw/openclaw.json")):
-        if p and os.path.isfile(p):
-            try:
-                with open(p, encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                return {}
-    return {}
+def _dh_secret(name: str, default: str = "") -> str:
+    """DataHub 统一配置里的凭据（config.local.json / secrets.env 的 secrets 段）。"""
+    try:
+        from data_hub import get_secret as _g
+        return (_g(name, default) or default or "").strip()
+    except Exception:
+        return (default or "").strip()
 
 
 def _secrets():
-    """飞书/邮件绑定：环境变量 → openclaw.json（运行期配置）→ ocsecrets。"""
-    f = ((_openclaw_cfg().get("channels") or {}).get("feishu") or {})
+    """飞书/邮件绑定：环境变量 → DataHub 统一配置 → ocsecrets。"""
     feishu = {
-        "app_id": (os.environ.get("FEISHU_APP_ID") or f.get("appId") or "").strip(),
-        "app_secret": (os.environ.get("FEISHU_APP_SECRET") or f.get("appSecret") or "").strip(),
+        "app_id": (os.environ.get("FEISHU_APP_ID") or _dh_secret("FEISHU_APP_ID")).strip(),
+        "app_secret": (os.environ.get("FEISHU_APP_SECRET")
+                       or _dh_secret("FEISHU_APP_SECRET")).strip(),
         "chat_id": (os.environ.get("FEISHU_CHAT_DM")
                     or os.environ.get("FEISHU_CHAT_ID") or "").strip(),
         "webhook_url": (os.environ.get("FEISHU_WEBHOOK_URL") or "").strip(),
