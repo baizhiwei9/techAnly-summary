@@ -3,24 +3,24 @@
 """统一图片推送：QQ 私聊 + 飞书私聊（给缠论图这类程序生成的 PNG 用）
 =====================================================================
 为什么单独写这个：
-  ⚠️ `openclaw message send --media <workspace里的图>` 在 QQ 通道**发不出去但返回 rc=0**，
+  ⚠️ `openclaw message send --media <图片>` 在 QQ 通道**发不出去但返回 rc=0**，
      返回 JSON 里 messageId 为空、parts 为空。原因是平台安全策略只允许从
-     `~/.openclaw/media/`（含 media/qqbot）等受信根路径上传。
-     所以这里**先把图片复制到 ~/.openclaw/media/qqbot/ 再发**。
+     受信媒体根（默认 `~/.openclaw/media/`）上传。所以这里**先把图片复制到
+     受信媒体目录再发**；该目录可用 QQ_MEDIA_DIR 指到部署方的受信根。
   ⚠️ 飞书要用 im/v1/images 上传拿 image_key，再发 msg_type=image（不能用 webhook 卡片塞图）。
 
 用法：
-  python3 bin/push_image.py <图片路径> [--text "说明"] [--qq-only|--feishu-only]
-  python3 bin/push_image.py a.png b.png --text "五指数"     # 多张依次发
+  python3 misc/core/push_image.py <图片路径> [--text "说明"] [--qq-only|--feishu-only]
+  python3 misc/core/push_image.py a.png b.png --text "五指数"     # 多张依次发
 """
 import os, sys, json, shutil, subprocess, urllib.request
 from datetime import datetime
 
 def _repo_root(start):
-    """向上探测仓库根：同时含 bin/ 与 core/ 的那一层（2026-11-12 目录整理后可任意层级）。"""
+    """向上探测仓库根：同时含 chanlun/ 与 misc/ 的那一层（bin/ 已拆除）。"""
     d = os.path.dirname(os.path.abspath(start))
     for _ in range(6):
-        if os.path.isdir(os.path.join(d, "bin")) and os.path.isdir(os.path.join(d, "chanlun")):
+        if os.path.isdir(os.path.join(d, "chanlun")) and os.path.isdir(os.path.join(d, "misc")):
             return d
         nd = os.path.dirname(d)
         if nd == d:
@@ -30,18 +30,78 @@ def _repo_root(start):
 
 
 WS = os.environ.get("TECH_WS") or _repo_root(__file__)
-# 顺序有讲究：最后插入的优先级最高 → bin/ 放最前 = 最低优先级，
-# 保证 import 命中真实目录，而不是 bin/ 里的兼容 shim。
-for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
+# 顺序有讲究：最后插入的优先级最高 → 空串（repo 根）放最前 = 最低优先级。
+for _sd in ("", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-MEDIA_DIR = os.path.expanduser("~/.openclaw/media/qqbot/charts")
-QQ_TARGET = os.environ.get("CHAN_QQ_TARGET", "")   # 留空=不发，需显式设 environment
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.append(_p)
+
+
+def _bootstrap_hub_root():
+    """引导定位 data_hub：env DATAHUB_ROOT → ~/.config/precious-task/libroots.json → 向上探测。
+
+    本脚本可能被当子进程调用，不继承父进程 sys.path（见 case-child-syspath-secrets）。
+    """
+    p = (os.environ.get("DATAHUB_ROOT") or "").strip()
+    if p and os.path.isdir(os.path.join(p, "data_hub")):
+        return p
+    try:
+        with open(os.path.expanduser("~/.config/precious-task/libroots.json"), encoding="utf-8") as f:
+            d = json.load(f) or {}
+        for k in ("datahub", "datahub_root", "DATAHUB_ROOT"):
+            v = d.get(k)
+            if v and os.path.isdir(os.path.join(str(v), "data_hub")):
+                return str(v)
+    except Exception:
+        pass
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(6):
+        if os.path.isdir(os.path.join(d, "data_hub")):
+            return d
+        d = os.path.dirname(d)
+    return ""
+
+
+_HUB_ROOT = _bootstrap_hub_root()
+if _HUB_ROOT and _HUB_ROOT not in sys.path:
+    sys.path.insert(0, _HUB_ROOT)
+
+
+def _secret(name, default=""):
+    """环境变量 → DataHub get_secret → default。"""
+    v = (os.environ.get(name) or "").strip()
+    if v:
+        return v
+    try:
+        from data_hub import get_secret as _g
+        return (_g(name, default) or default or "").strip()
+    except Exception:
+        return (default or "").strip()
+
+
+def _cfg(key, default=""):
+    """环境变量 → DataHub cfg → default。"""
+    v = (os.environ.get(key) or "").strip()
+    if v:
+        return v
+    try:
+        from data_hub import cfg as _c
+        return str(_c(key, default) or default or "").strip()
+    except Exception:
+        return (default or "").strip()
+
+
+# 受信媒体根由平台策略决定（默认 ~/.openclaw/media），可用 QQ_MEDIA_DIR 改指。
+MEDIA_DIR = _cfg("QQ_MEDIA_DIR") or os.path.expanduser("~/.openclaw/media/qqbot/charts")
+OPENCLAW_BIN = _cfg("OPENCLAW_BIN", "openclaw")
+QQ_TARGET = _cfg("CHAN_QQ_TARGET", "")   # 留空=不发，需显式配置
 # ⚠️ 2026-11-10 踩坑：QQ 发图必须指定 --account（本机是 bot2），否则平台静默拦截
 #    → rc=0 但 messageId 为空、parts 为空，看起来"发成功了"其实没发出去
-QQ_ACCOUNT = os.environ.get("CHAN_QQ_ACCOUNT", "")   # 本机是 bot2，不设则按默认账号发
-FEISHU_CHAT = os.environ.get("TECH_FEISHU_CHAT") or os.environ.get("CHAN_FEISHU_CHAT") or ""  # 留空=不发
+QQ_ACCOUNT = _cfg("CHAN_QQ_ACCOUNT", "")   # 本机是 bot2，不设则按默认账号发
+FEISHU_CHAT = (_cfg("TECH_FEISHU_CHAT") or _cfg("CHAN_FEISHU_CHAT")
+               or _secret("FEISHU_CHAT_DM"))  # 留空=不发
 
 
 def _to_media_dir(img):
@@ -68,7 +128,7 @@ def send_qq(img, text="", doc=False):
     """
     p = _to_media_dir(img)
     try:
-        cmd = ["openclaw", "message", "send", "--channel", "qqbot",
+        cmd = [OPENCLAW_BIN, "message", "send", "--channel", "qqbot",
                "--target", QQ_TARGET, "--media", p, "-m", text or " ", "--json"]
         if doc:
             cmd.append("--force-document")
@@ -100,8 +160,12 @@ def send_qq(img, text="", doc=False):
 
 
 def _feishu_token():
-    c = json.load(open(os.path.join(os.path.dirname(WS), "openclaw.json"), encoding="utf-8"))["channels"]["feishu"]
-    b = json.dumps({"app_id": c["appId"], "app_secret": c["appSecret"]}).encode()
+    # 2026-11-28：凭据不再读 ~/.openclaw/openclaw.json，统一走 DataHub（secrets 段/env）。
+    app_id = _secret("FEISHU_APP_ID")
+    app_secret = _secret("FEISHU_APP_SECRET")
+    if not (app_id and app_secret):
+        raise RuntimeError("未配置 FEISHU_APP_ID/FEISHU_APP_SECRET")
+    b = json.dumps({"app_id": app_id, "app_secret": app_secret}).encode()
     req = urllib.request.Request(
         "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
         data=b, headers={"Content-Type": "application/json"})

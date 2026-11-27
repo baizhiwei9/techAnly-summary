@@ -108,9 +108,11 @@ socket.getaddrinfo = lambda *a, **k: [r for r in _o(*a, **k) if r[0] == socket.A
 WS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# 2026-11-28：DataHub 未配 OPENCLAW_WORKSPACE 时退回迁移前默认，
-# 否则下面拼出的是相对路径 /optstack/jobs/xq_daily.sh，xq 快照刷新会静默失败。
-OPENCLAW_WS = _dh_cfg("OPENCLAW_WORKSPACE") or os.path.expanduser("~/.openclaw/workspace")
+# 2026-11-28：雪球抓取入口不再从 OpenClaw 工作区猜路径。
+# xq_daily.sh 依赖 openclaw CLI/agent-browser 与登录态，无法随仓库搬迁，
+# 由部署方用 XQ_DAILY_SH（环境变量或 config.local.json）显式指定；
+# 未配置就跳过刷新、沿用已有快照，不会拼出相对路径静默失败。
+XQ_DAILY_SH = _dh_cfg("XQ_DAILY_SH")
 
 import requests  # noqa: E402
 
@@ -510,6 +512,9 @@ def refresh_snapshots(force=False):
     if not todo:
         log("持仓快照已是当日（%s），跳过抓取" % "、".join(l for l, _ in SNAP_PORTS))
         return {}
+    if not XQ_DAILY_SH or not os.path.isfile(XQ_DAILY_SH):
+        log("未配置 XQ_DAILY_SH（雪球抓取入口），跳过持仓刷新，沿用已有快照")
+        return {}
     env = dict(os.environ)
     env["PATH"] = "/usr/local/bin:/usr/local/sbin:/usr/bin:/sbin:/bin:" + env.get("PATH", "")
     res = {}
@@ -517,7 +522,7 @@ def refresh_snapshots(force=False):
         key = "moergen" if "yali" not in fp else "yali"
         try:
             r = subprocess.run(
-                ["bash", OPENCLAW_WS+"/optstack/jobs/xq_daily.sh", "check", "--no-push"],
+                ["bash", XQ_DAILY_SH, "check", "--no-push"],
                 capture_output=True, text=True, timeout=900, cwd=WS,
                 env={**env, "XQ_PORTFOLIOS": key, "XQ_PUSH": ""})
             out = (r.stdout or "") + (r.stderr or "")
@@ -740,10 +745,14 @@ def push_feishu(text, title):
     except Exception as _exc:
         print("[notify] 统一库异常，回落原通道：%s" % _exc)
     import urllib.request
+    # 2026-11-28：凭据不再读 ~/.openclaw/openclaw.json，统一走 DataHub（secrets 段/env）。
+    app_id = _dh_secret("FEISHU_APP_ID", "")
+    app_secret = _dh_secret("FEISHU_APP_SECRET", "")
+    if not (app_id and app_secret and FEISHU_CHAT):
+        log("feishu push 跳过：未配置 FEISHU_APP_ID/FEISHU_APP_SECRET/FEISHU_CHAT")
+        return False
     try:
-        cfg = json.load(open(os.path.join(os.path.dirname(WS), "openclaw.json"), encoding="utf-8"))
-        c = cfg["channels"]["feishu"]
-        b = json.dumps({"app_id": c["appId"], "app_secret": c["appSecret"]}).encode()
+        b = json.dumps({"app_id": app_id, "app_secret": app_secret}).encode()
         req = urllib.request.Request(
             "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
             data=b, headers={"Content-Type": "application/json"})

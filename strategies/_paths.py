@@ -32,11 +32,31 @@ def here() -> str:
 
 
 def workspace() -> str:
-    """OpenClaw 工作区根目录（数据、缓存都在那里）。"""
-    for key in ("OPENCLAW_WORKSPACE", "WS", "WORKSPACE"):
+    """数据根目录（历史数据、缓存都在那里）。
+
+    2026-11-28：不再硬编码 ``~/.openclaw/workspace``。解析顺序：
+    环境变量（TECH_DATA_ROOT / OPENCLAW_WORKSPACE / WS / WORKSPACE）
+    → DataHub 统一配置（secrets.openclaw_workspace / paths.*）
+    → ocsecrets（认得 secrets.env）→ 空串（调用方自行决定跳过或报错）。
+    """
+    for key in ("TECH_DATA_ROOT", "OPENCLAW_WORKSPACE", "WS", "WORKSPACE"):
         v = os.environ.get(key, "").strip()
         if v and os.path.isdir(v):
             return v
+    try:  # DataHub 统一配置（config.local.json：secrets 段优先）
+        from data_hub import get_secret as _gs
+        v = (_gs("OPENCLAW_WORKSPACE", "") or "").strip()
+        if v and os.path.isdir(v):
+            return v
+    except Exception:
+        pass
+    try:  # 兼容放在 paths 段的老配置
+        from data_hub import cfg as _c
+        v = (_c("OPENCLAW_WORKSPACE", "") or "").strip()
+        if v and os.path.isdir(v):
+            return v
+    except Exception:
+        pass
     try:  # 有 ocsecrets 就用它（它认得 secrets.env）
         import ocsecrets
         ws = ocsecrets.workspace()
@@ -44,7 +64,7 @@ def workspace() -> str:
             return ws
     except Exception:
         pass
-    return os.path.expanduser("~/.openclaw/workspace")
+    return ""
 
 
 def _add(path: str) -> None:
@@ -58,6 +78,8 @@ def add_openclaw_paths() -> str:
     这些目录是「还没搬进本仓库」的残留依赖，搬完后可以逐步删掉对应条目。
     """
     ws = workspace()
+    if not ws:
+        return ""
     for rel in ("", "scripts", "scripts/cri_topology", "scripts/sector_rotation",
                 "smc", "misc/core", "misc/engine", "misc/tools",
                 "optstack", "chanlun/fractal", "chanlun/ma", "wavelet", "apps"):
@@ -114,6 +136,8 @@ _SECRET_PAT = (
 
 def _inject_config_env(ws: str) -> int:
     """把 DataHub 统一配置的非敏感参数灌进 os.environ（凭证不注入）。"""
+    if not ws:
+        return 0
     cfg_dir = os.path.join(ws, "optstack")
     if not os.path.isdir(cfg_dir):
         return 0
