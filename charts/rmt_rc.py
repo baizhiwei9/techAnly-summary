@@ -350,6 +350,8 @@ def rmt_series(ret, comps, win=60):
             l1s=ev[0] / s50,
             oe=out.sum() / n,                     # outlier_energy
             oc=int(len(out)),
+            l1=float(ev[0]),                      # 第一特征值原值（MA5 斜率告警用）
+            l2=float(ev[1]) if n > 1 else np.nan,  # 第二特征值原值
         ))
     if not rows:
         raise SystemExit("窗口不足，算不出 RMT（检查面板长度 / 成分股覆盖）")
@@ -430,7 +432,9 @@ def rmt_series_fast(ret, comps, win=60):
         out = ev[ev > thr]
         rows.append(dict(N=n, thr=thr, ar5=ar5(ev, top=5, denom=50),
                          l1l2=ev[0] / max(ev[1], 1e-9), l1s=ev[0] / s50,
-                         oe=out.sum() / n, oc=int(len(out))))
+                         oe=out.sum() / n, oc=int(len(out)),
+                         l1=float(ev[0]),                        # 第一特征值原值
+                         l2=float(ev[1]) if n > 1 else np.nan))  # 第二特征值原值
         idx.append(dates[i])
     if not rows:
         raise SystemExit("窗口不足，算不出 RMT（面板长度 / 成分股覆盖不够）")
@@ -453,10 +457,15 @@ def series_for(name, win=60, force=False, panel_days=560, verbose=True):
         try:
             old = pd.read_csv(fp, index_col=0, dtype={"trade_date": str})
             old.index = [str(x) for x in old.index]      # 缓存读回来是 int64，统一成 str
-            if len(old) and str(old.index[-1]) == last_day:
+            # 老 schema 没有 l1/l2 列（2026-11-24 前的缓存）→ 必须重算，别读坏缓存
+            _need = {"l1", "l2"}
+            if (len(old) and str(old.index[-1]) == last_day
+                    and _need.issubset(set(old.columns))):
                 if verbose:
                     print("[rmt] %s 命中缓存 %s" % (name, os.path.basename(fp)), flush=True)
                 return old
+            if verbose and not _need.issubset(set(old.columns)):
+                print("[rmt] %s 缓存缺 l1/l2 列（老 schema），重算" % name, flush=True)
         except Exception:                                        # noqa: BLE001
             pass
     code, _etf = TARGETS[name]
@@ -796,12 +805,23 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
 
 
 # ───────────────────────── 分位告警 / 邮件 ─────────────────────────
-def build_alerts(meta, threshold=90.0):
+def build_alerts(meta, threshold=90.0, metrics=None):
+    """分位告警。metrics 可显式给 [(key,label), ...]；缺列（如 Δα 不可用）自动跳过。
+
+    ⚠️ 2026-11-27：`metrics` 参数与「缺列跳过」也是本次恢复的一部分 ——
+    宿主机 `bin/rmt_rc_alert.py` 显式传 `metrics=Q_METRICS`（只要 oe/ar5/l1l2/l1s，
+    不含 Δα），旧签名直接 TypeError。
+    """
     rows, alerts = [], []
     for name, m in meta.items():
         last, q = m["last"], m["q"]
-        for key, label in METRICS:
-            val = float(getattr(last, key))
+        for key, label in (metrics or METRICS):
+            if key not in getattr(last, "index", []) or key not in q:
+                continue
+            v = last[key]
+            if v is None or (isinstance(v, float) and np.isnan(v)):
+                continue
+            val = float(v)
             qq = float(q[key])
             rows.append(dict(target=name, metric=label, value=val, pct=qq,
                              hit=qq > threshold))
@@ -849,6 +869,125 @@ def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None, dry_run=
                           source="RMT监控", meta={"to": to}, dry_run=dry_run)
     print("[alert] notify %s" % ("ok" if ok else "fail"))
     return ok
+
+
+# ───────────────────── λ1/λ2 MA5 斜率告警（2026-11-24 新增，2026-11-27 恢复）─────
+# 大佬口径：「lambda 一和 lambda 二，它俩开始方向相反；或者它俩的 MA5 方向反过来、
+# MA5 斜率反过来，就开始发邮件提醒。」
+#
+# ⚠️ 2026-11-25 远端改版把这一段整段删掉了，导致宿主机
+#    `bin/rmt_rc_alert.py`（每天 20:45）连报两天 ImportError、
+#    `bin/market_tech_daily.py`（20:25）λ 表退化成一整行「无 RMT 面板数据」，
+#    而且都是静默失败（日报只打一行 [WARN]）。这里原样恢复，逻辑一字未改。
+#
+# 两条规则（逐标的、逐交易日独立判）：
+#   规则A「方向相反」：sign(slope_l1) 与 sign(slope_l2) 相反，且**前一天不是相反**
+#                      → 当天是首次分叉（持续分叉不重复报）
+#   规则B「斜率反转」：λ1 或 λ2 的 MA5 斜率当天变号（正→负 / 负→正）
+#
+# 斜率 = MA5.diff()，MA5 = rolling(5).mean()，作用在 λ1 / λ2 的**原值**上。
+SLOPE_MA = 5
+
+
+def slope_frame(full, ma=SLOPE_MA):
+    """从 series（需含 l1/l2 原值列）算 MA 与斜率，返回 DataFrame：
+    index=日期, cols: l1 l2 ma1 ma2 s1 s2（s1/s2 = ma.diff()）"""
+    if "l1" not in getattr(full, "columns", []) or "l2" not in full.columns:
+        raise ValueError("slope_frame: 输入缺少 l1/l2 列（先升级 series 缓存）")
+    d = full[["l1", "l2"]].astype(float)
+    ma1 = d["l1"].rolling(ma, min_periods=ma).mean()
+    ma2 = d["l2"].rolling(ma, min_periods=ma).mean()
+    return pd.DataFrame({
+        "l1": d["l1"], "l2": d["l2"],
+        "ma1": ma1, "ma2": ma2,
+        "s1": ma1.diff(), "s2": ma2.diff(),
+    })
+
+
+def _dir(s):
+    return "↑" if s > 0 else ("↓" if s < 0 else "→")
+
+
+def _slope_line(name, date, row, what):
+    return ("%s %s · %s：λ1=%.4f（MA5=%.4f，斜率=%+.4f %s）｜ "
+            "λ2=%.4f（MA5=%.4f，斜率=%+.4f %s）"
+            % (name, date, what,
+               row["l1"], row["ma1"], row["s1"], _dir(row["s1"]),
+               row["l2"], row["ma2"], row["s2"], _dir(row["s2"])))
+
+
+def build_slope_alerts(series_dict, ma=SLOPE_MA, days=60, min_amp=1.5):
+    """λ1/λ2 MA5 斜率告警。
+
+    series_dict: {标的名: series DataFrame（含 l1/l2）}
+    返回 (detail_df, alerts, triggers)：
+      detail_df —— 最近 days 个交易日的明细（name/date/l1/l2/ma1/ma2/s1/s2/rule）
+      alerts    —— 最近 days 内触发的文字清单（每条含标的、日期、数值、方向）
+      triggers  —— 触发明细 dict 列表（给状态文件做幂等用）
+    """
+    detail, alerts, triggers = [], [], []
+    for name, full in series_dict.items():
+        if full is None or not len(full):
+            continue
+        sf = slope_frame(full, ma=ma).dropna(subset=["s1", "s2"])
+        if not len(sf):
+            continue
+        sg1, sg2 = np.sign(sf["s1"]), np.sign(sf["s2"])
+        # ── 规则A：方向相反（只报首次分叉）
+        opp = (sg1 * sg2) < 0
+        new_opp = opp & ~opp.shift(1).fillna(False).astype(bool)
+        # ── 规则B：斜率变号（两边都不为 0）
+        prev1, prev2 = sg1.shift(1), sg2.shift(1)
+        flip1 = (sg1 != prev1) & sg1.ne(0) & prev1.notna() & prev1.ne(0)
+        flip2 = (sg2 != prev2) & sg2.ne(0) & prev2.notna() & prev2.ne(0)
+        if min_amp and min_amp > 0:
+            # 幅度门槛（压噪声）：近 60 日 |slope| 滚动中位数 × min_amp。
+            # 实测不加门槛时 54% 的标的交易日都会触发（纯符号判定被噪声刷屏）；
+            # 1.5× 中位数 → 近 250 日约 58 条 / 2 个标的（≈8.6 个标的交易日 1 次）。
+            med1 = sf["s1"].abs().rolling(60, min_periods=20).median()
+            med2 = sf["s2"].abs().rolling(60, min_periods=20).median()
+            big1 = sf["s1"].abs() > min_amp * med1
+            big2 = sf["s2"].abs() > min_amp * med2
+            flip1 = flip1 & big1
+            flip2 = flip2 & big2
+            # 规则A（方向分叉）本身是结构性事件，不要求两侧都放大，
+            # 但至少一侧要有实质幅度，否则只是贴着 0 抖动的假分叉
+            new_opp = new_opp & (big1 | big2)
+
+        tail = sf.tail(days)
+        for date in tail.index:
+            row = sf.loc[date]
+            rules = []
+            if bool(new_opp.loc[date]):
+                rules.append("A")
+            if bool(flip1.loc[date]):
+                rules.append("B1")
+            if bool(flip2.loc[date]):
+                rules.append("B2")
+            detail.append(dict(target=name, date=str(date), l1=row["l1"], l2=row["l2"],
+                               ma1=row["ma1"], ma2=row["ma2"], s1=row["s1"], s2=row["s2"],
+                               rule="+".join(rules)))
+            if not rules:
+                continue
+            if "A" in rules:
+                txt = _slope_line(name, date, row,
+                                  "λ1 与 λ2 的 MA5 方向相反（新出现分叉）")
+                alerts.append(txt)
+                triggers.append(dict(target=name, date=str(date), rule="A", text=txt))
+            if "B1" in rules:
+                txt = _slope_line(name, date, row, "λ1 的 MA5 斜率由%s转%s" % (
+                    "负" if row["s1"] > 0 else "正", "正" if row["s1"] > 0 else "负"))
+                alerts.append(txt)
+                triggers.append(dict(target=name, date=str(date), rule="B1", text=txt))
+            if "B2" in rules:
+                txt = _slope_line(name, date, row, "λ2 的 MA5 斜率由%s转%s" % (
+                    "负" if row["s2"] > 0 else "正", "正" if row["s2"] > 0 else "负"))
+                alerts.append(txt)
+                triggers.append(dict(target=name, date=str(date), rule="B2", text=txt))
+    detail_df = pd.DataFrame(detail)
+    return detail_df, alerts, triggers
+
+
 
 
 # ───────────────────────── CLI ─────────────────────────
