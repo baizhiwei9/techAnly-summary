@@ -29,7 +29,20 @@ _orig = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _orig(*a, **k) if r[0] == socket.AF_INET]
 import numpy as np
 import pandas as pd
-from data_hub import ak as ak
+try:
+    from data_hub import ak as ak            # 私有库 data_hub：可选依赖
+except ImportError:                          # 未安装 → 本脚本的板块/债券取数不可用
+    ak = None
+
+
+def _need_ak():
+    """取 data_hub.ak 门面；未装 data_hub 时给明确报错，而不是 NoneType 崩。"""
+    if ak is None:
+        raise RuntimeError(
+            "本脚本需要 data_hub（私有库）的 ak 取数门面，当前环境未安装 data_hub，"
+            "该算法不可用。安装示例：pip install -e <datahub 仓库路径>"
+        )
+    return ak
 from datetime import datetime
 from pathlib import Path
 from scipy.linalg import logm
@@ -131,7 +144,7 @@ def get_concept_list():
     # 多级获取：先 akshare（同花顺概念名，带超时），失败/超时回退 tushare ths_index
     names = []
     try:
-        df = _ak_call(ak.stock_board_concept_name_ths, timeout=15)
+        df = _ak_call(_need_ak().stock_board_concept_name_ths, timeout=15)
         names = df['name'].tolist()
     except Exception as e:
         print(f'[akshare 概念列表失败/超时，兑底 tushare] {str(e)[:50]}', flush=True)
@@ -159,7 +172,7 @@ def get_concept_idx(name):
     # 多级获取：先 akshare（带超时），失败/超时回退 tushare ths_daily
     df = None
     try:
-        df = _ak_call(ak.stock_board_concept_index_ths, timeout=15,
+        df = _ak_call(_need_ak().stock_board_concept_index_ths, timeout=15,
                       symbol=name, start_date='20240101', end_date='20261231')
         df = df.rename(columns={'日期':'date','收盘价':'close'})
         df['date'] = pd.to_datetime(df['date'])
@@ -247,7 +260,7 @@ def get_bond():
     except Exception as e:
         print(f'[bond] 库读取失败，回源 akshare: {str(e)[:60]}')
     try:
-        df = ak.bond_zh_us_rate()
+        df = _need_ak().bond_zh_us_rate()
         row = df.iloc[-1]
         return {
             'y2': float(row['中国国债收益率2年']),
