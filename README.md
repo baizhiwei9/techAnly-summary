@@ -234,13 +234,14 @@ python3 misc/strategies/run_level.py --target 600519 --level week   # 周线（�
 git clone https://github.com/baizhiwei9/techAnly-summary.git
 cd techAnly-summary
 pip install -r requirements.txt
+pip install -e .        # 让 charts/topology/smc/chanlun/misc 可 import（跨库引用也靠它）
 ```
 
 > ### 网络环境说明（2026-11-12）
 > 脚本开头统一调用 `misc/core/net_guard.py`：**默认强制 IPv4**，
 > 但 **东财行情族（`push2his.eastmoney.com` K线）白名单走 IPv6** ——
 > 2026-11-12 实测东财 K 线接口 IPv4 全部 RemoteDisconnected，只有 IPv6 可达。
-> 这类脚本用 `from net_guard import install; install()`，别自己写一刀切禁 IPv6。
+> 这类脚本用 `from misc.core.net_guard import install; install()`，别自己写一刀切禁 IPv6。
 > 需要额外放行时设 `IPV6_OK_HOSTS=域名1,域名2`。
 
 系统字体（K 线图中文字形，必需其一）：
