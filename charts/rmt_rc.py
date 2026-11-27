@@ -805,12 +805,23 @@ def render(targets, out, win=60, show_from="20260601", end=None, cols=None,
 
 
 # ───────────────────────── 分位告警 / 邮件 ─────────────────────────
-def build_alerts(meta, threshold=90.0):
+def build_alerts(meta, threshold=90.0, metrics=None):
+    """分位告警。metrics 可显式给 [(key,label), ...]；缺列（如 Δα 不可用）自动跳过。
+
+    ⚠️ 2026-11-27：`metrics` 参数与「缺列跳过」也是本次恢复的一部分 ——
+    宿主机 `bin/rmt_rc_alert.py` 显式传 `metrics=Q_METRICS`（只要 oe/ar5/l1l2/l1s，
+    不含 Δα），旧签名直接 TypeError。
+    """
     rows, alerts = [], []
     for name, m in meta.items():
         last, q = m["last"], m["q"]
-        for key, label in METRICS:
-            val = float(getattr(last, key))
+        for key, label in (metrics or METRICS):
+            if key not in getattr(last, "index", []) or key not in q:
+                continue
+            v = last[key]
+            if v is None or (isinstance(v, float) and np.isnan(v)):
+                continue
+            val = float(v)
             qq = float(q[key])
             rows.append(dict(target=name, metric=label, value=val, pct=qq,
                              hit=qq > threshold))
