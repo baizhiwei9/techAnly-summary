@@ -35,10 +35,11 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 def _repo_root(start):
-    """向上探测仓库根：同时含 bin/ 与 core/ 的那一层（2026-11-12 目录整理后可任意层级）。"""
+    """向上探测仓库根：含 chanlun/ 且含 misc/ 或 strategies/ 的那一层（bin/ 已于 2026-11-27 拆除）。"""
     d = os.path.dirname(os.path.abspath(start))
     for _ in range(6):
-        if os.path.isdir(os.path.join(d, "bin")) and os.path.isdir(os.path.join(d, "chanlun")):
+        if os.path.isdir(os.path.join(d, "chanlun")) and (
+                os.path.isdir(os.path.join(d, "misc")) or os.path.isdir(os.path.join(d, "strategies"))):
             return d
         nd = os.path.dirname(d)
         if nd == d:
