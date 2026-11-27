@@ -35,10 +35,10 @@ socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k)
                                      if r[0] == socket.AF_INET]
 
 WS = os.environ.get("OPENCLAW_WORKSPACE") or (__import__("ocsecrets").workspace())
-REPO = os.environ.get("TECHANLY_DIR", "/root/techAnly-summary")
+REPO = os.environ.get("TECHANLY_DIR") or os.path.expanduser("~/techAnly-summary")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-CHAT_PUSH = os.environ.get("CHAN_FEISHU_CHAT", "oc_0e4e3335f97551eba50a32d6ccf8c12c")
+CHAT_PUSH = os.environ.get("CHAN_FEISHU_CHAT") or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
 
 
 def pcr_block():
@@ -220,7 +220,7 @@ MFDFA_TARGETS = [("沪深300", "000300.SH"), ("中证500", "000905.SH"),
 
 
 def _da_panel_refresh(days=560):
-    """刷 λ1/λ2 依赖的全市场日收盘面板（/root/.cache/rmt_panel/close_*.csv）。
+    """刷 λ1/λ2 依赖的全市场日收盘面板（~/.cache/rmt_panel/close_*.csv）。
 
     面板由 bin/rmt_panel_sync.py 按「日」增量落 CSV；cron 里没有同步任务时
     面板会停在几天前 → λ 序列过期。这里先补一次（幂等，只补缺的日期）。
@@ -1000,6 +1000,18 @@ def push_qq_md(d, txt=None, charts=None):
     2026-10-24 用户要求：「你还是换成交互式卡片形式的消息吧。这个交互式卡片，我记着可以配图的」
     → QQ 侧等价的「卡片」就是 Markdown 消息，一条消息里既有排版文字又有图。
     """
+    if txt:                           # 有现成正文才走统一库；否则按 d 现构造（原实现）
+        try:                          # 统一通知（data_hub.notify）优先
+            import _notify
+            _imgs = [c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else "")
+                     for c in (charts or [])]
+            _r = _notify.send_card((txt.strip().splitlines() or [""])[0][:60], txt,
+                              images=[p for p in _imgs if p])
+            if _r.get("ok"):
+                return True
+            print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+        except Exception as _exc:
+            print("[notify] 统一库异常，回落原通道：%s" % _exc)
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import qq_md_card as QQ
@@ -1365,7 +1377,7 @@ def main():
             #    → 改成 --stack「纵向堆叠」，一指数一行、画布不压缩（1935×3621）。
             _cp = os.path.join(_cd, "chan_stack_%s.png" % _dd)
             # 2026-11-16 终稿：这张图 = 缠论+R_cascade 双轴（上） + MACD（下），
-            # 不再画 RMT 层，所以这里也不用再同步 /root/.cache/rmt_panel。
+            # 不再画 RMT 层，所以这里也不用再同步 ~/.cache/rmt_panel。
             if not os.path.exists(_cp):
                 _r = _sp.run([sys.executable, os.path.join(REPO, "charts", "chan_fractal.py"),
                               "--stack", "沪深300,中证500,中证1000,创业板指,科创50",
@@ -1425,7 +1437,7 @@ def main():
                     print("[topo5] 已跑 %ds，跳过出图直接推送" % _el2, flush=True)
                     raise RuntimeError("skip-topo-deadline")
                 _r = _sp.run([sys.executable, os.path.join(REPO, "charts", "five_topo.py"),
-                              "--panel", os.environ.get("TOPO_PANEL_DIR", "/root/.cache/topo5"),
+                              "--panel", os.environ.get("TOPO_PANEL_DIR") or os.path.expanduser("~/.cache/topo5"),
                               "--days", "60", "--out", _tp],
                              capture_output=True, text=True,
                              timeout=max(60, min(1500, 2700 - _el2)),

@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 import sys
 
-__all__ = ["ensure", "workspace", "here", "add_openclaw_paths"]
+__all__ = ["ensure", "workspace", "here", "add_openclaw_paths", "secret", "feishu_chat"]
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -44,7 +44,7 @@ def workspace() -> str:
             return ws
     except Exception:
         pass
-    return "/root/.openclaw/workspace"
+    return os.path.expanduser("~/.openclaw/workspace")
 
 
 def _add(path: str) -> None:
@@ -63,6 +63,31 @@ def add_openclaw_paths() -> str:
                 "optstack", "chanlun/fractal", "chanlun/ma", "wavelet", "apps"):
         _add(os.path.join(ws, rel))
     return ws
+
+
+def secret(name: str, env_key: str = "", default: str = "") -> str:
+    """取一个内标识/地址：环境变量 → ocsecrets → default（不写死在仓库里）。
+
+    例：``feishu_chat("CHAN_FEISHU_CHAT")``。
+    """
+    for key in (env_key, name):
+        if key:
+            v = os.environ.get(key, "").strip()
+            if v:
+                return v
+    try:
+        import ocsecrets
+        v = ocsecrets.get(name, (env_key,) if env_key else (), default)
+        if v:
+            return str(v).strip()
+    except Exception:
+        pass
+    return (default or "").strip()
+
+
+def feishu_chat(env_key: str = "", default: str = "") -> str:
+    """飞书 chat_id：优先本脚本专用环境变量，其次通用 FEISHU_CHAT_ID / ocsecrets。"""
+    return secret("FEISHU_CHAT_ID", env_key, default)
 
 
 def ensure() -> str:

@@ -24,8 +24,7 @@ except Exception:
 import os
 import sys
 
-WS = "/root/.openclaw/workspace"
-
+WS = os.path.expanduser("~/.openclaw/workspace")
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -33,7 +32,7 @@ from matplotlib import font_manager
 import numpy as np
 import pandas as pd
 
-WS = "/root/.openclaw/workspace"
+WS = os.path.expanduser("~/.openclaw/workspace")
 
 # 中文字体候选：环境变量 → 部署机常见路径 → 本机 fc-list 探测。逐个存在性检查，
 # 只在「确实带中文字形」的字体里挑，避免 fc-match "WenQuanYi Micro Hei" 落到
@@ -42,7 +41,6 @@ _FONT_CANDIDATES = (
     os.environ.get("CJK_FONT") or "",
     os.path.expanduser("~/.fonts/NotoSansSC-Regular.ttf"),
     os.path.expanduser("~/.fonts/NotoSansCJK-Regular.ttc"),
-    "/home/work/dumate/5eaa88f7d2d5403f9ae855f5fcfd7f34/workspace/.fonts/NotoSansSC-Regular.ttf",
     "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
     "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",

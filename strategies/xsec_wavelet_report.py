@@ -39,7 +39,7 @@ import xsec_wavelet_sim as SIM
 
 TITLE = '期货基差横截面交易报告'
 SIGN = '📎 来自 OpenClaw.Deepseek'
-CHATS = ['oc_a2ed4ec3a45ea32fa3456a60fa3c91de']   # 只发「多尺度交易」群
+CHATS = [c for c in (os.environ.get("FEISHU_CHAT_GROUP") or os.environ.get("FEISHU_CHAT_ID", "")).split(",") if c]   # 只发「多尺度交易」群
 BOOK_LABEL = {'commodity': '① 商品栏', 'idx': '② 股指栏'}
 BOOK_DESC = {
     'commodity': '商品（已剔有色）· 价格 60 日反转 横截面多空（多跌空涨）',

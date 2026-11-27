@@ -17,7 +17,7 @@ except Exception:
 
 import os, sys, json
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import flow_diag_lib as L
 
@@ -185,7 +185,7 @@ def push_card(card, tag='fund2'):
     import subprocess
     cf = os.path.join(L.CACHE, f'card_{tag}_{L.D8}.json')
     json.dump(card, open(cf, 'w', encoding='utf-8'), ensure_ascii=False)
-    p = subprocess.run([sys.executable, os.path.join(WS, 'bin/feishu_push_card.py'),
+    p = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'feishu_push_card.py'),
                         '--card-file', cf, '--chat', L.FEISHU_CHAT, '--signature', ''],
                        cwd=WS, capture_output=True, text=True, timeout=180)
     out = ((p.stdout or '') + (p.stderr or '')).strip()

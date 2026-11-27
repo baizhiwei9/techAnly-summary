@@ -84,8 +84,8 @@ CACHE = os.path.join(WS, ".cache", "wide_ind_report")
 for _p in (OUT_DIR, CACHE):
     os.makedirs(_p, exist_ok=True)
 
-FEISHU_CHAT = os.environ.get("WIR_FEISHU_CHAT", "oc_0e4e3335f97551eba50a32d6ccf8c12c")
-QQ_TARGET = os.environ.get("WIR_QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
+FEISHU_CHAT = os.environ.get("WIR_FEISHU_CHAT") or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
+QQ_TARGET = os.environ.get("WIR_QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
 SIGN = "📎 来自 OpenClaw.Deepseek"
 
 # 配图（4 张：宽基周/日 + 行业周/日）——由 main() 填充
@@ -865,6 +865,14 @@ def push_feishu(blocks_in, title):
 
 def push_qq(text, charts=None):
     """QQ 私聊：文字一条 + 每张图单独一条（QQ 不支持卡片内嵌图）"""
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text, images=[c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else "") for c in (charts or []) if (c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else ""))])
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     try:
         import subprocess
         r = subprocess.run(["openclaw", "message", "send", "--channel", "qqbot",

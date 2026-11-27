@@ -91,10 +91,10 @@ PER_IND = 2
 TARGET_TOP = 20
 TIER1_IND = 10
 TIER2_END = 50
-FEISHU_DM = 'oc_0e4e3335f97551eba50a32d6ccf8c12c'
-QQ_TARGET = 'qqbot:c2c:D3056302911060130E3DEEC57C618084'
+FEISHU_DM = os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
+QQ_TARGET = os.environ.get("QQ_DEFAULT_TARGET", "")
 # A/B 档合图额外多推一份到 bot2 的私聊（大佬 2026-10-28 在 bot2 会话里提的需求）
-QQ_TARGETS_IMG = [QQ_TARGET, 'qqbot:c2c:90E8748DB04E4986E46264D72E312E4E']
+QQ_TARGETS_IMG = [t for t in (QQ_TARGET, os.environ.get("QQ_TARGET_IMG", "")) if t]
 
 
 def log(*a):
@@ -962,7 +962,7 @@ def upload_card_image(path):
 
 def send_feishu(card, chat=FEISHU_DM):
     import urllib.request
-    cfg = json.load(open('/root/.openclaw/openclaw.json', encoding='utf-8'))['channels']['feishu']
+    cfg = json.load(open(os.path.expanduser("~/.openclaw/openclaw.json"), encoding='utf-8'))['channels']['feishu']
     body = json.dumps({'app_id': cfg['appId'], 'app_secret': cfg['appSecret']}).encode()
     req = urllib.request.Request(
         'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',

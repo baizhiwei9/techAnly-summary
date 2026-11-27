@@ -42,8 +42,8 @@ import xsec_wavelet_sim as SIM
 
 SIGN = '📎 来自 OpenClaw.Deepseek'
 # 2026-10-25 21:48 大佬定稿：只推飞书【私聊】，不推 QQ
-DM_CHAT = 'oc_0e4e3335f97551eba50a32d6ccf8c12c'          # 飞书私聊（p2p）
-GROUP_CHATS = ['oc_a2ed4ec3a45ea32fa3456a60fa3c91de']    # 多尺度交易群（默认不发，--group 开启）
+DM_CHAT = os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")          # 飞书私聊（p2p）
+GROUP_CHATS = [c for c in (os.environ.get("FEISHU_CHAT_GROUP") or os.environ.get("FEISHU_CHAT_ID", "")).split(",") if c]    # 多尺度交易群（默认不发，--group 开启）
 
 PAIR_N = 6          # 商品栏展示几组配对
 IDX_PAIR_N = 2      # 股指栏展示几组

@@ -25,15 +25,15 @@ except Exception:
 
 import os, sys, json, argparse, datetime, subprocess
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 BIN = os.path.join(WS, 'bin')
 SR = os.path.join(WS, 'scripts/sector_rotation')
 sys.path.insert(0, BIN)
 sys.path.insert(0, SR)
 
 SIGN = '📎 来自 OpenClaw.Deepseek'
-FEISHU_CHAT = os.environ.get('MM_FEISHU_CHAT', 'oc_0e4e3335f97551eba50a32d6ccf8c12c')  # 私聊
-QQ_TARGET = os.environ.get('MM_QQ_TARGET', 'qqbot:c2c:D3056302911060130E3DEEC57C618084')
+FEISHU_CHAT = os.environ.get('MM_FEISHU_CHAT') or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")  # 私聊
+QQ_TARGET = os.environ.get('MM_QQ_TARGET') or os.environ.get("QQ_DEFAULT_TARGET", "")
 TITLE = '📊 市场动量分析 · %s'
 
 try:
@@ -342,7 +342,7 @@ def main():
     # ---- 飞书私聊卡片（走官方应用机器人）
     cf = os.path.join(CACHE, 'card_%s.json' % d8)
     json.dump(card, open(cf, 'w', encoding='utf-8'), ensure_ascii=False)
-    p = subprocess.run([sys.executable, os.path.join(BIN, 'feishu_push_card.py'),
+    p = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'feishu_push_card.py'),
                         '--card-file', cf, '--chat', a.chat, '--signature', ''],
                        cwd=WS, capture_output=True, text=True, timeout=180)
     out = ((p.stdout or '') + (p.stderr or '')).strip()

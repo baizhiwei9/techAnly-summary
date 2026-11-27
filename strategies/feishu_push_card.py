@@ -9,7 +9,7 @@
   echo "正文" | python3 strategies/feishu_push_card.py --title "标题"
   python3 strategies/feishu_push_card.py --title "标题" --body "正文" --chat oc_xxx
 
-默认目标 = 飞书私聊 oc_0e4e3335f97551eba50a32d6ccf8c12c（与机器人单聊）。
+默认目标 = 飞书私聊 <chat_id>（与机器人单聊）。
 署名默认「📎 来自钉钉OpenClaw」放正文第一行（全平台统一，2026-09-28 起）。
 """
 
@@ -22,11 +22,37 @@ except Exception:
 
 import argparse
 import json
+import os
 import sys
 import urllib.request
 
-CFG = '/root/.openclaw/openclaw.json'
-DEFAULT_CHAT = 'oc_0e4e3335f97551eba50a32d6ccf8c12c'
+CFG = os.path.expanduser("~/.openclaw/openclaw.json")
+DEFAULT_CHAT = os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
+
+
+def _unified():
+    """统一通知库（DataHub notify）；不可用时返回 None，由调用方回落。"""
+    try:
+        import _notify
+        return _notify
+    except Exception:
+        return None
+
+
+def _card_text(card):
+    """把卡片 JSON 压成 (标题, 正文 markdown)，供统一库发文本。"""
+    title = (((card or {}).get("header") or {}).get("title") or {}).get("content") or ""
+    lines = []
+    for el in (card or {}).get("elements") or []:
+        if not isinstance(el, dict):
+            continue
+        if el.get("tag") == "markdown":
+            lines.append(el.get("content") or "")
+        else:
+            txt = ((el.get("text") or {}).get("content")) or ""
+            if txt:
+                lines.append(txt)
+    return title, "\n\n".join([x for x in lines if x and x.strip()])
 
 
 def _token():
@@ -51,6 +77,14 @@ def build_card(title, text, template='blue', signature='📎 来自钉钉OpenCla
 
 
 def send(card, chat=DEFAULT_CHAT):
+    """发卡片：**优先走统一通知库（data_hub.notify，文本）**，未就绪才直发交互卡片。"""
+    uni = _unified()
+    if uni is not None:
+        title, text = _card_text(card)
+        res = uni.send_card(title or "技术分析", text or "", card=card)
+        if res.get("ok"):
+            return {"code": 0, "msg": "success（data_hub.notify）"}
+        print("[feishu_push_card] 统一库未就绪，回落应用直发：%s" % res.get("reason"))
     body = json.dumps({'receive_id': chat, 'msg_type': 'interactive',
                        'content': json.dumps(card, ensure_ascii=False)}, ensure_ascii=False).encode()
     tok = _token()

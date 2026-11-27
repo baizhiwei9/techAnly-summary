@@ -52,7 +52,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 POOL_DIR = os.path.join(WS, ".cache/stock_pool")
 SW_MEMBER = os.path.join(WS, ".cache/sw_member_all.json")
 OUT_DIR = os.path.join(WS, ".cache/stock_pool")
-QQ_TARGET = os.environ.get("QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
+QQ_TARGET = os.environ.get("QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
 
 FONT = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 FONT_B = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
@@ -339,6 +339,14 @@ def fmt_text(rows, date):
 
 
 def push_qq(img, text):
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text, images=[c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else "") for c in (img or []) if (c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else ""))])
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     try:
         import push_image
         return push_image.send_qq(img, text)

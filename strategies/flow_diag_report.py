@@ -21,7 +21,7 @@ except Exception:
 
 import json, os, sys, statistics, math, argparse, datetime
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ⚠️ 2026-11-09：本文件是 flow_diag_lib.py 的早期副本，数据层已落后（会有
@@ -777,8 +777,8 @@ def build(chain_names=None, topn=10):
     return '\n'.join(L), A, Bs, days
 
 
-QQ_TARGET = os.environ.get('FD_QQ_TARGET', 'qqbot:c2c:D3056302911060130E3DEEC57C618084')
-FEISHU_CHAT = os.environ.get('FD_FEISHU_CHAT', 'oc_5971f823bf987081f722f2942bbc8d71')
+QQ_TARGET = os.environ.get('FD_QQ_TARGET') or os.environ.get("QQ_DEFAULT_TARGET", "")
+FEISHU_CHAT = os.environ.get('FD_FEISHU_CHAT') or os.environ.get("FEISHU_CHAT_STOCK") or os.environ.get("FEISHU_CHAT_ID", "")
 
 
 def push_qq(text, target=None):
@@ -801,7 +801,7 @@ def push_feishu_card(text, title):
             'elements': [{'tag': 'div', 'text': {'tag': 'lark_md', 'content': text[:18000]}}]}
     cf = os.path.join(CACHE, f'card_{D8}.json')
     json.dump(card, open(cf, 'w', encoding='utf-8'), ensure_ascii=False)
-    p = subprocess.run([sys.executable, os.path.join(WS, 'bin/feishu_push_card.py'),
+    p = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'feishu_push_card.py'),
                         '--card-file', cf, '--chat', FEISHU_CHAT, '--signature', ''],
                        cwd=WS, capture_output=True, text=True, timeout=180)
     out = ((p.stdout or '') + (p.stderr or '')).strip()
@@ -811,7 +811,15 @@ def push_feishu_card(text, title):
 
 
 def push_card(text, title):
-    """飞书卡片推送（<50KB 限制，正文分段）"""
+    """飞书推送：**优先走统一通知库（data_hub.notify）**，未就绪才回落 webhook。"""
+    try:
+        import _notify
+        res = _notify.send_feishu(title, text)
+        if res.get("ok"):
+            return {"code": 0, "msg": "success（data_hub.notify）"}
+        print("[flow_diag] 统一库未就绪，回落 webhook：%s" % res.get("reason"))
+    except Exception as exc:
+        print("[flow_diag] 统一库异常，回落 webhook：%s" % exc)
     import urllib.request
     hook = __import__("ocsecrets").feishu_hook()
     body = {'msg_type': 'interactive', 'card': {

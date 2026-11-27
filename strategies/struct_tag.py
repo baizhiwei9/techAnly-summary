@@ -36,7 +36,7 @@ import os, sys, json, time, argparse
 import numpy as np
 import pandas as pd
 
-BASE = '/root/.openclaw/workspace'
+BASE = os.path.expanduser("~/.openclaw/workspace")
 CACHE = os.path.join(BASE, '.cache/struct_tag')
 WIN = 20        # 相关矩阵窗口
 LAG = 5         # 与几个交易日前对比

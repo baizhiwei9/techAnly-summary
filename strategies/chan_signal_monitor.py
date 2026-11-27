@@ -21,7 +21,7 @@
 
 推送渠道（2026-10-23 用户要求：QQ 私聊 + 飞书私聊 **都发**）：
   - QQ 私聊：`openclaw message send --channel qqbot --target <QQ_TARGET>`
-  - 飞书私聊：chan_smc_index.feishu_push（默认 chat = oc_0e4e3335f97551eba50a32d6ccf8c12c）
+  - 飞书私聊：chan_smc_index.feishu_push（默认 chat = <chat_id>）
   - 邮件：默认**不发**（加 --mail 才发，保留旧能力）
 
 ⚠️ 数据新鲜度（2026-10-23 修复）：小时K线缓存加 TTL（默认 10 分钟），
@@ -59,7 +59,7 @@ import chan_smc_index as C   # 复用缠论口径 + 数据获取
 
 STATE = os.path.join(WS, "memory/chan_signal_state.json")
 QQMAIL_CFG = os.path.join(WS, "skills/qqmail-assistant/config.json")
-QQ_TARGET = os.environ.get("CHAN_QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
+QQ_TARGET = os.environ.get("CHAN_QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
 CACHE_TTL_MIN = int(os.environ.get("CHAN_CACHE_TTL_MIN", "10"))
 # 级别 + 版本（2026-10-23 用户要求：推送里必须写明白是哪个级别、哪个缠论版本）
 LV_H1 = "小时线60m"       # 显示用级别标签
@@ -953,6 +953,14 @@ def fmt_status(rows):
 # ─────────── 发送 ───────────
 def send_qq(text):
     """QQ 私聊（走 OpenClaw 路由，不直连 provider）"""
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     import subprocess
     try:
         p = subprocess.run(["openclaw", "message", "send", "--channel", "qqbot",
@@ -980,6 +988,15 @@ def send_feishu(subject, body):
 
 def send_mail(subject, body, to=None):
     """发邮件（可选，加 --mail 才走）：scripts/send_email.py → 回退 qqmail SMTP"""
+    if not to:                        # 指定收件人时仍走原通道，避免忽略 to
+        try:                          # 统一通知（data_hub.notify）优先
+            import _notify
+            _r = _notify.send_email(subject, body)
+            if _r.get("ok"):
+                return True
+            print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+        except Exception as _exc:
+            print("[notify] 统一库异常，回落原通道：%s" % _exc)
     import subprocess
     sender = os.path.join(WS, "scripts/send_email.py")
     if os.path.exists(sender):

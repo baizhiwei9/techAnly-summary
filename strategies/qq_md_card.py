@@ -29,13 +29,13 @@
 """
 import os, sys, json, hashlib, base64, socket, time, argparse, urllib.request, urllib.parse
 
-WS = "/root/.openclaw/workspace"
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.join(WS, "bin"))
 _o = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _o(*a, **k) if r[0] == socket.AF_INET]
 
 CFG = os.path.join(os.path.dirname(WS), "openclaw.json")
-DEFAULT_TARGET = os.environ.get("CHAN_QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
+DEFAULT_TARGET = os.environ.get("CHAN_QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
 
 
 # ───────────────────────── 鉴权 ─────────────────────────
@@ -187,7 +187,23 @@ def _parse_target(target):
 
 
 def send_md(title, text, imgs=None, target=None, account="default", extra_note=""):
-    """发一条 QQ Markdown 消息（文字 + 内嵌图片）。返回 True/False"""
+    """发一条通知。返回 True/False。
+
+    默认走**统一通知库**（data_hub.notify：飞书文本 + 邮件内联图）；
+    只有显式设 ``QQ_FALLBACK=1``（或统一库未就绪）时才走本文件的 QQ 通道。
+    """
+    imgs = list(imgs or [])
+    paths = [p[0] if isinstance(p, (tuple, list)) else p for p in imgs]
+    if os.environ.get("QQ_FALLBACK", "").strip().lower() not in ("1", "true", "yes"):
+        try:
+            import _notify
+            res = _notify.send_card(title or "技术分析", text or "", images=paths or None)
+            if res.get("ok"):
+                print("[qq_md_card] 已走统一通知（data_hub.notify）：飞书文本 + 邮件内联图 %d 张" % len(paths))
+                return True
+            print("[qq_md_card] 统一库未就绪，回落 QQ 通道：%s" % res.get("reason"))
+        except Exception as exc:
+            print("[qq_md_card] 统一库异常，回落 QQ 通道：%s" % exc)
     tok = token(account)
     kind, oid = _parse_target(target)
     # 发图前先自检配额：快满了（>85）就先清到 60，避免中途 400 丢图

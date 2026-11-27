@@ -37,7 +37,7 @@ import sys
 import json
 import datetime
 
-WS = "/root/.openclaw/workspace"
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.join(WS, "bin"))
 
 REPORT_DIR = os.path.join(WS, "memory", "wide_ind_reports")

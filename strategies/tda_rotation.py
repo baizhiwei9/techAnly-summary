@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # ── 路径 ─────────────────────────────────────────────
-WORKSPACE = Path('/root/.openclaw/workspace')
+WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace"))
 sys.path.insert(0, str(WORKSPACE / 'bin'))
 
 # ── 数据 ─────────────────────────────────────────────

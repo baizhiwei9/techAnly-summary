@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""RMT 面板增量同步：/root/.cache/rmt_panel/close_YYYYMMDD.csv（全市场逐日收盘）
+"""RMT 面板增量同步：~/.cache/rmt_panel/close_YYYYMMDD.csv（全市场逐日收盘）
 
 为什么要有这个
 --------------
@@ -35,8 +35,8 @@ from datetime import datetime
 _orig_gai = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
-WS = "/root/.openclaw/workspace"
-PANEL_DIR = os.environ.get("RMT_PANEL_DIR", "/root/.cache/rmt_panel")
+WS = os.path.expanduser("~/.openclaw/workspace")
+PANEL_DIR = os.environ.get("RMT_PANEL_DIR") or os.path.expanduser("~/.cache/rmt_panel")
 
 
 def _pro():

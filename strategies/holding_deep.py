@@ -62,7 +62,7 @@ import argparse
 import datetime
 from concurrent.futures import ThreadPoolExecutor
 
-WS = "/root/.openclaw/workspace"
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.join(WS, "bin"))
 
 import numpy as np
@@ -75,8 +75,8 @@ OUT_DIR = os.path.join(WS, "memory", "holding_deep_reports")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 NAMES_CSV = os.path.join(WS, ".cache", "stock_names.csv")
-QQ_TARGET = os.environ.get("HD_QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
-FEISHU_CHAT = os.environ.get("HD_FEISHU_CHAT", "oc_0e4e3335f97551eba50a32d6ccf8c12c")
+QQ_TARGET = os.environ.get("HD_QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
+FEISHU_CHAT = os.environ.get("HD_FEISHU_CHAT") or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
 SIGN = "📎 来自 OpenClaw.Deepseek"
 DAILY_TTL_MIN = int(os.environ.get("HD_DAILY_TTL_MIN", "30"))
 MAX_WORKERS = int(os.environ.get("HD_WORKERS", "10"))
@@ -531,6 +531,14 @@ def push_feishu(blocks, title):
 
 
 def push_qq(text):
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     try:
         import subprocess
         r = subprocess.run(["openclaw", "message", "send", "--channel", "qqbot",

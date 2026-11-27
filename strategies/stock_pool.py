@@ -49,7 +49,7 @@ def _resolve_base():
         if nd == d:
             break
         d = nd
-    return '/root/.openclaw/workspace'
+    return os.path.expanduser("~/.openclaw/workspace")
 
 
 BASE = _resolve_base()
@@ -57,8 +57,8 @@ sys.path.insert(0, os.path.join(BASE, 'bin'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 FETCH = os.environ.get('SP_FETCH', os.path.join(BASE, 'bin/fetch-feishu-group-msgs.py'))
-CHAT = os.environ.get('SP_CHAT_ID', 'oc_5971f823bf987081f722f2942bbc8d71')
-QQ_TARGET = os.environ.get('SP_QQ_TARGET', 'qqbot:c2c:D3056302911060130E3DEEC57C618084')
+CHAT = os.environ.get('SP_CHAT_ID') or os.environ.get("FEISHU_CHAT_STOCK") or os.environ.get("FEISHU_CHAT_ID", "")
+QQ_TARGET = os.environ.get('SP_QQ_TARGET') or os.environ.get("QQ_DEFAULT_TARGET", "")
 
 # ---------------- 多空关键词 ----------------
 BULL_KW = ['看多', '看好', '推荐', '买入', '增持', '机会', '领涨', '净流入', '流入',
@@ -479,6 +479,14 @@ def make_chart(pick, avoid, cmap, out_png, date, topo_pick=None, topo_avoid=None
 
 # ---------------- 推送 ----------------
 def _qq_send(text):
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send_card(((text or "").strip().splitlines() or [""])[0][:60], text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     if not QQ_TARGET:
         print('[QQ text] 跳过：未配置 SP_QQ_TARGET')
         return False
@@ -578,7 +586,7 @@ def _feishu_card(text, title):
     fp.write(text)
     fp.close()
     try:
-        r = subprocess.run([sys.executable, os.path.join(BASE, 'bin/feishu_push_card.py'),
+        r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'feishu_push_card.py'),
                             '--title', title, '--body-file', fp.name],
                            capture_output=True, text=True, timeout=180)
         print('[Feishu card]', (r.stdout or '').strip()[-160:], (r.stderr or '')[-160:])

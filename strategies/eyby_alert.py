@@ -35,7 +35,7 @@ import socket
 _orig_gai = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 BIN = os.path.join(WS, 'bin')
 sys.path.insert(0, BIN)
 
@@ -217,6 +217,15 @@ def send_email(sig, info, png):
             % (info['date'], items, info['spread'], info['dist_floor_pp'],
                info['ey'], info['by'], info['pe'],
                ('%.1f%%' % info['pct']) if info['pct'] is not None else '—'))
+    try:
+        import _notify
+        res = _notify.send_email(subj, body, images=[png] if png and os.path.exists(png) else None)
+        if res.get("ok"):
+            print('[email] 已走统一通知（data_hub.notify）')
+            return True
+        print('[email] 统一库未就绪，回落 send_email.py：%s' % res.get("reason"))
+    except Exception as exc:
+        print('[email] 统一库异常，回落 send_email.py：%s' % exc)
     cmd = [sys.executable, os.path.join(WS, 'scripts', 'send_email.py'),
            '--subject', subj, '--body', body, '--html']
     if png and os.path.exists(png):
