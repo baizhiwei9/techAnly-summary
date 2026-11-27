@@ -7,7 +7,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # 脚本所在目录（2026-11-27 迁入 techAnly-summary，替代原 bin/ 路径）
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd /root/.openclaw/workspace || exit 1
+cd "${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}" || exit 1
 tag="${1:-day}"
 trade=$(python3 -c "import sys; sys.path.insert(0,'bin'); import trade_day; print('1' if trade_day.is_open()[0] else '0')" 2>/dev/null)
 if [ "$trade" != "1" ]; then

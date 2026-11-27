@@ -33,7 +33,7 @@
   电机Ⅱ → 电机 ｜ 游戏Ⅱ → 游戏 ｜ 其余同名直接对上
   → 默尔根 6 个 + 亚丽 12 个，去重后 **10 个行业**
 
-推送：**飞书私聊**（oc_0e4e3335f97551eba50a32d6ccf8c12c，与机器人单聊）
+推送：**飞书私聊**（<chat_id>，与机器人单聊）
      纯脚本 0 token；同一点不重复推（状态文件记忆）
 
 用法：
@@ -74,7 +74,7 @@ LOG_FILE = os.path.join(WS, ".cache/chan_h1_wide_ind.log")
 THS_MAP_FILE = os.path.join(WS, ".cache/ths_ind_map.json")
 CACHE_DIR = os.path.join(WS, ".cache/chan_h1")
 
-FEISHU_CHAT = os.environ.get("CHAN_H1_CHAT", "oc_0e4e3335f97551eba50a32d6ccf8c12c")
+FEISHU_CHAT = os.environ.get("CHAN_H1_CHAT") or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
 
 UA_THS = {"User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"),

@@ -26,7 +26,7 @@ import socket as _socket
 _orig_gai = _socket.getaddrinfo
 _socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == _socket.AF_INET]
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 def _resolve_date(d=None):
     """默认取最近交易日（非交易日自动回退），并确保 sector_rotation 缓存存在"""
@@ -988,9 +988,9 @@ def build(chain_names=None, topn=10):
     return '\n'.join(L), A, Bs, days
 
 
-QQ_TARGET = os.environ.get('FD_QQ_TARGET', 'qqbot:c2c:D3056302911060130E3DEEC57C618084')
+QQ_TARGET = os.environ.get('FD_QQ_TARGET') or os.environ.get("QQ_DEFAULT_TARGET", "")
 # 2026-10-21 用户要求：改发飞书私聊，不发 AI股票消息群
-FEISHU_PRIVATE = os.environ.get('FD_FEISHU_PRIVATE', 'oc_0e4e3335f97551eba50a32d6ccf8c12c')
+FEISHU_PRIVATE = os.environ.get('FD_FEISHU_PRIVATE') or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
 FEISHU_CHAT = os.environ.get('FD_FEISHU_CHAT', FEISHU_PRIVATE)
 
 

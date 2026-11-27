@@ -5,7 +5,7 @@ set -uo pipefail
 
 # 脚本所在目录（2026-11-27 迁入 techAnly-summary，替代原 bin/ 路径）
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd /root/.openclaw/workspace || exit 1
+cd "${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}" || exit 1
 PUSH="${1:-both}"
 D8=$(python3 -c "import sys;sys.path.insert(0,'bin');import trade_day;print(trade_day.resolve().replace('-',''))" 2>/dev/null)
 [ -z "$D8" ] && D8=$(date +%Y%m%d)

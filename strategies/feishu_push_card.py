@@ -9,7 +9,7 @@
   echo "正文" | python3 strategies/feishu_push_card.py --title "标题"
   python3 strategies/feishu_push_card.py --title "标题" --body "正文" --chat oc_xxx
 
-默认目标 = 飞书私聊 oc_0e4e3335f97551eba50a32d6ccf8c12c（与机器人单聊）。
+默认目标 = 飞书私聊 <chat_id>（与机器人单聊）。
 署名默认「📎 来自钉钉OpenClaw」放正文第一行（全平台统一，2026-09-28 起）。
 """
 
@@ -22,11 +22,12 @@ except Exception:
 
 import argparse
 import json
+import os
 import sys
 import urllib.request
 
-CFG = '/root/.openclaw/openclaw.json'
-DEFAULT_CHAT = 'oc_0e4e3335f97551eba50a32d6ccf8c12c'
+CFG = os.path.expanduser("~/.openclaw/openclaw.json")
+DEFAULT_CHAT = os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
 
 
 def _token():

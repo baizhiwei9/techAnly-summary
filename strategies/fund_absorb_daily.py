@@ -17,7 +17,7 @@ except Exception:
 
 import os, sys, json
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import flow_diag_lib as L
 

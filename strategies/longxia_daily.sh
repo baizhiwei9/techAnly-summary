@@ -7,7 +7,7 @@ set -uo pipefail
 
 # 脚本所在目录（2026-11-27 迁入 techAnly-summary，替代原 bin/ 路径）
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd /root/.openclaw/workspace || exit 1
+cd "${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}" || exit 1
 
 LOG=.cache/longxia_cron.log
 mkdir -p .cache

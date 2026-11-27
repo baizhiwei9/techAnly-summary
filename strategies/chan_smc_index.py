@@ -45,7 +45,7 @@ try:
 except Exception:
     _orig_gai = socket.getaddrinfo
     socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
-FEISHU_CHAT = os.environ.get("CHAN_FEISHU_CHAT", "oc_0e4e3335f97551eba50a32d6ccf8c12c")  # 默认私聊
+FEISHU_CHAT = os.environ.get("CHAN_FEISHU_CHAT") or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")  # 默认私聊
 
 import numpy as np
 import pandas as pd

@@ -13,8 +13,8 @@ import json, urllib.request, os, sys
 
 def main():
     img = sys.argv[1]
-    chat = sys.argv[2] if len(sys.argv) > 2 else 'oc_5971f823bf987081f722f2942bbc8d71'
-    cfg = json.load(open('/root/.openclaw/openclaw.json'))
+    chat = sys.argv[2] if len(sys.argv) > 2 else '<chat_id>'
+    cfg = json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))
     app_id = cfg['channels']['feishu']['appId']
     app_secret = cfg['channels']['feishu']['appSecret']
 

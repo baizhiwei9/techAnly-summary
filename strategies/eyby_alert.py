@@ -35,7 +35,7 @@ import socket
 _orig_gai = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 BIN = os.path.join(WS, 'bin')
 sys.path.insert(0, BIN)
 

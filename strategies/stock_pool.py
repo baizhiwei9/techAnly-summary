@@ -49,7 +49,7 @@ def _resolve_base():
         if nd == d:
             break
         d = nd
-    return '/root/.openclaw/workspace'
+    return os.path.expanduser("~/.openclaw/workspace")
 
 
 BASE = _resolve_base()
@@ -57,8 +57,8 @@ sys.path.insert(0, os.path.join(BASE, 'bin'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 FETCH = os.environ.get('SP_FETCH', os.path.join(BASE, 'bin/fetch-feishu-group-msgs.py'))
-CHAT = os.environ.get('SP_CHAT_ID', 'oc_5971f823bf987081f722f2942bbc8d71')
-QQ_TARGET = os.environ.get('SP_QQ_TARGET', 'qqbot:c2c:D3056302911060130E3DEEC57C618084')
+CHAT = os.environ.get('SP_CHAT_ID') or os.environ.get("FEISHU_CHAT_STOCK") or os.environ.get("FEISHU_CHAT_ID", "")
+QQ_TARGET = os.environ.get('SP_QQ_TARGET') or os.environ.get("QQ_DEFAULT_TARGET", "")
 
 # ---------------- 多空关键词 ----------------
 BULL_KW = ['看多', '看好', '推荐', '买入', '增持', '机会', '领涨', '净流入', '流入',

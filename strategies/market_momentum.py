@@ -25,15 +25,15 @@ except Exception:
 
 import os, sys, json, argparse, datetime, subprocess
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 BIN = os.path.join(WS, 'bin')
 SR = os.path.join(WS, 'scripts/sector_rotation')
 sys.path.insert(0, BIN)
 sys.path.insert(0, SR)
 
 SIGN = '📎 来自 OpenClaw.Deepseek'
-FEISHU_CHAT = os.environ.get('MM_FEISHU_CHAT', 'oc_0e4e3335f97551eba50a32d6ccf8c12c')  # 私聊
-QQ_TARGET = os.environ.get('MM_QQ_TARGET', 'qqbot:c2c:D3056302911060130E3DEEC57C618084')
+FEISHU_CHAT = os.environ.get('MM_FEISHU_CHAT') or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")  # 私聊
+QQ_TARGET = os.environ.get('MM_QQ_TARGET') or os.environ.get("QQ_DEFAULT_TARGET", "")
 TITLE = '📊 市场动量分析 · %s'
 
 try:

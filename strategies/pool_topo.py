@@ -45,7 +45,7 @@ import os, sys, json, time, argparse
 import numpy as np
 import pandas as pd
 
-BASE = '/root/.openclaw/workspace'
+BASE = os.path.expanduser("~/.openclaw/workspace")
 CACHE = os.path.join(BASE, '.cache/pool_topo')
 BENCH = '000300.SH'
 MKT_NAME = '沪深300'

@@ -52,7 +52,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 POOL_DIR = os.path.join(WS, ".cache/stock_pool")
 SW_MEMBER = os.path.join(WS, ".cache/sw_member_all.json")
 OUT_DIR = os.path.join(WS, ".cache/stock_pool")
-QQ_TARGET = os.environ.get("QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
+QQ_TARGET = os.environ.get("QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
 
 FONT = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 FONT_B = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"

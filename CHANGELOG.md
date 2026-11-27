@@ -280,7 +280,7 @@ techAnly 这个库，然后它发邮件，但是这邮件地址你得给我脱�
     → 历史计数（危险信号 N 次 / 累计<0.75 N 次）不缩水，同时能吃到最新一根
   - 每条结果带 `df.attrs["source"]`（datahub / akshare / akshare+datahub）与 `last_date`
   - `_ensure_datahub_path()`：部署机 DataHub 在工作区 `optstack/` 时自动补 `DATA_HUB_PATH`
-    （`dh_bridge` 只向上探 5 层，本库在 `/root/techAnly-summary` 探不到工作区）
+    （`dh_bridge` 只向上探 5 层，本库在 `~/techAnly-summary` 探不到工作区）
 - **数据新鲜度提示**（`freshness_note()`）：最晚日期距今 >3 天就站出来喊
   —— 之前出现过「源只到 11-13，报告看着像今天的新信号」。表格新增「数据截止」列。
 - 出图支持任意标的数（`--chart`），默认 `reports/charts/rcascade/`；CLI 兼容旧参数 `--no-chart`。
@@ -411,7 +411,7 @@ techAnly 这个库，然后它发邮件，但是这邮件地址你得给我脱�
 
 ```
 python3 charts/chan_fractal.py --stack "沪深300,中证500,中证1000,创业板指,科创50" --stack-n 160
-python3 charts/five_topo.py --panel /root/.cache/topo5 --days 60 --out /tmp/five_topo.png
+python3 charts/five_topo.py --panel ~/.cache/topo5 --days 60 --out /tmp/five_topo.png
 ```
 输出 1800x6000 / 1701x4760；`CHAN_AUDIT=1` 自检 0 处重叠。
 

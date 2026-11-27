@@ -16,13 +16,13 @@ except Exception:
 
 import os, sys, json, argparse, datetime, subprocess, urllib.request
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 SR = os.path.join(WS, 'scripts/sector_rotation')
 PY = sys.executable
 WEBHOOK = __import__('ocsecrets').feishu_hook()
 SIGN = '📎 来自 OpenClaw.Deepseek'
 # 2026-09-28 起：同一份内容额外推一版到 QQ（终端），文字版（QQ 不渲染飞书卡片）
-QQ_TARGET = 'qqbot:c2c:D3056302911060130E3DEEC57C618084'
+QQ_TARGET = os.environ.get("QQ_DEFAULT_TARGET", "")
 sys.path.insert(0, os.path.join(WS, 'bin'))
 try:
     import trade_day

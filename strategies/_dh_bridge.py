@@ -19,7 +19,7 @@ def register() -> bool:
         import ocsecrets
         ws = ocsecrets.workspace()
     except Exception:
-        ws = os.environ.get("OPENCLAW_WORKSPACE", "/root/.openclaw/workspace")
+        ws = os.environ.get("OPENCLAW_WORKSPACE") or os.path.expanduser("~/.openclaw/workspace")
     opt = os.path.join(ws, "optstack")
     if opt not in sys.path:
         sys.path.insert(0, opt)

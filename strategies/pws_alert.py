@@ -61,8 +61,8 @@ STATE_FP = os.path.join(STATE_DIR, 'state.json')
 HIST_FP = os.path.join(STATE_DIR, 'alert_history.jsonl')
 
 FEISHU_HOOK = __import__("ocsecrets").feishu_hook()
-QQ_TARGET = 'qqbot:c2c:D3056302911060130E3DEEC57C618084'
-MAIL_TO = __import__('ocsecrets').get('MAIL_DEFAULT_TO', ('EMAIL_TO_ADDR',), '410119229@qq.com')
+QQ_TARGET = os.environ.get("PWS_QQ_TARGET", "")
+MAIL_TO = __import__('ocsecrets').get('MAIL_DEFAULT_TO', ('EMAIL_TO_ADDR',), '')
 # ⚠️ 邮箱通道用 scripts/send_email.py（163 邮箱，实测可用）
 #    qqmail-assistant 那个 QQ 邮箱授权码已失效（AUTHENTICATIONFAILED），别用
 MAIL_SCRIPT = os.path.join(WS, 'scripts/send_email.py')

@@ -89,8 +89,8 @@ STATE = os.path.join(WS, "memory", "weekly_zs_state.json")
 for _p in (CACHE, SWDIR):
     os.makedirs(_p, exist_ok=True)
 
-FEISHU_CHAT = os.environ.get("WZS_FEISHU_CHAT", "oc_0e4e3335f97551eba50a32d6ccf8c12c")
-QQ_TARGET = os.environ.get("WZS_QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
+FEISHU_CHAT = os.environ.get("WZS_FEISHU_CHAT") or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
+QQ_TARGET = os.environ.get("WZS_QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
 # 申万三级行业只在「两组合合计权重 ≥ 该值」时才单独算（控制 tushare 请求数与报告长度）
 L3_MIN_W = float(os.environ.get("WZS_L3_MIN_W", "5"))
 

@@ -5,7 +5,7 @@ set -u
 
 # 脚本所在目录（2026-11-27 迁入 techAnly-summary，替代原 bin/ 路径）
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd /root/.openclaw/workspace
+cd "${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}"
 PKG=".cache/quark_dl/科创50日频预测包_20261018"
 LOG=".cache/kc50_tristate_cron.log"
 TS=$(date '+%F %T')
@@ -24,7 +24,7 @@ done
 wait
 echo "重训完成" >> "$LOG"
 
-cd /root/.openclaw/workspace || exit 1
+cd "${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}" || exit 1
 timeout 300 python3 "$SELF_DIR"/kc50_tristate.py --push >> "$LOG" 2>&1
 RC=$?
 echo "$(date '+%F %T') 结束 rc=$RC" >> "$LOG"

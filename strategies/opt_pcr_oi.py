@@ -50,7 +50,7 @@ import json
 import argparse
 import datetime
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.join(WS, 'bin'))
 
 CACHE = os.path.join(WS, '.cache', 'opt_pcr')

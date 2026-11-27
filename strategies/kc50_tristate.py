@@ -34,7 +34,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 PKG = os.path.join(WS, '.cache/quark_dl/科创50日频预测包_20261018')
 PRED_DIR = os.path.join(PKG, 'data/predictions_t4')
 CODE = '000688_SH'

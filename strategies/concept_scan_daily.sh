@@ -24,7 +24,7 @@ set -uo pipefail
 # 脚本所在目录（2026-11-27 迁入 techAnly-summary，替代原 bin/ 路径）
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-cd /root/.openclaw/workspace || exit 1
+cd "${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}" || exit 1
 
 export TZ=Asia/Shanghai
 LANG=C.UTF-8
@@ -57,7 +57,7 @@ else
 import subprocess, os
 msg = "⚠️ 概念拓扑缠论选股 执行失败，请查看 .cache/concept_scan_daily.log"
 subprocess.run(["openclaw","message","send","--channel","qqbot",
-                "--target", os.environ.get("CS_QQ_TARGET","qqbot:c2c:D3056302911060130E3DEEC57C618084"),
+                "--target", os.environ.get("CS_QQ_TARGET",""),
                 "--message", msg], capture_output=True, timeout=120)
 PY
 fi

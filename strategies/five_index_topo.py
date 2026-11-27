@@ -6,7 +6,7 @@
 要带上「5 个指数（沪深300/中证500/中证1000/创业板指/科创50）的拓扑结构图」。
 
 口径不在这里重算，分两层：
-  ① 数据：/root/.cache/topo5/close_YYYYMMDD.csv（全市场逐日收盘，tushare pro.daily 增量刷新）
+  ① 数据：~/.cache/topo5/close_YYYYMMDD.csv（全市场逐日收盘，tushare pro.daily 增量刷新）
   ② 出图：charts/five_index.py
        · 左 = 缠论·分型版（分型→笔→中枢→买卖点）
        · 右 = 成分股拓扑结构（相关矩阵 → UMAP + Ollivier-Ricci 曲率 + Betti + 结构分 + 趋势层）
@@ -37,13 +37,13 @@ import sys
 from datetime import datetime
 
 WS = os.environ.get("OPENCLAW_WORKSPACE") or (__import__("ocsecrets").workspace())
-REPO = os.environ.get("TECHANLY_DIR", "/root/techAnly-summary")
-PANEL_DIR = os.environ.get("TOPO_PANEL_DIR", "/root/.cache/topo5")
+REPO = os.environ.get("TECHANLY_DIR") or os.path.expanduser("~/techAnly-summary")
+PANEL_DIR = os.environ.get("TOPO_PANEL_DIR") or os.path.expanduser("~/.cache/topo5")
 OUT_DIR = os.path.join(WS, ".cache")
 
 
 def _refresh_panel(n_days: int, budget_s: int = 300) -> int:
-    """增量刷新 /root/.cache/topo5：补齐最近 n_days+5 个交易日的全市场收盘。返回新增文件数。
+    """增量刷新 ~/.cache/topo5：补齐最近 n_days+5 个交易日的全市场收盘。返回新增文件数。
 
     ⚠️ 2026-11-24 事故：tushare 代理（ttx.dailyfetch.top）抽风时 Read timeout 30s × 多次重试，
     把整个大盘日报拖到 cron 的 2400s 超时被杀 —— 文字和图**一张都没推出去**。

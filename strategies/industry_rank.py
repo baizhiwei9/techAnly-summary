@@ -34,7 +34,7 @@ import os, sys, json, socket, argparse, datetime, time
 _o = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _o(*a, **k) if r[0] == socket.AF_INET]
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 MOM_WIN = int(os.environ.get('IND_RANK_WIN', '5'))     # 名次用的动量窗口（交易日）

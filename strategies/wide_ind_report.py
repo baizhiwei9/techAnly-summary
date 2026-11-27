@@ -84,8 +84,8 @@ CACHE = os.path.join(WS, ".cache", "wide_ind_report")
 for _p in (OUT_DIR, CACHE):
     os.makedirs(_p, exist_ok=True)
 
-FEISHU_CHAT = os.environ.get("WIR_FEISHU_CHAT", "oc_0e4e3335f97551eba50a32d6ccf8c12c")
-QQ_TARGET = os.environ.get("WIR_QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
+FEISHU_CHAT = os.environ.get("WIR_FEISHU_CHAT") or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
+QQ_TARGET = os.environ.get("WIR_QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
 SIGN = "📎 来自 OpenClaw.Deepseek"
 
 # 配图（4 张：宽基周/日 + 行业周/日）——由 main() 填充

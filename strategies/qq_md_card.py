@@ -29,13 +29,13 @@
 """
 import os, sys, json, hashlib, base64, socket, time, argparse, urllib.request, urllib.parse
 
-WS = "/root/.openclaw/workspace"
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.join(WS, "bin"))
 _o = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _o(*a, **k) if r[0] == socket.AF_INET]
 
 CFG = os.path.join(os.path.dirname(WS), "openclaw.json")
-DEFAULT_TARGET = os.environ.get("CHAN_QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
+DEFAULT_TARGET = os.environ.get("CHAN_QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
 
 
 # ───────────────────────── 鉴权 ─────────────────────────

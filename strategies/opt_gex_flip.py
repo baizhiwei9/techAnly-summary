@@ -530,7 +530,7 @@ def main():
         report_series(df)
         png = plot_series(df, int(df.trade_date.iloc[-1]))
         import shutil
-        dst_dir = '/root/.openclaw/media/qqbot'
+        dst_dir = os.path.expanduser("~/.openclaw/media/qqbot")
         if os.path.isdir(dst_dir):
             dst = os.path.join(dst_dir, 'gex_series_flip.png')
             shutil.copy(png, dst)
@@ -702,7 +702,7 @@ def main():
         plt.close(fig)
         print(f'PNG → {png}')
         import shutil
-        dst_dir = '/root/.openclaw/media/qqbot'
+        dst_dir = os.path.expanduser("~/.openclaw/media/qqbot")
         if os.path.isdir(dst_dir):
             dst = os.path.join(dst_dir, 'gex_flip_1013.png')
             shutil.copy(png, dst)

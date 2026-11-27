@@ -21,7 +21,7 @@ except Exception:
 
 import json, os, sys, statistics, math, argparse, datetime
 
-WS = '/root/.openclaw/workspace'
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ⚠️ 2026-11-09：本文件是 flow_diag_lib.py 的早期副本，数据层已落后（会有
@@ -777,8 +777,8 @@ def build(chain_names=None, topn=10):
     return '\n'.join(L), A, Bs, days
 
 
-QQ_TARGET = os.environ.get('FD_QQ_TARGET', 'qqbot:c2c:D3056302911060130E3DEEC57C618084')
-FEISHU_CHAT = os.environ.get('FD_FEISHU_CHAT', 'oc_5971f823bf987081f722f2942bbc8d71')
+QQ_TARGET = os.environ.get('FD_QQ_TARGET') or os.environ.get("QQ_DEFAULT_TARGET", "")
+FEISHU_CHAT = os.environ.get('FD_FEISHU_CHAT') or os.environ.get("FEISHU_CHAT_STOCK") or os.environ.get("FEISHU_CHAT_ID", "")
 
 
 def push_qq(text, target=None):

@@ -7,7 +7,7 @@ set -u
 
 # 脚本所在目录（2026-11-27 迁入 techAnly-summary，替代原 bin/ 路径）
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd /root/.openclaw/workspace
+cd "${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}"
 LOG=.cache/tda_60_daily_cron.log
 : > "$LOG"   # 每次清空，便于校验
 

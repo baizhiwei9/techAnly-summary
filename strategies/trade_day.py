@@ -36,7 +36,7 @@ import socket
 _orig = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _orig(*a, **k) if r[0] == socket.AF_INET]
 
-BASE = '/root/.openclaw/workspace'
+BASE = os.path.expanduser("~/.openclaw/workspace")
 CACHE = os.path.join(BASE, '.cache', 'trade_cal.json')
 FMT = '%Y%m%d'
 

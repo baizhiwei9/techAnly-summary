@@ -41,7 +41,7 @@ import os
 import sys
 from collections import Counter, defaultdict
 
-WS = "/root/.openclaw/workspace"
+WS = os.path.expanduser("~/.openclaw/workspace")
 sys.path.insert(0, os.path.join(WS, "bin"))
 
 FONT = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"

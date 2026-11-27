@@ -67,8 +67,8 @@ IDX_CACHE.mkdir(parents=True, exist_ok=True)
 OUT_DIR = Path(os.path.join(WS, "memory", "concept_reports"))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-QQ_TARGET = os.environ.get("CS_QQ_TARGET", "qqbot:c2c:D3056302911060130E3DEEC57C618084")
-FEISHU_CHAT = os.environ.get("CS_FEISHU_CHAT", "oc_0e4e3335f97551eba50a32d6ccf8c12c")
+QQ_TARGET = os.environ.get("CS_QQ_TARGET") or os.environ.get("QQ_DEFAULT_TARGET", "")
+FEISHU_CHAT = os.environ.get("CS_FEISHU_CHAT") or os.environ.get("FEISHU_CHAT_DM") or os.environ.get("FEISHU_CHAT_ID", "")
 SIGN = "📎 来自 OpenClaw.Deepseek"
 
 MOM20_DAYS = 20
