@@ -1,0 +1,5 @@
+numpy
+pandas
+PyWavelets
+akshare
+requests
