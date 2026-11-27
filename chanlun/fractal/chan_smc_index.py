@@ -427,11 +427,20 @@ def smc_local(df, k, tag):
 IDX = [("沪深300", "000300.SH"), ("中证500", "000905.SH"),
        ("中证1000", "000852.SH"), ("创业板指", "399006.SZ"), ("科创50", "000688.SH")]
 
-def fetch_daily(ts_code):
+def fetch_daily(ts_code, df=None):
     """指数日线：**data_hub `index_daily`** 优先 → tushare `index_daily` → 本地缓存
 
     取数（2026-11-13 统一）。返回 DataFrame 带 dt/open/high/low/close/volume（升序）。
+
+    2026-11-28：``df`` 给定时直接返回它（数据注入，不取数、不依赖 DataHub），
+    列名随意，见 chanlun/data_input.py。
     """
+    if df is not None:
+        try:
+            from chanlun.data_input import normalize_daily
+        except ImportError:                  # 以脚本方式运行（chanlun/ 在 sys.path）
+            from data_input import normalize_daily
+        return normalize_daily(df)
     cache = os.path.join(WS, ".cache/chan_daily", ts_code + ".csv")
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     # ① data_hub
