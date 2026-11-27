@@ -70,12 +70,10 @@ _WS = os.environ.get("TECH_WS") or os.path.dirname(os.path.dirname(
 for _sd in ("misc/core", "misc/engine", "chanlun/fractal", "chanlun/ma",
             "chanlun/multiscale", "smc", "misc", "wavelet", ""):
     _p = os.path.join(_WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ── 网络出口：默认 IPv4，东财行情族走 IPv6（统一走 net_guard，别自己写）──────
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:                                                # noqa: BLE001
     import socket as _socket
@@ -183,7 +181,7 @@ def _from_datahub(typ, code):
     if typ in _SECTOR_TYPES:
         return _sector_from_datahub(typ, code)
     try:
-        import dh_bridge as D
+        import misc.core.dh_bridge as D
     except Exception:                                            # noqa: BLE001
         return None
     if not D.enabled():
@@ -530,7 +528,7 @@ def notify_line():
     若调用方同时设了 `MAIL_TO` / 邮件配置，就顺手把脱敏收件人显示出来。
     """
     try:
-        import mailer
+        import misc.core.mailer as mailer
         rc = (mailer.load_config() or {}).get("to") or ""
     except Exception:                                            # noqa: BLE001
         rc = ""
@@ -723,7 +721,7 @@ def send_email(subject, body_md, img_path, to=None, dry_run=False):
     发不出去也不抛异常——报警链路不能因为通道挂掉把主流程带死。
     """
     try:
-        import notify
+        import misc.core.notify as notify
     except Exception as e:                                       # noqa: BLE001
         print("[email] notify 不可用，跳过：%s" % str(e)[:120])
         return False

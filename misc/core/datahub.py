@@ -78,13 +78,11 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
@@ -307,7 +305,7 @@ def _l2_tushare(sym, end, days):
         指数 : index_daily（指数无需复权）
     """
     try:
-        import tushare_init as ti
+        import misc.core.tushare_init as ti
         pro = ti.get_pro()
     except Exception as e:
         log("L2 tushare init err %s" % str(e)[:80], err=True)
@@ -494,7 +492,7 @@ def _l3_ths(sym, end, days):
     本函数只处理**个股**；指数走腾讯/新浪更省事。
     """
     try:
-        import ths_hub as TH
+        import misc.core.ths_hub as TH
     except Exception as e:
         log("L3 ths %s 模块不可用 %s" % (sym, str(e)[:60]), err=True)
         return []
@@ -653,7 +651,7 @@ def _sw_l1(ts_code, n):
 def _sw_l2(ts_code, n):
     """L2 TuShare：sw_daily"""
     import datetime as _dt
-    from tushare_init import ts_call
+    from misc.core.tushare_init import ts_call
     end = _dt.date.today().strftime("%Y%m%d")
     df = ts_call("sw_daily", ts_code=ts_code, end_date=end)
     if df is None or not len(df):
@@ -765,7 +763,7 @@ def trade_dates(end=None, days=60):
         cal = []
     if len(cal) < 100 or (cal and cal[-1] < end):
         try:
-            import tushare_init as ti
+            import misc.core.tushare_init as ti
             pro = ti.get_pro()
             start = time.strftime("%Y%m%d", time.localtime(time.time() - 900 * 86400))
             df = pro.trade_cal(exchange="SSE", start_date=start, end_date="20991231")
@@ -785,7 +783,7 @@ def trade_dates(end=None, days=60):
 def _margin_l1_tushare(day):
     """TuShare margin_detail 全市场（含融券余额/两融余额）"""
     try:
-        import tushare_init as ti
+        import misc.core.tushare_init as ti
         df = ti.ts_call("margin_detail", trade_date=d8(day))
     except Exception as e:
         log("margin tushare %s err %s" % (day, str(e)[:90]), err=True)

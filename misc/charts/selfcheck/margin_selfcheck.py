@@ -4,7 +4,6 @@
 import ast, os, subprocess, sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.path.join(REPO, "misc/charts"))
 os.environ.setdefault("DATA_HUB_PATH", "/root/.openclaw/workspace/optstack")
 
 ok = True
@@ -14,7 +13,7 @@ def chk(name, cond, extra=""):
     if not cond: ok = False
 
 print("① registry 登记")
-import registry
+import misc.charts.registry as registry
 d = registry.get("margin")
 chk("registry 里有 margin", d is not None)
 chk("module 指向 charts/margin.py", d and d["module"] == "charts/margin.py")

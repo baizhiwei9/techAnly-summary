@@ -27,9 +27,7 @@ from datetime import datetime
 _HERE = os.path.dirname(os.path.abspath(__file__))          # …/misc/charts
 _REPO = os.path.dirname(os.path.dirname(_HERE))             # …/（仓库根）
 
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
-import registry  # noqa: E402
+import misc.charts.registry as registry
 
 
 def _bootstrap_path():

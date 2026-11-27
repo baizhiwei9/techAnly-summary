@@ -68,13 +68,11 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
@@ -82,7 +80,7 @@ except Exception:
 
 # data_hub 取数桥（纯适配层，失败一律返回 None → 自动降级 tushare 老链路）
 try:
-    import dh_bridge as _DHB
+    import misc.core.dh_bridge as _DHB
 except Exception:                                             # noqa: BLE001
     _DHB = None
 
@@ -662,7 +660,7 @@ def load_index(ts_code: str) -> pd.DataFrame | None:
 def _load_index_local(ts_code: str, cache: str) -> pd.DataFrame | None:
     """老链路兜底：tushare `index_daily` → 本地缓存（原样保留）"""
     try:
-        import tushare_init as ti
+        import misc.core.tushare_init as ti
         pro = ti.get_pro()
         for _ in range(3):
             try:

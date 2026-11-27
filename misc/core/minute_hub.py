@@ -24,10 +24,8 @@ for _guess in (
         _os.path.dirname(_os.path.abspath(__file__)),
 ):
     _g = _os.path.normpath(_guess)
-    if _os.path.isdir(_g) and _g not in _sys.path:
-        _sys.path.insert(0, _g)
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo

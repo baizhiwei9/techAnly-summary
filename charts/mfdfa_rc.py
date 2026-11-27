@@ -34,8 +34,6 @@ import argparse
 import os
 import sys
 
-if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (sys.path / net_guard / 中文字体 / Agg)
 
 import matplotlib.dates as mdates  # noqa: E402

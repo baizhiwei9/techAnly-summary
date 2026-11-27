@@ -22,10 +22,8 @@ import tushare as ts
 # 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
 # net_guard 在 misc/core/（与本文件同目录），import 前先补 sys.path
 import socket as _socket
-if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     # 极端情况找不到 net_guard：退回一刀切禁 IPv6（老行为）

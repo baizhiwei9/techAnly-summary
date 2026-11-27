@@ -42,8 +42,6 @@ import pandas as pd
 # ─────────────── 路径（2026-11-14 去本机绝对路径）：部署目录可用 TECH_WS 覆盖 ───────────────
 _WS = os.environ.get("TECH_WS") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CORE = os.path.join(_WS, "misc", "core")
-if os.path.isdir(_CORE) and _CORE not in sys.path:
-    sys.path.insert(0, _CORE)
 
 import matplotlib
 matplotlib.use("Agg")
@@ -91,8 +89,7 @@ def stock_names(codes):
     if not codes:
         return {}
     try:
-        sys.path.insert(0, _CORE)
-        from tushare_init import get_pro  # noqa: E402
+        from misc.core.tushare_init import get_pro  # noqa: E402
         sb = get_pro().stock_basic(fields="ts_code,name")
         m = dict(zip(sb["ts_code"], sb["name"]))
         return {c: m.get(c, c) for c in codes}
@@ -102,8 +99,7 @@ def stock_names(codes):
 
 def fetch_by_tushare(index_code: str, days: int = 60):
     """tushare 直连：index_weight 取成分 + daily 逐只取收盘。返回 (dates, close_df, name_map)。"""
-    sys.path.insert(0, _CORE)
-    from tushare_init import get_pro  # noqa: E402
+    from misc.core.tushare_init import get_pro  # noqa: E402
 
     pro = get_pro()
     end = datetime.now()
@@ -143,7 +139,6 @@ def fetch_by_tushare(index_code: str, days: int = 60):
 
 def fetch_by_datahub(target: str, days: int = 60):
     """走 techAnly 取数层（dh_bridge / data_hub）。"""
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from topology import data_loader as dl  # noqa: E402
     from topology import targets as T  # noqa: E402
 
@@ -1101,8 +1096,7 @@ def _index_close_series(index_code: str, days: int = 700, tries: int = 3):
     2026-11-14 加 3 次重试：tushare 代理端点偶发 Read timeout，
     失败会静默退回「成分等权合成」——那会让趋势票跟指数口径不一致，必须重试。
     """
-    sys.path.insert(0, _CORE)
-    from tushare_init import get_pro  # noqa: E402
+    from misc.core.tushare_init import get_pro  # noqa: E402
     _d0 = (datetime.now() - timedelta(days=days * 2 + 60)).strftime("%Y%m%d")
     _d1 = datetime.now().strftime("%Y%m%d")
     last_err = None

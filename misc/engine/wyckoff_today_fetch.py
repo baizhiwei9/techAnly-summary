@@ -61,17 +61,15 @@ KCACHE = os.path.join(CACHE, 'k')
 
 # 同花顺模块（misc/core/ths_hub.py）
 _CORE = os.path.join(WS, "misc", "core")
-if _CORE not in sys.path:
-    sys.path.insert(0, _CORE)
 try:
-    import ths_hub as THS
+    import misc.core.ths_hub as THS
 except Exception as _e:      # pragma: no cover
     THS = None
     print("[wyckoff_today] ths_hub 不可用: %s" % _e, file=sys.stderr, flush=True)
 
 # data_hub 取数桥（纯适配层，失败一律返回空 → 自动降级 ths_hub 老链路）
 try:
-    import dh_bridge as DHB
+    import misc.core.dh_bridge as DHB
 except Exception as _e:      # pragma: no cover
     DHB = None
     print("[wyckoff_today] dh_bridge 不可用: %s" % _e, file=sys.stderr, flush=True)

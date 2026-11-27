@@ -3,13 +3,12 @@ A 股股票回测脚本 - 支持指定股票代码和日期范围
 """
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from chanlun_backtest.data import fetch_astock_data
-from chanlun_backtest.indicators import calculate_all_indicators
-from chanlun_backtest.signals import scan_signals_astock
-from chanlun_backtest.engine import BacktestEngine
-from chanlun_backtest.report import generate_report
+from chanlun.multiscale.chanlun_backtest.data import fetch_astock_data
+from chanlun.multiscale.chanlun_backtest.indicators import calculate_all_indicators
+from chanlun.multiscale.chanlun_backtest.signals import scan_signals_astock
+from chanlun.multiscale.chanlun_backtest.engine import BacktestEngine
+from chanlun.multiscale.chanlun_backtest.report import generate_report
 
 
 def run_backtest(symbol: str, start_date: str, end_date: str, period: str = 'daily', output_dir: str = None):

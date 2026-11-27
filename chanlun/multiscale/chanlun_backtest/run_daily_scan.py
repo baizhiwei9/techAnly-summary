@@ -25,10 +25,9 @@ def _sina_sym(code):
 def _is_etf(code):
     return str(code)[:2] in ("51", "15", "16", "50", "58", "56")
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from chanlun_backtest.structure_indicators import calculate_structure_indicators
-from chanlun_backtest.structure_signals import detect_structure_signals
+from chanlun.multiscale.chanlun_backtest.structure_indicators import calculate_structure_indicators
+from chanlun.multiscale.chanlun_backtest.structure_signals import detect_structure_signals
 
 
 # === 监控标的 ===

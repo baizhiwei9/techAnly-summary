@@ -12,8 +12,6 @@
 实现复用 tech_summary 的 draw 逻辑与 chan_geometry，口径完全一致。0 token，纯 matplotlib。
 """
 import os as _os, sys as _sys
-if __package__ in (None, ""):
-    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (仓库根/sys.path/网络出口/中文字体/Agg)
 
 import numpy as np  # noqa: E402
@@ -21,9 +19,9 @@ import pandas as pd  # noqa: E402
 import matplotlib.text  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
-import chan_ma_trend_v2 as M          # noqa: E402
-import tech_summary as TS            # noqa: E402
-from tech_summary import (            # noqa: E402
+import chanlun.ma.chan_ma_trend_v2 as M
+import misc.engine.tech_summary as TS
+from misc.engine.tech_summary import (            # noqa: E402
     MOON, STAR, MA_PALETTE, MA_LW, RED, GRN, BLUE, ORANGE,
     glyph_marker, ma_structure, ma20_state,
 )
@@ -47,9 +45,9 @@ def _finalize_png(path):
         return path
 
 
-import chan_ma_trend_v2 as M          # noqa: E402
-import tech_summary as TS            # noqa: E402
-from tech_summary import (            # noqa: E402
+import chanlun.ma.chan_ma_trend_v2 as M
+import misc.engine.tech_summary as TS
+from misc.engine.tech_summary import (            # noqa: E402
     MOON, STAR, MA_PALETTE, MA_LW, RED, GRN, BLUE, ORANGE,
     glyph_marker, ma_structure, ma20_state,
 )
@@ -524,7 +522,7 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=None, dpi=None
     if not picks:
         return None
     picks = picks[:max_items]
-    import smc_core as S
+    import smc.smc_core as S
     from charts.chan_fractal import chan_geometry
 
     n = len(picks)
@@ -799,7 +797,7 @@ def draw_stock_grid(picks, out_path, n_show=120, title=None, ncol=None, dpi=None
 def find_sells_for_chart(d):
     """图上用的卖点（复用 tech_buypoint 的全中枢扫描，失败就返回空）"""
     try:
-        import tech_buypoint as TB
+        import misc.engine.tech_buypoint as TB
         fx = TS.chan_fx(d, "day")
         cl = float(d["close"].iloc[-1])
         return TB.find_sells(d, {"sell_list": fx.get("sell_list") or []},

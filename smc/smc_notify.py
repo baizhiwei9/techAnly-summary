@@ -27,9 +27,8 @@ import subprocess
 import sys
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from smc_config import COZE, INSTRUMENTS, TRADE_TF, REPORT_DIR, FEISHU_WEBHOOK, FEISHU_APP_CHAT, level_of
-import smc_db
+from smc.smc_config import COZE, INSTRUMENTS, TRADE_TF, REPORT_DIR, FEISHU_WEBHOOK, FEISHU_APP_CHAT, level_of
+import smc.smc_db as smc_db
 
 SIGN = "📎 来自 openclaw.glm · SMC 多尺度模拟交易引擎"
 BRIDGE = COZE["bridge"]
@@ -47,7 +46,7 @@ _ZCACHE = {}
 # ───────────────────── 通道 ─────────────────────
 def _plain_card(text, title=None):
     """把纯文本包装成一张交互式卡片（标题+markdown+署名）。"""
-    import smc_feishu
+    import smc.smc_feishu as smc_feishu
     ttl = title or "⚡ SMC 多尺度模拟交易"
     return smc_feishu.build_card(ttl, text, sign=SIGN)
 
@@ -63,7 +62,7 @@ def send_feishu(text, title=None):
     # ① 应用（机器人）通道：应用被拉进哪个群就能发哪个群
     if FEISHU_APP_CHAT:
         try:
-            import smc_feishu
+            import smc.smc_feishu as smc_feishu
             r = smc_feishu.send_card(FEISHU_APP_CHAT, card)
             ok = r.get("code") == 0
             return ("feishu-app-多尺度群", 0 if ok else -1, json.dumps(r, ensure_ascii=False)[:160])
@@ -443,7 +442,7 @@ def close_log(n=15):
 def _load_ltf(code, kind, tf):
     """读**磁盘缓存**（不联网）拿到该标的交易级别的 K 线。"""
     import pandas as pd
-    from smc_config import CACHE as _C, base_freq
+    from smc.smc_config import CACHE as _C, base_freq
     fn = os.path.join(_C, f"{code}_{base_freq(tf)}.csv")
     if not os.path.exists(fn):
         return None
@@ -471,7 +470,7 @@ def _zones_one(code, kind, tf):
         return _ZCACHE[key]
     out = None
     try:
-        import smc_core
+        import smc.smc_core as smc_core
         d = _load_ltf(code, kind, tf)
         if d is not None:
             fr = smc_core.Frame(d, 1)
@@ -541,7 +540,7 @@ def zones_block(items=None, max_items=None, near=None, force_all=False, header=N
         if signal_only:          # 只有「只报确认」模式才在这里追一行，否则交给 signals_block
             sigs = [s for s in (z.get("signals") or []) if s.get("state") in HOT][:2]
             if sigs:
-                import smc_core
+                import smc.smc_core as smc_core
                 L.append("     🎯 " + "｜".join(smc_core.confirm_text(s, px=px) for s in sigs))
     if n_all > len(cand):
         L.append(f"  （另有 {n_all - len(cand)} 个标的也有缺口/订单块）")
@@ -560,7 +559,7 @@ def signals_block(items=None, max_items=None, header=None):
     max_items = max_items or ZONES_MAX_IT
     if items is None:
         items = [(it["code"], it["name"], it["kind"], level_of(it)) for it in INSTRUMENTS]
-    import smc_core
+    import smc.smc_core as smc_core
     HOT = {"buy": 0, "reject": 1, "broken": 2, "breakout": 3}
     hit, soft = [], []
     for code, name, kind, tf in items:
@@ -595,12 +594,12 @@ def signals_block(items=None, max_items=None, header=None):
 
 def smc_core_px(v):
     """价格显示（与 smc_core._fmt_px 同口径，单独包一层避免循环依赖）。"""
-    import smc_core
+    import smc.smc_core as smc_core
     return smc_core._fmt_px(v)
 
 
 def _zones_text(fvgs, obs, px=None):
-    import smc_core
+    import smc.smc_core as smc_core
     return smc_core.zones_text(fvgs, obs, px=px)
 
 

@@ -41,8 +41,6 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 CACHE = os.path.join(WS, ".cache")
 SW_MEMBER = os.path.join(CACHE, "sw_member_all.json")
@@ -52,7 +50,7 @@ STOCK_NAMES = os.path.join(CACHE, "tech_stock_names.json")
 
 def build_member():
     """index_member_all 单次上限 2000 条 → 用 offset 分页拉全（约 5900 只）。"""
-    from tushare_init import ts_call
+    from misc.core.tushare_init import ts_call
     out = {}
     off, page = 0, 2000
     while True:
@@ -79,7 +77,7 @@ def build_member():
 
 
 def build_index_map():
-    from tushare_init import ts_call
+    from misc.core.tushare_init import ts_call
     out = {}
     for lv in ("L1", "L2", "L3"):
         df = ts_call("index_classify", level=lv)
@@ -111,7 +109,7 @@ def build_names():
         except Exception:
             pass
     if len(out) < 1000:
-        from tushare_init import ts_call
+        from misc.core.tushare_init import ts_call
         df = ts_call("stock_basic", exchange="", list_status="L")
         if df is not None and len(df):
             for r in df.to_dict("records"):

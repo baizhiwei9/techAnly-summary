@@ -22,10 +22,8 @@ for _guess in (
         _os.path.dirname(_os.path.abspath(__file__)),
 ):
     _g = _os.path.normpath(_guess)
-    if _os.path.isdir(_g) and _g not in _sys.path:
-        _sys.path.insert(0, _g)
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
@@ -38,17 +36,14 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from smc_config import CACHE, INSTRUMENTS
+from smc.smc_config import CACHE, INSTRUMENTS
 
 # ────────────────────── 取数统一（2026-11-13）──────────────────────
 # 大佬定：「技术分析这个玩意你不要自己取数了，就用 DataHub 来取数」。
 # 本模块只保留 data_hub 取不到的（期货分钟/期货日线），其余走 dh_bridge。
 # 硬约束：data_hub 只读；每个点失败一律降级老链路，算法一行不改。
 try:
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "misc", "core"))
-    import dh_bridge as _DHB
+    import misc.core.dh_bridge as _DHB
 except Exception:                                              # noqa: BLE001
     _DHB = None
 
@@ -104,7 +99,7 @@ def _norm(df, tcol="t"):
 # ── 宽基 ETF 分钟线（60m / 30m）──────────────────────────────
 def _etf_min(code, per, n=320):
     """先取更长的新浪 K 线(datalen 1023)，再回退腾讯 320 根。"""
-    from minute_hub import tx_kline, sina_kline_v2, sina_kline
+    from misc.core.minute_hub import tx_kline, sina_kline_v2, sina_kline
     for fn, tag, nl in ((sina_kline_v2, "SINA", 1023), (tx_kline, "TX", n), (sina_kline, "AK", None)):
         try:
             if fn is sina_kline:
@@ -169,7 +164,7 @@ def _fut_min(code, per):
             time.sleep(1.0)
     _log(f"{code} 新浪{per}m失败({last_err})")
     try:
-        from minute_hub import get_kline
+        from misc.core.minute_hub import get_kline
         d = _norm(get_kline(code, per, kind="fut", cache=False))
         d = _drop_inprogress(d, per)
         if d is not None and len(d) > 100:
@@ -216,9 +211,8 @@ def _etf_daily_local(code):
     2026-11-14：akshare 这一层从东财 `fund_etf_hist_em` 换成新浪 `fund_etf_hist_sina`
       （无日期参数，全量下发，本地按 start 切片）；东财版保留但只在 TECH_ALLOW_EM=1 时走。
     """
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
     try:
-        from tushare_init import ts_call
+        from misc.core.tushare_init import ts_call
         ts = code[2:] + (".SH" if code.startswith("sh") else ".SZ")
         d = None
         for _try in range(2):            # tushare 偶发 RemoteDisconnected，重试一次
@@ -348,7 +342,7 @@ def get(code, kind, freq="60m", refresh=False):
 
 def fetch_all(refresh=False, quiet=False):
     """按各标的自己的交易级别抓母数据：股票/ETF 抓 1d，期货抓 60m（另抓 30m/1d 备用）。"""
-    from smc_config import level_of, base_freq
+    from smc.smc_config import level_of, base_freq
     out = {}
     for it in INSTRUMENTS:
         r = {}

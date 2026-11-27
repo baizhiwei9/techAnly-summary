@@ -18,9 +18,9 @@ import argparse
 import json
 import sys
 
-import levels as LV
-import tech_summary as TS
-import smc_core as S
+import misc.strategies.levels as LV
+import misc.engine.tech_summary as TS
+import smc.smc_core as S
 
 
 def _fmt_dt(x):

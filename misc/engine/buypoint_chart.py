@@ -5,8 +5,6 @@ import os as _os, sys as _sys
 _d = _os.path.dirname(_os.path.abspath(__file__))
 for _ in range(6):
     if _os.path.isdir(_os.path.join(_d, "chanlun")) and _os.path.isdir(_os.path.join(_d, "misc")):
-        if _d not in _sys.path:
-            _sys.path.insert(0, _d)
         break
     _nd = _os.path.dirname(_d)
     if _nd == _d:

@@ -6,13 +6,12 @@ import os
 import argparse
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from chanlun_backtest.data import fetch_silver_data
-from chanlun_backtest.indicators import calculate_all_indicators
-from chanlun_backtest.signals import scan_signals
-from chanlun_backtest.engine import BacktestEngine
-from chanlun_backtest.report import generate_report
+from chanlun.multiscale.chanlun_backtest.data import fetch_silver_data
+from chanlun.multiscale.chanlun_backtest.indicators import calculate_all_indicators
+from chanlun.multiscale.chanlun_backtest.signals import scan_signals
+from chanlun.multiscale.chanlun_backtest.engine import BacktestEngine
+from chanlun.multiscale.chanlun_backtest.report import generate_report
 
 
 def main():

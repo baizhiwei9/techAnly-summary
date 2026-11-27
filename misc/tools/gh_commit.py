@@ -21,8 +21,7 @@ import sys
 import urllib.error
 import urllib.request
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gh_publish import api, check_secrets, gh_token  # noqa: E402
+from misc.tools.gh_publish import api, check_secrets, gh_token  # noqa: E402
 
 
 def blob(repo, token, raw):

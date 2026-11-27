@@ -28,17 +28,15 @@ import time
 _here = os.path.dirname(os.path.abspath(__file__))
 for _p in (_here, os.path.join(_here, "..", "engine"), os.path.join(_here, "..", "..")):
     _q = os.path.normpath(_p)
-    if os.path.isdir(_q) and _q not in sys.path:
-        sys.path.insert(0, _q)
 
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     pass
 
 try:
-    import ths_hub as THS
+    import misc.core.ths_hub as THS
 except Exception as _e:      # pragma: no cover
     THS = None
     print("[datafeed] ths_hub 不可用: %s" % _e, file=sys.stderr)
@@ -100,7 +98,7 @@ def board_list(kind="行业", eastmoney_fallback=None):
     if not eastmoney_fallback:
         raise RuntimeError("板块列表全部来源失败（东财兜底已关闭）")
     # 东财兜底
-    import wyckoff_today_fetch as F
+    import misc.engine.wyckoff_today_fetch as F
     fs = "m:90 t:2" if kind == "行业" else "m:90 t:3"
     _dg_throttle()
     try:
@@ -126,7 +124,7 @@ def board_kline(code, src="ths", years_back=6):
     # 东财兜底（仅当同花顺拿不到，且显式开启）
     if not USE_EASTMONEY:
         raise RuntimeError("板块 K 线取不到（东财兜底已关闭）")
-    import wyckoff_today_fetch as F
+    import misc.engine.wyckoff_today_fetch as F
     _dg_throttle()
     try:
         ks = F.kline(code, lmt=900)
@@ -148,7 +146,7 @@ def stock_kline(code, years_back=6):
             log("[datafeed] 同花顺个股 %s 失败 %s，退东财" % (code6, str(e)[:50]))
     if not USE_EASTMONEY:
         raise RuntimeError("个股 K 线取不到（东财兜底已关闭）")
-    import wyckoff_today_fetch as F
+    import misc.engine.wyckoff_today_fetch as F
     _dg_throttle()
     try:
         ks = F.kline(code6, lmt=900)
@@ -171,7 +169,7 @@ def ths_to_dg_board(kind="行业"):
     key = "map:%s" % kind
     if key in _DG_BOARD_CACHE:
         return _DG_BOARD_CACHE[key]
-    import wyckoff_today_fetch as F
+    import misc.engine.wyckoff_today_fetch as F
     fs = "m:90 t:2" if kind == "行业" else "m:90 t:3"
     _dg_throttle()
     try:
@@ -224,7 +222,7 @@ def board_members(board_code, src="dg", cap=60, name=None, kind="行业"):
             except Exception as e:
                 log("[datafeed] 板块名映射失败 %s" % str(e)[:50])
                 return []
-    import wyckoff_today_fetch as F
+    import misc.engine.wyckoff_today_fetch as F
     _dg_throttle()
     try:
         d = F._get("/api/qt/clist/get",

@@ -1379,7 +1379,7 @@ def summarize(res):
 def build_frames(base_df, level="h1"):
     """base_df = 母数据（h1 级别: 60m 母数据；day 级别: 日线母数据）。
     角色周期等于母周期时不再聚合，直接用。"""
-    from smc_config import LEVEL_MAP, base_freq
+    from smc.smc_config import LEVEL_MAP, base_freq
     m = LEVEL_MAP[level]
     base = base_freq(level)
     kk = {"htf": K_HTF, "mtf": K_MTF, "sub": K_SUB}

@@ -17,10 +17,9 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pandas as pd                      # noqa: E402
-import smc_core as C                     # noqa: E402
-from smc_config import CACHE             # noqa: E402
+import smc.smc_core as C
+from smc.smc_config import CACHE             # noqa: E402
 
 
 def load(code, freq):

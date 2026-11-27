@@ -12,10 +12,9 @@ import os
 import subprocess
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from smc_config import INSTRUMENTS
-import smc_data
-import smc_core
+from smc.smc_config import INSTRUMENTS
+import smc.smc_data as smc_data
+import smc.smc_core as smc_core
 
 
 def run_all(label):

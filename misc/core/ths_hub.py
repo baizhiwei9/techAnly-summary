@@ -34,8 +34,7 @@ import requests
 
 # 网络出口策略（默认 IPv4；东财白名单走 v6）
 try:
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     pass

@@ -54,8 +54,6 @@ import subprocess
 import sys
 from datetime import datetime, timedelta
 
-if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from charts.common import *  # noqa: F401,F403  (sys.path / net_guard / 中文字体 / Agg)
 from charts.rmt import (  # noqa: F401  统一 RMT 算法源（2026-11-18）
     ar5,
@@ -268,8 +266,6 @@ def _datahub():
     for base in cands:
         if not os.path.isdir(base):
             continue
-        if base not in sys.path:
-            sys.path.insert(0, base)
         try:
             import importlib
             mod = importlib.import_module("data_hub")
@@ -843,9 +839,7 @@ def send_alert_email(rows, alerts, chart=None, threshold=90.0, to=None, dry_run=
         return False
     try:
         _CORE = os.path.join(WS, "misc", "core")
-        if _CORE not in sys.path:
-            sys.path.insert(0, _CORE)
-        import notify
+        import misc.core.notify as notify
     except Exception as e:                                       # noqa: BLE001
         print("[alert] notify 不可用，只打印告警：%s" % str(e)[:120])
         return False

@@ -45,8 +45,6 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 DEFAULT_CHAT = os.environ.get("TECH_FEISHU_CHAT") or os.environ.get("CHAN_FEISHU_CHAT") or ""
 
 

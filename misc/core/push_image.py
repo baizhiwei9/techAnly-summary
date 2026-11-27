@@ -36,8 +36,6 @@ for _sd in ("bin", "", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/mu
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
             "misc/strategies", "misc/tools"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 MEDIA_DIR = os.path.expanduser("~/.openclaw/media/qqbot/charts")
 QQ_TARGET = os.environ.get("CHAN_QQ_TARGET", "")   # 留空=不发，需显式设 environment
 # ⚠️ 2026-11-10 踩坑：QQ 发图必须指定 --account（本机是 bot2），否则平台静默拦截

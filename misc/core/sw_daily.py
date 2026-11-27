@@ -46,13 +46,11 @@ def _repo_root(start):
 WS = os.environ.get("TECH_WS") or _repo_root(__file__)
 for _sd in ("misc/core", "misc/engine", "chanlun/fractal", "chanlun/ma", "smc", "misc"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # 网络出口策略：默认 IPv4；东财行情族走 IPv6（2026-11-12 东财 K 线仅 IPv6 可达）
 # ⚠️ 必须放在 sys.path 建好之后，否则 import net_guard 会失败、退回一刀切禁 IPv6
 try:
-    from net_guard import install as _net_install
+    from misc.core.net_guard import install as _net_install
     _net_install()
 except Exception:
     _orig_gai = socket.getaddrinfo
@@ -92,7 +90,7 @@ def sw_l2_map():
         m = {}
     if len(m) < 100:
         try:
-            from tushare_init import ts_call
+            from misc.core.tushare_init import ts_call
             df = ts_call("index_classify", level="L2", src="SW2021")
             if df is not None and len(df):
                 m = {str(r["index_code"]): r["industry_name"] for _, r in df.iterrows()}
@@ -136,7 +134,7 @@ def stock_sw(ts_code):
         return _MEMBER[ts_code]
     res = (None, None)
     try:
-        from tushare_init import ts_call
+        from misc.core.tushare_init import ts_call
         df = ts_call("index_member_all", ts_code=ts_code)
         if df is not None and len(df):
             r = None
@@ -217,7 +215,7 @@ def fetch_sw_daily(code, start="20200101", ttl_min=None):
 
     # ── L0 data_hub sw_index_daily（2026-11-14 新增 data_type，内部三级降级）
     try:
-        import dh_bridge as _DHB
+        import misc.core.dh_bridge as _DHB
         h = _DHB.sw_index_daily(code)
         if h is not None and len(h) > 100:
             df = h[["dt", "open", "high", "low", "close"]].copy()
@@ -246,7 +244,7 @@ def fetch_sw_daily(code, start="20200101", ttl_min=None):
     #   改用同花顺行业板块日线（ths_hub，全量 1662 根，不受封 IP 影响）。
     if df is None or not len(df):
         try:
-            import ths_hub as TH
+            import misc.core.ths_hub as TH
             nm = _sw_name(code)
             if nm:
                 ths_code = TH.board_code_by_name(nm, kind="行业")
@@ -264,7 +262,7 @@ def fetch_sw_daily(code, start="20200101", ttl_min=None):
     # ── L3 tushare（垫底，8s 硬超时）
     if df is None or not len(df):
         try:
-            from tushare_init import ts_call
+            from misc.core.tushare_init import ts_call
             df = ts_call("sw_daily", ts_code=code, start_date=beg, end_date=today8)
             if df is not None and len(df):
                 layer = "L3-tushare"

@@ -69,8 +69,6 @@ WS = os.environ.get("TECH_WS") or _repo_root(__file__)
 for _sd in ("bin", "", "core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
             "chanlun/multiscale/vendor", "report", "misc", "wavelet", "smc"):
     _p = os.path.join(WS, _sd)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ── 参数（2026-11-08 大佬定稿：大级别只看 MA160，不要 MA320）──
 A0 = (5, 10, 20)          # 笔：MA5/MA10 双穿 MA20
@@ -626,7 +624,7 @@ def macd_state(d: pd.DataFrame) -> str:
 def load_index(ts_code: str) -> pd.DataFrame | None:
     cache = os.path.join(WS, ".cache", "ma_trend_%s_d.csv" % ts_code.replace(".", "_"))
     try:
-        import tushare_init as ti
+        import misc.core.tushare_init as ti
         pro = ti.get_pro()
         for _ in range(3):
             try:
