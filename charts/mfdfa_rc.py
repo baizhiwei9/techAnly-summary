@@ -56,7 +56,8 @@ WS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ══════════════════════════════════════ 唯一画图实现 ══════════════════════════════
 def render(out, close, da=None, lam=None, name=None, label=None,
-           lookback=None, da_p90=None, rc=None, rc_mod=None, title_extra=None):
+           lookback=None, da_p90=None, rc=None, rc_mod=None, title_extra=None,
+           da_missing=None):
     """**唯一**画图函数：① 走势 ② MF-DFA Δα ③ λ1/λ2 ［④ R_cascade］。
 
     Args:
@@ -71,6 +72,9 @@ def render(out, close, da=None, lam=None, name=None, label=None,
         rc        : pd.Series R_cascade；给值才画第 ④ 栏
         rc_mod    : rcascade 模块（提供 THR_HIGH/THR_LOW/THR_DEEP）
         title_extra: 追加到副标题的说明
+        da_missing : Δα 拿不到时的**原因文字**；给值就画一个占位栏写明原因，
+                     不给就整栏省略。2026-11-27：省略一栏=静默降级，图看着正常
+                     只是少一栏，没人知道算法没跑起来（老版会写「数据不足」）。
 
     Returns: out 路径
     """
@@ -85,14 +89,38 @@ def render(out, close, da=None, lam=None, name=None, label=None,
 
     # ── 各栏数据裁剪到 close 的日期范围内（宽度 × 长度对齐）
     da_w = di_w = None
-    if da is not None and len(da):
-        da = pd.Series(da).dropna()
-        di_full = _as_dt(da.index)
-        m = (di_full >= t0) & (di_full <= t1)
-        if m.any():
-            da_w, di_w = da.values[m], di_full[m]
-    if da_p90 is None and da_w is not None and len(da_w):
-        da_p90 = float(np.quantile(da_w, 0.9))
+    _da_full = None
+    if da is not None:
+        try:
+            _da_raw = pd.Series(da)
+        except Exception:                                    # noqa: BLE001
+            _da_raw = None
+        if _da_raw is not None and len(_da_raw):
+            _n_raw = len(_da_raw)
+            _da_full = _da_raw.dropna()
+            if len(_da_full):
+                di_full = _as_dt(_da_full.index)
+                m = (di_full >= t0) & (di_full <= t1)
+                if m.any():
+                    da_w, di_w = _da_full.values[m], di_full[m]
+            if da_w is None and not da_missing:
+                # 给了 da 却画不出来 —— 同样不许静默省略（全 NaN / 与走势窗口不重叠）
+                da_missing = ("Δα 有 %d 个原始点，但去空后%s → 无法成图"
+                              % (_n_raw,
+                                 "全为空值" if not len(_da_full)
+                                 else "与走势窗口 %s~%s 无重叠"
+                                 % (pd.Timestamp(t0).strftime("%Y-%m-%d"),
+                                    pd.Timestamp(t1).strftime("%Y-%m-%d"))))
+    # P90 口径：优先用调用方给的全历史分位；给的是 nan/None 就退回
+    # **全历史**分位（不是窗口内分位，保持与日报表格同口径）。
+    if not (da_p90 is not None and np.isfinite(float(da_p90))):
+        _ref = _da_full if (_da_full is not None and len(_da_full)) else None
+        if _ref is not None:
+            da_p90 = float(np.quantile(_ref.values, 0.9))
+        elif da_w is not None and len(da_w):
+            da_p90 = float(np.quantile(da_w, 0.9))
+        else:
+            da_p90 = None
 
     lam_w = li_w = None
     if lam is not None and len(lam):
@@ -112,7 +140,7 @@ def render(out, close, da=None, lam=None, name=None, label=None,
 
     # ── 排版
     parts = [("走势", 1.0)]
-    if da_w is not None:
+    if da_w is not None or da_missing:
         parts.append(("Δα", 1.0))
     if lam_w is not None:
         parts.append(("λ", 1.0))
@@ -128,10 +156,12 @@ def render(out, close, da=None, lam=None, name=None, label=None,
     # ① 走势
     ax = axes[k]; k += 1
     ax.plot(ci, close.values, color="#1f3b73", lw=1.7,
-            label="%s 收盘价" % (label or ""))
+            label=("%s 收盘价" % (label or name or "")).strip())
     ax.set_ylabel("收盘价", fontsize=12)
     ax.set_title("① 走势 · 近 %d 交易日" % len(close), fontsize=13, pad=8)
     ax.grid(alpha=0.25)
+    if ax.get_legend_handles_labels()[1][0].strip() != "收盘价":
+        ax.legend(loc="upper left", fontsize=10)   # ① 栏也要图例，否则标的名白拼
 
     # ② MF-DFA Δα
     if da_w is not None:
@@ -149,6 +179,14 @@ def render(out, close, da=None, lam=None, name=None, label=None,
         ax.annotate("最新 Δα=%.3f" % da_w[-1], xy=(di_w[-1], da_w[-1]),
                     xytext=(6, 6), textcoords="offset points",
                     color="#c62828", fontsize=10.5, fontweight="bold")
+    elif da_missing:
+        # 不静默省略：栏留着，写清「为什么没有」
+        ax = axes[k]; k += 1
+        ax.text(0.5, 0.5, da_missing, transform=ax.transAxes, ha="center",
+                va="center", fontsize=12, color="#c62828", wrap=True)
+        ax.set_ylabel("Δα", fontsize=12, color="#c62828")
+        ax.set_title("② MF-DFA 多分形谱宽 Δα · 数据不可用", fontsize=12, pad=8)
+        ax.grid(alpha=0.25)
 
     # ③ λ1 / λ2 + MA5
     if lam_w is not None:
@@ -241,8 +279,15 @@ def plot_from_series(name, close, da, lam, out, lookback=None, da_p90=None,
 
     签名与 2026-11-27 之前完全一致；内部转调唯一的 `render()`。
     """
-    return render(out, close, da=da, lam=(lam_win if lam_win is not None else lam),
-                  name=name, lookback=lookback, da_p90=da_p90)
+    try:
+        _da = da if (da is not None and len(da)) else None
+    except Exception:                                        # noqa: BLE001
+        _da = None
+    return render(out, close, da=_da,
+                  lam=(lam_win if lam_win is not None else lam),
+                  name=name, lookback=lookback, da_p90=da_p90,
+                  da_missing=(None if _da is not None
+                              else "Δα 序列不可用（调用方未提供，见上游日志）"))
 
 
 def plot_panel(code="000688", typ="index_sh", lookback=250, out=None,
@@ -269,10 +314,22 @@ def plot_panel(code="000688", typ="index_sh", lookback=250, out=None,
 
     # ② Δα：算法在 phase_mfdfa（唯一实现），这里只调
     da = None
-    if rolling_delta_alpha is not None:
+    da_missing = None
+    if rolling_delta_alpha is None:
+        da_missing = "charts/phase_mfdfa.py 不可用（见启动日志）→ Δα 算不出来"
+    else:
         full_da = rolling_delta_alpha(d["close"].astype(float), N=250)
         if full_da is not None and len(full_da):
             da = full_da
+        else:
+            da_missing = ("Δα 数据不足（历史 %d 个交易日 < MF-DFA 窗口 250）" % len(d))
+    # P90 口径：**全历史分位**（与日报表格 / 告警判据同一个数），显式传给 render，
+    # 不让它退回「窗口内分位」——否则图上虚线和日报写着的 P90 不是一个数。
+    da_p90 = None
+    if da is not None and len(da):
+        _s = da.dropna()
+        if len(_s):
+            da_p90 = float(_s.quantile(0.9))
 
     # ③ λ1/λ2：算法在 rmt_rc（唯一实现）
     lam = None
@@ -286,6 +343,7 @@ def plot_panel(code="000688", typ="index_sh", lookback=250, out=None,
 
     out = out or os.path.join(WS, ".cache", "mfdfa_rc_%s.png" % code)
     p = render(out, close, da=da, lam=lam, name=str(code), label=str(code),
+               da_p90=da_p90, da_missing=da_missing,
                rc=(win["RC"] if with_rc else None), rc_mod=(RC if with_rc else None))
 
     # ── 控制台摘要（保持老版输出习惯）
@@ -293,17 +351,50 @@ def plot_panel(code="000688", typ="index_sh", lookback=250, out=None,
                              win.index[-1].strftime("%Y%m%d")))
     if da is not None and len(da):
         s = da.dropna()
-        v = float(s.iloc[-1])
-        print("最新 Δα = %.4f | 90分位 = %.4f | 全历史分位 = %.1f%%"
-              % (v, float(s.quantile(0.9)), float((s <= v).mean() * 100)))
+        if len(s) and da_p90 is not None:
+            v = float(s.iloc[-1])
+            print("最新 Δα = %.4f | 90分位 = %.4f | 全历史分位 = %.1f%%"
+                  % (v, da_p90, float((s <= v).mean() * 100)))
+        else:
+            print(da_missing or "Δα 序列去空后为空，无可报数值")
+    elif da_missing:
+        print(da_missing)
     if lam is not None and len(lam):
         r = lam.iloc[-1]
         print("最新 λ1=%.4f (MA5=%.4f, 斜率=%+.4f) | λ2=%.4f (MA5=%.4f, 斜率=%+.4f)"
               % (r["l1"], r["ma1"], r["s1"], r["l2"], r["ma2"], r["s2"]))
     if with_rc and "RC" in win.columns:
-        print("最新 R_cascade = %.3f" % float(win["RC"].iloc[-1]))
+        _rv = float(win["RC"].iloc[-1])
+        print("最新 R_cascade = %.3f | %s" % (_rv, _rc_state(RC, _rv)))
+        vol = ["%s = %.1f%%" % (k, float(win[k].iloc[-1]))
+               for k in ("vol20", "vol60") if k in win.columns]
+        if vol:
+            print(" | ".join(vol))
     print("图 →", p)
     return p
+
+
+def _rc_state(rc_mod, v):
+    """R_cascade 当前档位（阈值一律取 rcascade 里的常量，不在这里另定一套）。"""
+    try:
+        v = float(v)
+    except Exception:                                        # noqa: BLE001
+        return "—"
+    if v != v:
+        return "数据不足"
+    hi = getattr(rc_mod, "THR_HIGH", None)
+    lo = getattr(rc_mod, "THR_LOW", None)
+    deep = getattr(rc_mod, "THR_DEEP", None)
+    if hi is not None and v > hi:
+        return "🔴 危险区（>%.2f）" % hi
+    if deep is not None and v < deep:
+        # deep 是**连续 5 日才确认**的独立告警类别（rcascade.CONFIRM_DEEP），
+        # 单日低于它仍属 rcascade.state_of 的「安全区」，文案必须写清，
+        # 否则控制台和日报表格 state 列会互相打架。
+        return "🟢 安全区（<%.2f）｜🟣 再低于 %.2f 且连续 5 日＝低波动陷阱" % (lo, deep)
+    if lo is not None and v < lo:
+        return "🟢 安全区（<%.2f）" % lo
+    return "🟡 中性带（%.2f~%.2f）" % (lo, hi) if (lo is not None and hi is not None) else "中性带"
 
 
 # ══════════════════════════════════════ 取数辅助 ══════════════════════════════════
