@@ -58,8 +58,9 @@ except Exception:
 import os, sys, runpy, importlib.util
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# 2026-11-28：实体在 OpenClaw 工作区 apps/（本仓库无 apps/）
-_WS = _dh_cfg("OPENCLAW_WORKSPACE") or ""
+# 2026-11-28：实体在 OpenClaw 工作区 apps/（本仓库无 apps/）；
+# 未配 OPENCLAW_WORKSPACE 时退回迁移前默认，避免拼出相对路径 apps/xq_ind_monitor.py。
+_WS = _dh_cfg("OPENCLAW_WORKSPACE") or os.path.expanduser("~/.openclaw/workspace")
 _REAL = os.path.join(_WS, "apps/xq_ind_monitor.py")
 if not os.path.exists(_REAL):
     sys.exit("[compat] 找不到真实文件：%s（目录结构可能已变化）" % _REAL)

@@ -108,6 +108,10 @@ socket.getaddrinfo = lambda *a, **k: [r for r in _o(*a, **k) if r[0] == socket.A
 WS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# 2026-11-28：DataHub 未配 OPENCLAW_WORKSPACE 时退回迁移前默认，
+# 否则下面拼出的是相对路径 /optstack/jobs/xq_daily.sh，xq 快照刷新会静默失败。
+OPENCLAW_WS = _dh_cfg("OPENCLAW_WORKSPACE") or os.path.expanduser("~/.openclaw/workspace")
+
 import requests  # noqa: E402
 
 STATE_FILE = os.path.join(WS, "memory/chan_h1_wide_ind_state.json")
@@ -513,7 +517,7 @@ def refresh_snapshots(force=False):
         key = "moergen" if "yali" not in fp else "yali"
         try:
             r = subprocess.run(
-                ["bash", _dh_cfg("OPENCLAW_WORKSPACE")+"/optstack/jobs/xq_daily.sh", "check", "--no-push"],
+                ["bash", OPENCLAW_WS+"/optstack/jobs/xq_daily.sh", "check", "--no-push"],
                 capture_output=True, text=True, timeout=900, cwd=WS,
                 env={**env, "XQ_PORTFOLIOS": key, "XQ_PUSH": ""})
             out = (r.stdout or "") + (r.stderr or "")
