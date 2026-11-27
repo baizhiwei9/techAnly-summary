@@ -953,6 +953,14 @@ def fmt_status(rows):
 # ─────────── 发送 ───────────
 def send_qq(text):
     """QQ 私聊（走 OpenClaw 路由，不直连 provider）"""
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send(((text or "").strip().splitlines() or [""])[0][:60], text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     import subprocess
     try:
         p = subprocess.run(["openclaw", "message", "send", "--channel", "qqbot",
@@ -980,6 +988,15 @@ def send_feishu(subject, body):
 
 def send_mail(subject, body, to=None):
     """发邮件（可选，加 --mail 才走）：scripts/send_email.py → 回退 qqmail SMTP"""
+    if not to:                        # 指定收件人时仍走原通道，避免忽略 to
+        try:                          # 统一通知（data_hub.notify）优先
+            import _notify
+            _r = _notify.send_email(subject, body)
+            if _r.get("ok"):
+                return True
+            print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+        except Exception as _exc:
+            print("[notify] 统一库异常，回落原通道：%s" % _exc)
     import subprocess
     sender = os.path.join(WS, "scripts/send_email.py")
     if os.path.exists(sender):

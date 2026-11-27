@@ -748,6 +748,14 @@ def report_section(max_ind=8, wide_only=False):
 
 # ────────────────────────── 推送 ──────────────────────────
 def push_feishu(text, title):
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send_feishu(title, text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     try:
         import feishu_card as FC
         blocks = []
@@ -763,6 +771,14 @@ def push_feishu(text, title):
 
 
 def push_qq(text):
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send(((text or "").strip().splitlines() or [""])[0][:60], text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     try:
         import subprocess
         r = subprocess.run(["openclaw", "message", "send", "--channel", "qqbot",

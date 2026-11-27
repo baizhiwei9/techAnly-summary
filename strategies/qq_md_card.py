@@ -187,7 +187,23 @@ def _parse_target(target):
 
 
 def send_md(title, text, imgs=None, target=None, account="default", extra_note=""):
-    """发一条 QQ Markdown 消息（文字 + 内嵌图片）。返回 True/False"""
+    """发一条通知。返回 True/False。
+
+    默认走**统一通知库**（data_hub.notify：飞书文本 + 邮件内联图）；
+    只有显式设 ``QQ_FALLBACK=1``（或统一库未就绪）时才走本文件的 QQ 通道。
+    """
+    imgs = list(imgs or [])
+    paths = [p[0] if isinstance(p, (tuple, list)) else p for p in imgs]
+    if os.environ.get("QQ_FALLBACK", "").strip().lower() not in ("1", "true", "yes"):
+        try:
+            import _notify
+            res = _notify.send(title or "技术分析", text or "", images=paths or None)
+            if res.get("ok"):
+                print("[qq_md_card] 已走统一通知（data_hub.notify）：飞书文本 + 邮件内联图 %d 张" % len(paths))
+                return True
+            print("[qq_md_card] 统一库未就绪，回落 QQ 通道：%s" % res.get("reason"))
+        except Exception as exc:
+            print("[qq_md_card] 统一库异常，回落 QQ 通道：%s" % exc)
     tok = token(account)
     kind, oid = _parse_target(target)
     # 发图前先自检配额：快满了（>85）就先清到 60，避免中途 400 丢图

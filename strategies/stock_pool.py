@@ -479,6 +479,14 @@ def make_chart(pick, avoid, cmap, out_png, date, topo_pick=None, topo_avoid=None
 
 # ---------------- 推送 ----------------
 def _qq_send(text):
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send(((text or "").strip().splitlines() or [""])[0][:60], text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     if not QQ_TARGET:
         print('[QQ text] 跳过：未配置 SP_QQ_TARGET')
         return False
@@ -578,7 +586,7 @@ def _feishu_card(text, title):
     fp.write(text)
     fp.close()
     try:
-        r = subprocess.run([sys.executable, os.path.join(BASE, 'bin/feishu_push_card.py'),
+        r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'feishu_push_card.py'),
                             '--title', title, '--body-file', fp.name],
                            capture_output=True, text=True, timeout=180)
         print('[Feishu card]', (r.stdout or '').strip()[-160:], (r.stderr or '')[-160:])

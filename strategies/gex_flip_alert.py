@@ -359,6 +359,14 @@ def send_mail(subject: str, body: str, args) -> bool:
     正文走临时文件（--body-file）而不是 --body：文章体量大时命令行参数会太长，
     也避免正文里的引号/中文标点被 shell 解析。
     """
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send_email(subject, body)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     import tempfile
     fd, tmp = tempfile.mkstemp(suffix='.md', prefix='gex_alert_')
     try:

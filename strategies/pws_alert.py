@@ -239,6 +239,14 @@ def render(summary, mode='full'):
 
 # ---------------- 推送 ----------------
 def push_feishu(text):
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send_feishu(((text or "").strip().splitlines() or [""])[0][:60], text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     if not text:
         return False
     payload = {'msg_type': 'text', 'content': {'text': text}}
@@ -259,6 +267,14 @@ def push_feishu(text):
 
 
 def push_qq(text, target=QQ_TARGET):
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send(((text or "").strip().splitlines() or [""])[0][:60], text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     if not text:
         return False
     try:
@@ -280,6 +296,16 @@ def push_mail(text, subject=None, to=MAIL_TO):
     if not text:
         return False
     subj = subject or f"⚠️ 相变预警 · {time.strftime('%Y-%m-%d')}"
+    if not to:                        # 指定收件人时仍走原通道
+        try:
+            import _notify
+            res = _notify.send_email(subj, text)
+            if res.get("ok"):
+                print('[alert] 邮件已走统一通知（data_hub.notify）')
+                return True
+            print('[alert] 统一库未就绪，回落 scripts/send_email.py：%s' % res.get("reason"))
+        except Exception as exc:
+            print('[alert] 统一库异常，回落 scripts/send_email.py：%s' % exc)
     try:
         # 正文写临时文件传，避免命令行长度 / 特殊字符问题
         import tempfile

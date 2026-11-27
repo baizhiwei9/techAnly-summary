@@ -297,7 +297,7 @@ def render(d, m):
 
 
 def push_card(title, body, chat=None):
-    cmd = ['python3', os.path.join(WS, 'bin/feishu_push_card.py'),
+    cmd = ['python3', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'feishu_push_card.py'),
            '--title', title, '--body', body, '--template', 'red']
     if chat:
         cmd += ['--chat', chat]

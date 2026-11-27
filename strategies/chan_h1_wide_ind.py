@@ -686,6 +686,14 @@ def build_text(hits, cur_wide, cur_ind, force=False):
 
 def push_feishu(text, title):
     """飞书私聊（interactive card）"""
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send_feishu(title, text)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     import urllib.request
     try:
         cfg = json.load(open(os.path.join(os.path.dirname(WS), "openclaw.json"), encoding="utf-8"))

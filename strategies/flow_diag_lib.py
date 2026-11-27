@@ -1042,7 +1042,7 @@ def push_feishu_card(text, title, tag='main', signature=None):
             'elements': els}
     cf = os.path.join(CACHE, f'card_{tag}_{D8}.json')
     json.dump(card, open(cf, 'w', encoding='utf-8'), ensure_ascii=False)
-    p = subprocess.run([sys.executable, os.path.join(WS, 'bin/feishu_push_card.py'),
+    p = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'feishu_push_card.py'),
                         '--card-file', cf, '--chat', FEISHU_CHAT, '--signature', ''],
                        cwd=WS, capture_output=True, text=True, timeout=180)
     out = ((p.stdout or '') + (p.stderr or '')).strip()
@@ -1052,7 +1052,15 @@ def push_feishu_card(text, title, tag='main', signature=None):
 
 
 def push_card(text, title):
-    """飞书卡片推送（<50KB 限制，正文分段）"""
+    """飞书推送：**优先走统一通知库（data_hub.notify）**，未就绪才回落 webhook。"""
+    try:
+        import _notify
+        res = _notify.send_feishu(title, text)
+        if res.get("ok"):
+            return {"code": 0, "msg": "success（data_hub.notify）"}
+        print("[flow_diag] 统一库未就绪，回落 webhook：%s" % res.get("reason"))
+    except Exception as exc:
+        print("[flow_diag] 统一库异常，回落 webhook：%s" % exc)
     import urllib.request
     hook = __import__("ocsecrets").feishu_hook()
     body = {'msg_type': 'interactive', 'card': {

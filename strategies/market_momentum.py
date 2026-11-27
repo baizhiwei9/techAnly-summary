@@ -342,7 +342,7 @@ def main():
     # ---- 飞书私聊卡片（走官方应用机器人）
     cf = os.path.join(CACHE, 'card_%s.json' % d8)
     json.dump(card, open(cf, 'w', encoding='utf-8'), ensure_ascii=False)
-    p = subprocess.run([sys.executable, os.path.join(BIN, 'feishu_push_card.py'),
+    p = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'feishu_push_card.py'),
                         '--card-file', cf, '--chat', a.chat, '--signature', ''],
                        cwd=WS, capture_output=True, text=True, timeout=180)
     out = ((p.stdout or '') + (p.stderr or '')).strip()

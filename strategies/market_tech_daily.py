@@ -1000,6 +1000,18 @@ def push_qq_md(d, txt=None, charts=None):
     2026-10-24 用户要求：「你还是换成交互式卡片形式的消息吧。这个交互式卡片，我记着可以配图的」
     → QQ 侧等价的「卡片」就是 Markdown 消息，一条消息里既有排版文字又有图。
     """
+    if txt:                           # 有现成正文才走统一库；否则按 d 现构造（原实现）
+        try:                          # 统一通知（data_hub.notify）优先
+            import _notify
+            _imgs = [c if isinstance(c, str) else (c.get("path") if isinstance(c, dict) else "")
+                     for c in (charts or [])]
+            _r = _notify.send((txt.strip().splitlines() or [""])[0][:60], txt,
+                              images=[p for p in _imgs if p])
+            if _r.get("ok"):
+                return True
+            print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+        except Exception as _exc:
+            print("[notify] 统一库异常，回落原通道：%s" % _exc)
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import qq_md_card as QQ

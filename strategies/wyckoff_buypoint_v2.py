@@ -646,6 +646,14 @@ def push_feishu(title, txt, imgs=None):
 
 
 def push_qq(txt):
+    try:                              # 统一通知（data_hub.notify）优先
+        import _notify
+        _r = _notify.send(((txt or "").strip().splitlines() or [""])[0][:60], txt)
+        if _r.get("ok"):
+            return True
+        print("[notify] 统一库未就绪，回落原通道：%s" % _r.get("reason"))
+    except Exception as _exc:
+        print("[notify] 统一库异常，回落原通道：%s" % _exc)
     tgt = _qq_target()
     if not tgt:
         log("[qq] 跳过：未配置 QQ target")

@@ -59,8 +59,41 @@ def chats():
     return (r.get("data") or {}).get("items") or []
 
 
+def _unified():
+    """统一通知库（DataHub notify）；不可用时返回 None，由调用方回落。"""
+    try:
+        import _notify
+        return _notify
+    except Exception:
+        return None
+
+
+def _card_text(card):
+    """把卡片 JSON 压成 (标题, 正文 markdown)，供统一库发文本。"""
+    title = (((card or {}).get("header") or {}).get("title") or {}).get("content") or ""
+    lines = []
+    for el in (card or {}).get("elements") or []:
+        if not isinstance(el, dict):
+            continue
+        if el.get("tag") == "markdown":
+            lines.append(el.get("content") or "")
+        else:
+            txt = ((el.get("text") or {}).get("content")) or ""
+            if txt:
+                lines.append(txt)
+    return title, "\n\n".join([x for x in lines if x and x.strip()])
+
+
 def send_text(chat_id, text):
-    """以应用身份向指定 chat_id 发文本。"""
+    """发文本：优先走统一通知库（data_hub.notify），未就绪才应用直发。"""
+    uni = _unified()
+    if uni is not None:
+        head = (text or "").strip().splitlines()
+        title = (head[0][:60] if head else "") or "技术分析"
+        res = uni.send_feishu(title, text)
+        if res.get("ok"):
+            return {"code": 0, "msg": "success（data_hub.notify）"}
+        print("[smc_feishu] 统一库未就绪，回落应用直发：%s" % res.get("reason"))
     t = token()
     body = {"receive_id": chat_id, "msg_type": "text",
             "content": json.dumps({"text": text}, ensure_ascii=False)}
@@ -69,7 +102,14 @@ def send_text(chat_id, text):
 
 
 def send_card(chat_id, card):
-    """以应用身份向指定 chat_id 发交互式卡片。"""
+    """发卡片：优先走统一通知库（文本），未就绪才应用直发。"""
+    uni = _unified()
+    if uni is not None:
+        title, text = _card_text(card)
+        res = uni.send(title or "技术分析", text or "")
+        if res.get("ok"):
+            return {"code": 0, "msg": "success（data_hub.notify）"}
+        print("[smc_feishu] 统一库未就绪，回落应用直发：%s" % res.get("reason"))
     t = token()
     body = {"receive_id": chat_id, "msg_type": "interactive",
             "content": json.dumps(card, ensure_ascii=False)}
@@ -90,7 +130,13 @@ def build_card(title, body_md, template="blue", sign="📎 来自 openclaw.glm")
 
 
 def send_card_message(chat_id, title, body_md, template="blue", sign="📎 来自 openclaw.glm"):
-    """一行调用：发一张交互式卡片（标题+markdown+署名）。"""
+    """一行调用：优先走统一通知库（文本），未就绪才发交互卡片。"""
+    uni = _unified()
+    if uni is not None:
+        res = uni.send(title or "技术分析", "%s\n\n%s" % (body_md or "", sign or ""))
+        if res.get("ok"):
+            return {"code": 0, "msg": "success（data_hub.notify）"}
+        print("[smc_feishu] 统一库未就绪，回落交互卡片：%s" % res.get("reason"))
     return send_card(chat_id, build_card(title, body_md, template, sign))
 
 
