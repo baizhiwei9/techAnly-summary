@@ -29,7 +29,16 @@ def _repo_root(start):
     return os.path.dirname(os.path.dirname(os.path.abspath(start)))
 
 
-WS = os.environ.get("TECH_WS") or _repo_root(__file__)
+def _cfg(key, default=""):
+    """DataHub 统一配置（loader 内部处理 env 覆盖）→ default。"""
+    try:
+        from data_hub import cfg as _c
+        return str(_c(key, default) or default or "").strip()
+    except Exception:
+        return (default or "").strip()
+
+
+WS = _cfg("TECH_WS") or _repo_root(__file__)
 # 顺序有讲究：最后插入的优先级最高 → 空串（repo 根）放最前 = 最低优先级。
 for _sd in ("", "misc/core", "chanlun/fractal", "chanlun/ma", "chanlun/multiscale",
             "chanlun/multiscale/vendor", "misc/engine", "misc", "wavelet", "smc",
@@ -77,18 +86,6 @@ def _secret(name, default=""):
     try:
         from data_hub import get_secret as _g
         return (_g(name, default) or default or "").strip()
-    except Exception:
-        return (default or "").strip()
-
-
-def _cfg(key, default=""):
-    """环境变量 → DataHub cfg → default。"""
-    v = (os.environ.get(key) or "").strip()
-    if v:
-        return v
-    try:
-        from data_hub import cfg as _c
-        return str(_c(key, default) or default or "").strip()
     except Exception:
         return (default or "").strip()
 

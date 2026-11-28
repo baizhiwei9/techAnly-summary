@@ -34,15 +34,11 @@ def here() -> str:
 def workspace() -> str:
     """数据根目录（历史数据、缓存都在那里）。
 
-    2026-11-28：不再硬编码 ``~/.openclaw/workspace``。解析顺序：
-    环境变量（TECH_DATA_ROOT / OPENCLAW_WORKSPACE / WS / WORKSPACE）
-    → DataHub 统一配置（secrets.openclaw_workspace / paths.*）
+    2026-11-28：不读环境变量（env 覆盖由 DataHub loader 内部统一处理），
+    也不硬编码 ``~/.openclaw/workspace``。解析顺序：
+    DataHub 统一配置（secrets / paths 段的 openclaw_workspace）
     → ocsecrets（认得 secrets.env）→ 空串（调用方自行决定跳过或报错）。
     """
-    for key in ("TECH_DATA_ROOT", "OPENCLAW_WORKSPACE", "WS", "WORKSPACE"):
-        v = os.environ.get(key, "").strip()
-        if v and os.path.isdir(v):
-            return v
     try:  # DataHub 统一配置（config.local.json：secrets 段优先）
         from data_hub import get_secret as _gs
         v = (_gs("OPENCLAW_WORKSPACE", "") or "").strip()

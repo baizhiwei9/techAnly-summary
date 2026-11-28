@@ -87,20 +87,19 @@ def _dh_secret(name: str, default: str = "") -> str:
 
 
 def _secrets():
-    """飞书/邮件绑定：环境变量 → DataHub 统一配置 → ocsecrets。"""
+    """飞书/邮件绑定：一律走 DataHub 统一配置（loader 内部处理 env 覆盖）→ ocsecrets。"""
     feishu = {
-        "app_id": (os.environ.get("FEISHU_APP_ID") or _dh_secret("FEISHU_APP_ID")).strip(),
-        "app_secret": (os.environ.get("FEISHU_APP_SECRET")
-                       or _dh_secret("FEISHU_APP_SECRET")).strip(),
-        "chat_id": (os.environ.get("FEISHU_CHAT_DM")
-                    or os.environ.get("FEISHU_CHAT_ID") or "").strip(),
-        "webhook_url": (os.environ.get("FEISHU_WEBHOOK_URL") or "").strip(),
+        "app_id": _dh_secret("FEISHU_APP_ID"),
+        "app_secret": _dh_secret("FEISHU_APP_SECRET"),
+        "chat_id": (_dh_secret("FEISHU_CHAT_DM") or _dh_secret("FEISHU_CHAT_ID")),
+        "webhook_url": _dh_secret("FEISHU_WEBHOOK_URL"),
     }
     email = {
         "to": [x.strip() for x in
-               (os.environ.get("TECHANLY_MAIL_TO") or os.environ.get("EMAIL_TO") or "").split(",")
+               (_dh_secret("TECHANLY_MAIL_TO") or _dh_secret("EMAIL_TO")
+                or _dh_secret("MAIL_DEFAULT_TO")).split(",")
                if x.strip()],
-        "from": (os.environ.get("EMAIL_FROM") or "").strip(),
+        "from": _dh_secret("EMAIL_FROM"),
     }
     try:
         import ocsecrets

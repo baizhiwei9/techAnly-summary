@@ -41,10 +41,7 @@ if _HUB_ROOT and _HUB_ROOT not in sys.path:
 
 
 def _secret(name):
-    """环境变量 → DataHub get_secret；缺了就抛可读错误。"""
-    env = (os.environ.get(name) or "").strip()
-    if env:
-        return env
+    """DataHub get_secret（loader 内部处理 env 覆盖）；缺了就抛可读错误。"""
     try:
         from data_hub import get_secret as _g
         v = (_g(name) or "").strip()
@@ -53,7 +50,7 @@ def _secret(name):
     except Exception:
         pass
     raise RuntimeError(
-        '拿不到 %s：请设环境变量，或在 config.local.json 的 secrets 段配置 '
+        '拿不到 %s：请在 config.local.json（或 secrets.env）的 secrets 段配置 '
         'feishu_app_id / feishu_app_secret' % name)
 
 

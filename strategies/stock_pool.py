@@ -76,13 +76,10 @@ from collections import defaultdict, Counter
 def _resolve_base():
     """数据根（2026-11-28 去 OpenClaw 硬编码路径）。
 
-    顺序：环境变量 STOCK_POOL_WS / DataHub paths.stock_pool_ws
-    > 含 .cache/market/ 的最近祖先 > 统一数据根（_paths.workspace：env/DataHub/ocsecrets）。
+    顺序：DataHub paths.stock_pool_ws（loader 内部处理 env 覆盖）
+    > 含 .cache/market/ 的最近祖先 > 统一数据根（_paths.workspace）。
     都没有就报错，避免拼出相对路径静默读错目录。
     """
-    env = (os.environ.get('STOCK_POOL_WS') or '').strip()
-    if env and os.path.isdir(env):
-        return env
     env = str(_dh_cfg('STOCK_POOL_WS') or '').strip()
     if env and os.path.isdir(env):
         return env
