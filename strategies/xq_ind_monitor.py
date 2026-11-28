@@ -76,6 +76,14 @@ def _repo_root(start):
     return os.path.dirname(os.path.dirname(os.path.abspath(start)))
 
 
+# 2026-11-28：子进程不继承父进程 sys.path，先挂 DataHub 根，下面的 _cfg/_secret 才读得到统一配置。
+# 本文件在 _paths 之前就要定 WS，不能等 ensure()，所以这里显式引导；_paths 缺失时静默降级。
+try:
+    from _paths import bootstrap_hub_root as _bootstrap_hub_root
+    _bootstrap_hub_root()
+except Exception:
+    pass
+
 WS = _cfg("TECH_WS") or _repo_root(__file__)
 # 应用层：引用库（misc/ chanlun/ smc/ wavelet/），库不反向依赖本目录
 for _sd in ("misc/core", "misc/engine", "misc/strategies", "misc/tools",

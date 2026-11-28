@@ -22,13 +22,49 @@ from __future__ import annotations
 import os
 import sys
 
-__all__ = ["ensure", "workspace", "here", "add_openclaw_paths", "secret", "feishu_chat"]
+__all__ = ["ensure", "workspace", "here", "add_openclaw_paths", "secret", "feishu_chat",
+           "bootstrap_hub_root"]
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def here() -> str:
     return _HERE
+
+
+def bootstrap_hub_root() -> str:
+    """定位 DataHub 仓库根并挂到 sys.path（子进程不继承父进程 sys.path）。
+
+    2026-11-28：业务脚本以子进程跑（crontab / case runner），父进程的 sys.path
+    不过去，`from data_hub import cfg` 会 ImportError，配置/凭据全部静默降级。
+    解析顺序：环境变量 DATAHUB_ROOT → ~/.config/precious-task/libroots.json
+    → 从本目录向上探测含 ``data_hub/`` 的父目录。幂等，返回挂上的根（找不到返回 ""）。
+    """
+    p = (os.environ.get("DATAHUB_ROOT") or "").strip()
+    if not (p and os.path.isdir(os.path.join(p, "data_hub"))):
+        p = ""
+        try:
+            import json
+            with open(os.path.expanduser("~/.config/precious-task/libroots.json"),
+                      encoding="utf-8") as f:
+                data = json.load(f) or {}
+            for key in ("datahub", "datahub_root", "DATAHUB_ROOT"):
+                v = data.get(key)
+                if v and os.path.isdir(os.path.join(str(v), "data_hub")):
+                    p = str(v)
+                    break
+        except Exception:
+            p = ""
+    if not p:
+        d = _HERE
+        for _ in range(6):
+            d = os.path.dirname(d)
+            if os.path.isdir(os.path.join(d, "data_hub")):
+                p = d
+                break
+    if p:
+        _add(p)
+    return p
 
 
 def workspace() -> str:
@@ -39,6 +75,7 @@ def workspace() -> str:
     DataHub 统一配置（secrets / paths 段的 openclaw_workspace）
     → ocsecrets（认得 secrets.env）→ 空串（调用方自行决定跳过或报错）。
     """
+    bootstrap_hub_root()  # 先让 data_hub 可导入，否则下面的配置全都静默取空
     try:  # DataHub 统一配置（config.local.json：secrets 段优先）
         from data_hub import get_secret as _gs
         v = (_gs("OPENCLAW_WORKSPACE", "") or "").strip()
@@ -114,6 +151,7 @@ def ensure() -> str:
     幂等，可重复调用。同时把统一配置的非敏感参数注入环境变量，
     让沿用 `os.environ.get(...)` 的老代码也能读到 config.json 的值。
     """
+    bootstrap_hub_root()
     _add(_HERE)
     # 仓库根：让 `import smc` / `import charts` / `import chanlun` 生效
     repo_root = os.path.dirname(_HERE)
